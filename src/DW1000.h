@@ -237,7 +237,7 @@ public:
 	static void setPulseFrequency(byte freq);
 	static byte getPulseFrequency();
 	static void setPreambleLength(byte prealen);
-	static void setwChannel(byte channel);
+	static void setChannel(byte channel);
 	static void setPreambleCode(byte preacode);
 	static void useSmartPower(boolean smartPower);
 	
