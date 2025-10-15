@@ -947,29 +947,6 @@ void DW1000Class::setFrameFilterAllowReserved(boolean val) {
 	setBit(_syscfg, LEN_SYS_CFG, FFAR_BIT, val);
 }
 
-void DW1000Class::setStandardFrame(boolean val){
-	
-	//Frame length: if true --> standard use (127 octects)
-		//				if false --> Long frame mode (1023 octets)
-		// See "System Configuration register (0x04)" --> DW1000 User Manual
-
-
-	if(val){  // If I want standard Mode --> Both bits = 1
-
-		setBit(_syscfg, LEN_SYS_CFG, PHR_MODE_LOW, val);
-		setBit(_syscfg, LEN_SYS_CFG, PHR_MODE_HIGH, val);
-
-	}
-
-	else{ // If I want long frame mode --> Both bits = 0
-
-		setBit(_syscfg, LEN_SYS_CFG, PHR_MODE_LOW, !val);
-		setBit(_syscfg, LEN_SYS_CFG, PHR_MODE_HIGH, !val);
-
-	}
-	
-}
-
 
 void DW1000Class::setDoubleBuffering(boolean val) {
 	setBit(_syscfg, LEN_SYS_CFG, DIS_DRXB_BIT, !val);
