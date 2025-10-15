@@ -29,7 +29,8 @@ uint16_t Adelay = 16580;
 // Variables & constants to register the incoming ranges
 #define MAX_DEVICES 5
 Measurement measurements[MAX_DEVICES];
-Existing_devices ExistingDevices[MAX_DEVICES];
+
+ExistingDevice Existing_devices[MAX_DEVICES];
 int amountDevices = 0;
 
 // Time, mode switch and data report management: 
@@ -69,7 +70,7 @@ void setup(){
         // For when the slaves send a data report:
         DW1000Ranging.attachDataReport(DataReport);
 
-        DW1000Ranging.startAsInitiator(DEVICE_ADDR,DW1000.MODE_LONGDATA_RANGE_LOWPOWER, false,MASTER_ANCHOR);
+        DW1000Ranging.startAsInitiator(DEVICE_ADDR,DW1000.MODE_1, false,MASTER_ANCHOR);
 
         // This means that the anchor is in charge of starting the comunication (polling)
     }
@@ -84,7 +85,7 @@ void setup(){
         DW1000Ranging.attachDataRequest(DataRequest);
 
         //Finally, slaves are started as responders:
-        DW1000Ranging.startAsResponder(DEVICE_ADDR,DW1000.MODE_LONGDATA_RANGE_LOWPOWER, false,SLAVE_ANCHOR);
+        DW1000Ranging.startAsResponder(DEVICE_ADDR,DW1000.MODE_1, false,SLAVE_ANCHOR);
         
     } 
 
@@ -202,14 +203,14 @@ void ModeChangeRequest(bool toInitiator){
 
         DW1000.idle();
        
-        DW1000Ranging.startAsInitiator(DEVICE_ADDR,DW1000.MODE_LONGDATA_RANGE_LOWPOWER, false);
+        DW1000Ranging.startAsInitiator(DEVICE_ADDR,DW1000.MODE_1, false);
        
     }
     else{
 
         DW1000.idle();
         
-        DW1000Ranging.startAsResponder(DEVICE_ADDR,DW1000.MODE_LONGDATA_RANGE_LOWPOWER, false);
+        DW1000Ranging.startAsResponder(DEVICE_ADDR,DW1000.MODE_1, false);
         
     }
 } 
