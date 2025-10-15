@@ -61,13 +61,13 @@ struct Measurement {
 };
 
 // Struct to know the existing devices of the system. Used to send messages via unicast.
-struct ExistingDevices{
+struct ExistingDevice{
 	uint16_t short_addr;
 	bool is_slave_anchor;
 	bool is_initiator;
 	bool active;
 	float fail_count;
-}
+};
 
 
 class DW1000RangingClass {
@@ -80,8 +80,8 @@ public:
 	static void    initCommunication(uint8_t myRST = DEFAULT_RST_PIN, uint8_t mySS = DEFAULT_SPI_SS_PIN, uint8_t myIRQ = 2);
 	static void    configureNetwork(uint16_t deviceAddress, uint16_t networkId, const byte mode[]);
 	static void    generalStart();
-	static void    startAsResponder(char address[], const byte mode[], const bool randomShortAddress = true,uint8_t boardType = 0);
-	static void    startAsInitiator(char address[], const byte mode[], const bool randomShortAddress = true, uint8_t boardType = 0);
+	static void    startAsResponder(char address[], const byte mode[], const bool randomShortAddress = true,const uint8_t boardType = 0);
+	static void    startAsInitiator(char address[], const byte mode[], const bool randomShortAddress = true, const uint8_t boardType = 0);
 	static boolean addNetworkDevices(DW1000Device* device, boolean shortAddress);
 	static boolean addNetworkDevices(DW1000Device* device);
 	static void    removeNetworkDevices(int16_t index);
@@ -222,13 +222,7 @@ private:
 	static void transmitRange(DW1000Device* myDistantDevice);
 	
 	
-	//To request a switch in mode operation. 
-	void transmitModeSwitch(bool toInitiator, DW1000Device* device = nullptr);
-
-	//To centralize data in master anchor
-	void transmitDataRequest(DW1000Device* device = nullptr);
-	void transmitDataReport(Measurement* measurements, int numMedidas, DW1000Device* device = nullptr);
-
+	
 	
 	//methods for range computation
 	static void computeRangeAsymmetric(DW1000Device* myDistantDevice, DW1000Time* myTOF);
