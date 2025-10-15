@@ -17,7 +17,7 @@ DW1000Mac    DW1000RangingClass::_globalMac;
 int16_t      DW1000RangingClass::_type; 
 
 //board type (master, anchor or tag)
-uint8_t W1000RangingClass::_myBoardType = 99;
+uint8_t DW1000RangingClass::_myBoardType = 99;
 
 // message flow state
 volatile byte    DW1000RangingClass::_expectedMsgId;
@@ -136,7 +136,7 @@ void DW1000RangingClass::generalStart() {
 	_rangingCountPeriod = millis();
 }
 
-void DW1000RangingClass::startAsResponder(char address[], const byte mode[], const bool randomShortAddress) {
+void DW1000RangingClass::startAsResponder(char address[], const byte mode[], const bool randomShortAddress, const uint8_t boardType) {
 	//save the address
 	DW1000.convertToByte(address, _currentAddress);
 	//write the address on the DW1000 chip
@@ -169,7 +169,7 @@ void DW1000RangingClass::startAsResponder(char address[], const byte mode[], con
 	
 }
 
-void DW1000RangingClass::startAsInitiator(char address[], const byte mode[], const bool randomShortAddress, const uint16_t boardType, const uint8_t boardType) {
+void DW1000RangingClass::startAsInitiator(char address[], const byte mode[], const bool randomShortAddress, const uint8_t boardType) {
 	
 	//save the address
 	DW1000.convertToByte(address, _currentAddress);
@@ -494,7 +494,7 @@ void DW1000RangingClass::loop() {
 			uint8_t responderboardType = data[LONG_MAC_LEN+1];
 
 			if(addNetworkDevices(&myResponder, true)) {
-				_networkDevices[_networkDevicesNumber-1].setBoardType(responderType);
+				_networkDevices[_networkDevicesNumber-1].setBoardType(responderboardType);
 
 				if(_handleNewDevice != 0) {
 					(*_handleNewDevice)(&myResponder);
