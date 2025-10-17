@@ -12,38 +12,61 @@ Don't forget to change the DEVICE_ADDR on each anchor used */
 #define SPI_MISO 19
 #define SPI_MOSI 23
 #define DW_CS 4
-
 const uint8_t PIN_RST = 27; // reset pin
 const uint8_t PIN_IRQ = 34; // irq pin
 const uint8_t PIN_SS = 4;   // spi select pin
 
+
+
 // Devices' own definitions:
-// Nomenclature: A for Anchors, B for Tags
+
+#define IS_MASTER true
+//#define IS_MASTER false
+
+// Address: A for Anchors, B for Tags
 #define DEVICE_ADDR "A1:00:5B:D5:A9:9A:E2:9C" 
 
 uint16_t own_short_addr = 0; //I'll get it during the setup.
 uint16_t Adelay = 16580;
-#define IS_MASTER true
-//#define IS_MASTER false
 
-// Variables & constants to register the incoming ranges
+// To register incoming data reports.
 #define MAX_DEVICES 5
 Measurement measurements[MAX_DEVICES];
 
+// To send messages via unicast
 ExistingDevice Existing_devices[MAX_DEVICES];
 int amountDevices = 0;
 
-// Time, mode switch and data report management: 
+//Time management
 unsigned long current_time = 0; 
-unsigned long last_switch = 0;
-unsigned long last_report = 0;
+unsigned long last_ranging_started = 0;
+unsigned long mode_switch_request = 0;
 
-const unsigned long switch_time = 5000; //Switch the slaves' mode every 10 secs
-const unsigned long report_time = 12000; // Ask for a data report every 40 secs
+const unsigned long ranging_period = 2000;
 
-// Current mode management. Used to call the switch mode function.
-static bool slaveIsInitiator = false;
-static bool report_pending = false;
+
+// Control of the slave's mode.
+static bool slaveIsResponder = true;
+static bool switchToInitiator = true;
+
+
+// States to manage the flow control:
+uint8_t state = 1;
+#define RANGING 1
+#define SWITCH_SLAVE 2
+#define DATA_REPORT 3
+
+// Flags to handle the flow control
+static bool mode_switch_requested = false;
+static bool mode_switch_ack = false;
+
+static bool stop_ranging_requested = false;
+static bool ranging_ended = false;
+static bool seen_first_range = false;
+
+
+static bool change_pending = false;
+static bool data_report_pending = false;
 
 // CODE:
 void setup(){
@@ -55,20 +78,21 @@ void setup(){
     DW1000Ranging.initCommunication(PIN_RST, PIN_SS, PIN_IRQ); // DW1000 Start
 
     DW1000.setAntennaDelay(Adelay);
-
+    DW1000Ranging.setResetPeriod(5000);
     // Callbacks "enabled" 
     DW1000Ranging.attachNewRange(newRange);
     DW1000Ranging.attachNewDevice(newDevice);
     DW1000Ranging.attachInactiveDevice(inactiveDevice);   
 
-    last_switch = millis();
-    last_report = millis();
+    last_ranging_started = millis();
+    state = RANGING;
 
     if (IS_MASTER){
 
         //Master's callbacks: 
         // For when the slaves send a data report:
         DW1000Ranging.attachDataReport(DataReport);
+        DW1000Ranging.attachModeSwitchAck(ModeSwitchAck);
 
         DW1000Ranging.startAsInitiator(DEVICE_ADDR,DW1000.MODE_1, false,MASTER_ANCHOR);
 
@@ -79,10 +103,10 @@ void setup(){
         //Callbacks for the slave anchors:
         
         //1: They must respond to a change request message (Sent by the master)        
-        DW1000Ranging.attachModeChangeRequest(ModeChangeRequest);
+        DW1000Ranging.attachModeSwitchRequested(ModeSwitchRequested);
        
         //2: Must answer to a data request message (also sent by master)
-        DW1000Ranging.attachDataRequest(DataRequest);
+        DW1000Ranging.attachDataRequested(DataRequested);
 
         //Finally, slaves are started as responders:
         DW1000Ranging.startAsResponder(DEVICE_ADDR,DW1000.MODE_1, false,SLAVE_ANCHOR);
@@ -174,9 +198,10 @@ void DataReport(byte* data){
     }
 
     showData();
+
 }
 
-void DataRequest(byte* short_addr_requester){
+void DataRequested(byte* short_addr_requester){
 
     // Called when the master sends the slave a data request.
     // The slave answers by sending the data report:
@@ -197,23 +222,36 @@ void DataRequest(byte* short_addr_requester){
 
 }
 
-void ModeChangeRequest(bool toInitiator){
+void ModeSwitchRequested(byte* short_addr_requester, bool toInitiator){
 
+    DW1000Device* requester = DW1000Ranging.searchDistantDevice(short_addr_requester);
     if(toInitiator == true){
 
         DW1000.idle();
        
         DW1000Ranging.startAsInitiator(DEVICE_ADDR,DW1000.MODE_1, false);
-       
+        if(requester){ DW1000Ranging.transmitModeSwitchAck(requester,toInitiator);}
     }
     else{
 
         DW1000.idle();
         
         DW1000Ranging.startAsResponder(DEVICE_ADDR,DW1000.MODE_1, false);
-        
+        if(requester){ DW1000Ranging.transmitModeSwitchAck(requester,toInitiator);}
     }
 } 
+
+void ModeSwitchAck(bool isInitiator){
+
+    uint16_t origin = DW1000Ranging.getDistantDevice()->getShortAddress();
+    Serial.print(" Cambio Realizado: ");
+    Serial.print(origin,HEX);
+    Serial.print(" es --> ");
+    Serial.println(isInitiator ? "INITIATOR" : "RESPONDER");
+    
+    slaveIsResponder = !isInitiator;
+    mode_switch_ack = true;
+}
 
 void showData(){
 
@@ -244,6 +282,17 @@ void newRange(){
     float rx_pwr = DW1000Ranging.getDistantDevice()->getRXPower();
 
     logMeasure(own_short_addr,dest_sa, dist, rx_pwr);
+    seen_first_range = true; 
+
+    if(stop_ranging_requested){
+        ranging_ended = true;
+        Serial.println("El ranging ha terminado");
+        
+    }
+    if(!seen_first_range){
+        seen_first_range = true;
+        last_ranging_started = current_time;
+    }
 
 }
 
@@ -268,39 +317,81 @@ void loop(){
     DW1000Ranging.loop();
     current_time = millis();
 
-        if (IS_MASTER){
+    
+    if (IS_MASTER){
 
-            if(!report_pending && (current_time - last_switch >= switch_time)){
+            if(state == RANGING){ 
 
-                last_switch = current_time;
-                slaveIsInitiator = !slaveIsInitiator;
                 
-                Serial.print("CAMBIO A ");
-                Serial.println(slaveIsInitiator ? "INITIATOR" : "RESPONDER");
+                if(seen_first_range && current_time - last_ranging_started >= ranging_period){
+                    Serial.println("Pido que termine el ranging");
+                    state = SWITCH_SLAVE;
+                    DW1000Ranging.setStopRanging(true);
+                    stop_ranging_requested = true;
+                }
 
-                DW1000Ranging.transmitModeSwitch(slaveIsInitiator);
-
-                //Only 1 parameter: a boolean to indicate which mode I want to switch to:
-                // true = toInitiator
-
-                // 2nd parameter is the target device. 
-                // If null --> Broadcast (to all devices listening)
-                // If != 0, message is sent to the specified device. 
-                
-                
             }
 
-            
-            if (!slaveIsInitiator && (current_time - last_report >= report_time)){
-                
-                Serial.println("DATA REQUEST ENVIADO");
-                DW1000Ranging.transmitDataRequest();
-                //No device as parameter --> Broadcast
-                report_pending = true;
+            if(state == SWITCH_SLAVE){
 
-                
-                last_report = current_time;
+                if(ranging_ended){
+
+                    if(!mode_switch_requested && !mode_switch_ack){ //If not requested yet
+
+                        if(slaveIsResponder){
+                            
+                            //Switching to Initiator
+                            switchToInitiator = true;
+                            DW1000Ranging.transmitModeSwitch(switchToInitiator);
+                                                       
+                            Serial.println("Solicitado el cambio a initiator");
+                            change_pending = true;
+                            mode_switch_request = current_time;
+                            ranging_ended = true;
+                        }
+    
+                        else{
+                            //Switching to Responder
+                            delay(10);
+                            switchToInitiator = false;
+                            DW1000Ranging.transmitModeSwitch(switchToInitiator);
+                            
+                            Serial.println("Solicitado el cambio a responder");
+                            ranging_ended = false;
+                            change_pending = true;
+                            mode_switch_request = current_time;
+                            
+                        }
+
+                        mode_switch_requested = true;
+                        mode_switch_ack = false;
+                    }
+
+                    //Mode switch requested. Now Waiting for ack:
+
+                    if(mode_switch_requested && mode_switch_ack){
+                        //Now, we reset the ranging: 
+                        if(!switchToInitiator){change_pending = false;}
+                        mode_switch_requested = false;
+                        mode_switch_ack = false;
+                        state = RANGING;
+                        DW1000Ranging.setStopRanging(false);
+                        stop_ranging_requested = false;
+                        last_ranging_started = current_time;
+
+                        Serial.println("vuelvo a activar el ranging");
+                    }
+
+
+                }
+
+                if (change_pending && current_time-mode_switch_request >= 500){
+                        Serial.println("reintentado");
+                        change_pending = false;
+                        DW1000Ranging.transmitModeSwitch(switchToInitiator);
+                }
             }
-    }
+        }
 
+    
 }
