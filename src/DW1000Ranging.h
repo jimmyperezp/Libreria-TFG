@@ -19,9 +19,11 @@
 #define RANGING_INIT 5
 
 //Messages used to control the data flow: 
-#define MODE_SWITCH 6  // To request a switch in mode. From initiator to responder (or viceversa)
-#define REQUEST_DATA 7 // The master anchor sends this message to request the slave anchors the data they've collected (this data includes the measurements from the slave to the rest of devices)
-#define DATA_REPORT 8 // The slave anchors respond with this message. In it, the requested data is codified.
+#define MODE_SWITCH 6 // To request a switch in mode. From initiator to responder (or viceversa)
+#define MODE_SWITCH_ACK 7
+
+#define REQUEST_DATA 8 // The master anchor sends this message to request the slave anchors the data they've collected (this data includes the measurements from the slave to the rest of devices)
+#define DATA_REPORT 9 // The slave anchors respond with this message. In it, the requested data is codified.
 
 //Length of tha payload in the sent messages.
 #define LEN_DATA 90
@@ -35,7 +37,7 @@
 
 //Default value
 //in ms
-#define DEFAULT_RESET_PERIOD 200
+#define DEFAULT_RESET_PERIOD 500
 //in us
 #define DEFAULT_REPLY_DELAY_TIME 7000
 
@@ -89,7 +91,7 @@ public:
 	//setters
 	static void setReplyTime(uint16_t replyDelayTimeUs);
 	static void setResetPeriod(uint32_t resetPeriod);
-	
+	static void setStopRanging(bool stop_ranging_input);
 	//getters
 	static byte* getCurrentAddress() { return _currentAddress; };
 	
@@ -97,6 +99,7 @@ public:
 	
 	static uint8_t getNetworkDevicesNumber() { return _networkDevicesNumber; };
 	
+
 	//ranging functions
 	static int16_t detectMessageType(byte datas[]); // TODO check return type
 	static void loop();
@@ -114,10 +117,12 @@ public:
 	static void attachInactiveDevice(void (* handleInactiveDevice)(DW1000Device*)) { _handleInactiveDevice = handleInactiveDevice; };
 	
 	//Callback for the change request. It aims to a function with a bool parameter (toInitiator)
-	static void attachModeChangeRequest(void (* handleModeChange)(bool toInitiator)){ _handleModeChangeRequest = handleModeChange;}
+	static void attachModeSwitchRequested(void (* handleModeSwitch)(byte* shortAddress, bool toInitiator)){ _handleModeSwitchRequest = handleModeSwitch;}
 
+	// Callback for when the Mode Switch is made. Sent from the slave back to the master.
+	static void attachModeSwitchAck(void (* handleModeSwitchAck)(bool isInitiator)){ _handleModeSwitchAck = handleModeSwitchAck;}
 	// Callback for when data is requested (slave anchors have access to this)
-	static void attachDataRequest(void (*handleDataRequest)(byte* shortAddress)){ _handleDataRequest = handleDataRequest; }
+	static void attachDataRequested(void (*handleDataRequest)(byte* shortAddress)){ _handleDataRequest = handleDataRequest; }
 
 	//Callback for when the master receives a data_report message (only the master anchor has access to this)
 	static void attachDataReport(void (*handleDataReport)(byte* dataReport)){ _handleDataReport = handleDataReport;}
@@ -129,11 +134,17 @@ public:
 	//FOR DEBUGGING
 	static void visualizeDatas(byte datas[]);
 
-	//To request a switch in mode operation. 
+	//Mode Swith: 
+	//Request: sent by the master to the slaves.
 	void transmitModeSwitch(bool toInitiator, DW1000Device* device = nullptr);
+	//Acknowledgement: sent by the master back to the master.
+	void transmitModeSwitchAck(DW1000Device* device,bool isInitiator);
 
+
+	// To request a data request --> Sent by the master. Receives as parameter, the target device 
 	void transmitDataRequest(DW1000Device* device = nullptr);
 
+	// To send the data report. Sent by the slaves to the master.
 	void transmitDataReport(Measurement* measurements, int numMedidas, DW1000Device* device = nullptr);
 
 private:
@@ -154,7 +165,8 @@ private:
 	static void (* _handleNewDevice)(DW1000Device*);
 	static void (* _handleInactiveDevice)(DW1000Device*);
 
-	static void (* _handleModeChangeRequest)(bool toInitiator);
+	static void (* _handleModeSwitchRequest)(byte* shortAddress, bool toInitiator);
+	static void (* _handleModeSwitchAck)(bool isInitiator);
 
 	static void (* _handleDataRequest)(byte* shortAddress);
 	static void (* _handleDataReport)(byte* dataReport);
@@ -194,6 +206,9 @@ private:
 	//17 bytes in SRAM
 	static char  _bias_PRF_64[17]; // TODO remove or use
 	
+	
+	static bool stop_ranging;
+	static bool ranging_enabled; 
 	
 	//methods
 	static void handleSent();
