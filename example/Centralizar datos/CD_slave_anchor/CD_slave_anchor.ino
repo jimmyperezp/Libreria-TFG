@@ -66,6 +66,7 @@ void setup(){
         //Master's callbacks: 
         // For when the slaves send a data report:
         DW1000Ranging.attachDataReport(DataReport);
+        DW1000Ranging.attachModeSwitchAck(ModeSwitchAck);
 
         DW1000Ranging.startAsInitiator(DEVICE_ADDR,DW1000.MODE_1, false,MASTER_ANCHOR);
 
@@ -76,10 +77,10 @@ void setup(){
         //Callbacks for the slave anchors:
         
         //1: They must respond to a change request message (Sent by the master)        
-        DW1000Ranging.attachModeChangeRequest(ModeChangeRequest);
+        DW1000Ranging.attachModeSwitchRequested(ModeSwitchRequested);
        
         //2: Must answer to a data request message (also sent by master)
-        DW1000Ranging.attachDataRequest(DataRequest);
+        DW1000Ranging.attachDataRequested(DataRequested);
 
         //Finally, slaves are started as responders:
         DW1000Ranging.startAsResponder(DEVICE_ADDR,DW1000.MODE_1, false,SLAVE_ANCHOR);
@@ -173,7 +174,7 @@ void DataReport(byte* data){
     showData();
 }
 
-void DataRequest(byte* short_addr_requester){
+void DataRequested(byte* short_addr_requester){
 
     // Called when the master sends the slave a data request.
     // The slave answers by sending the data report:
@@ -194,23 +195,37 @@ void DataRequest(byte* short_addr_requester){
 
 }
 
-void ModeChangeRequest(bool toInitiator){
+void ModeSwitchRequested(byte* short_addr_requester, bool toInitiator){
+
+    DW1000Device* requester = DW1000Ranging.searchDistantDevice(short_addr_requester);
 
     if(toInitiator == true){
 
         DW1000.idle();
        
-        DW1000Ranging.startAsInitiator(DEVICE_ADDR,DW1000.MODE_LONGDATA_RANGE_LOWPOWER, false);
+        DW1000Ranging.startAsInitiator(DEVICE_ADDR,DW1000.MODE_1, false);
+        if(requester){ DW1000Ranging.transmitModeSwitchAck(requester,toInitiator);}
        
     }
     else{
 
         DW1000.idle();
         
-        DW1000Ranging.startAsResponder(DEVICE_ADDR,DW1000.MODE_LONGDATA_RANGE_LOWPOWER, false);
-        
+        DW1000Ranging.startAsResponder(DEVICE_ADDR,DW1000.MODE_1, false);
+        if(requester){ DW1000Ranging.transmitModeSwitchAck(requester,toInitiator);}
     }
 } 
+
+void ModeSwitchAck(bool isInitiator){
+
+    uint16_t origin = DW1000Ranging.getDistantDevice()->getShortAddress();
+    Serial.print(" Cambio Realizado: ");
+    Serial.print(origin,HEX);
+    Serial.print("es --> ");
+    Serial.println(isInitiator ? "INITIATOR" : "RESPONDER");
+    
+
+}
 
 void showData(){
 
