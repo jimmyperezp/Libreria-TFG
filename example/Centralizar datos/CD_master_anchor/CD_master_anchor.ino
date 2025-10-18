@@ -42,6 +42,7 @@ unsigned long current_time = 0;
 unsigned long last_ranging_started = 0;
 unsigned long mode_switch_request = 0;
 unsigned long last_retry = 0;
+unsigned long data_report_request_time = 0;
 
 const unsigned long ranging_period = 2000;
 
@@ -456,7 +457,7 @@ void loop(){
                     Serial.println("Despues del report, reactivo el ranging");
                 }
 
-                if(data_Report_requested && data_report_request_time - current_time > 500){
+                if(data_report_requested && data_report_request_time - current_time > 500){
                     DW1000Ranging.transmitDataRequest();
                     Serial.println("Reintentando el data request");
                 }
