@@ -41,6 +41,7 @@ int amountDevices = 0;
 unsigned long current_time = 0; 
 unsigned long last_ranging_started = 0;
 unsigned long mode_switch_request = 0;
+unsigned long last_retry = 0;
 
 const unsigned long ranging_period = 2000;
 
@@ -65,8 +66,11 @@ static bool ranging_ended = false;
 static bool seen_first_range = false;
 
 
-static bool change_pending = false;
-static bool data_report_pending = false;
+static bool mode_switch_pending = false;
+static bool data_report_requested = false;
+static bool data_report_received  = false;
+
+uint8_t num_retries = 0;
 
 // CODE:
 void setup(){
@@ -199,6 +203,8 @@ void DataReport(byte* data){
 
     showData();
 
+    data_report_received = true;
+
 }
 
 void DataRequested(byte* short_addr_requester){
@@ -251,6 +257,8 @@ void ModeSwitchAck(bool isInitiator){
     
     slaveIsResponder = !isInitiator;
     mode_switch_ack = true;
+    
+    if(mode_switch_pending){mode_switch_pending = false;}
 }
 
 void showData(){
@@ -271,7 +279,7 @@ void showData(){
         
     }
     Serial.println("--------------------------------");
-    report_pending = false;
+    
 }
 
 
@@ -288,6 +296,9 @@ void newRange(){
         ranging_ended = true;
         Serial.println("El ranging ha terminado");
         
+    }
+    else{
+        ranging_ended = false;
     }
     if(!seen_first_range){
         seen_first_range = true;
@@ -332,33 +343,33 @@ void loop(){
 
             }
 
-            if(state == SWITCH_SLAVE){
+            else if(state == SWITCH_SLAVE){
 
                 if(ranging_ended){
 
                     if(!mode_switch_requested && !mode_switch_ack){ //If not requested yet
 
-                        if(slaveIsResponder){
+                        if(slaveIsResponder){ //Switching to initiator
                             
                             //Switching to Initiator
                             switchToInitiator = true;
                             DW1000Ranging.transmitModeSwitch(switchToInitiator);
                                                        
                             Serial.println("Solicitado el cambio a initiator");
-                            change_pending = true;
+                            mode_switch_pending = true;
                             mode_switch_request = current_time;
-                            ranging_ended = true;
+                            
                         }
     
-                        else{
-                            //Switching to Responder
-                            delay(10);
+                        else{  //Switching to Responder
+                           
+                            
                             switchToInitiator = false;
                             DW1000Ranging.transmitModeSwitch(switchToInitiator);
                             
                             Serial.println("Solicitado el cambio a responder");
-                            ranging_ended = false;
-                            change_pending = true;
+
+                            mode_switch_pending = true;
                             mode_switch_request = current_time;
                             
                         }
@@ -370,25 +381,84 @@ void loop(){
                     //Mode switch requested. Now Waiting for ack:
 
                     if(mode_switch_requested && mode_switch_ack){
+                        
                         //Now, we reset the ranging: 
-                        if(!switchToInitiator){change_pending = false;}
+                        
+                        
                         mode_switch_requested = false;
                         mode_switch_ack = false;
-                        state = RANGING;
-                        DW1000Ranging.setStopRanging(false);
-                        stop_ranging_requested = false;
-                        last_ranging_started = current_time;
+                        
+                        if(slaveIsResponder){
 
-                        Serial.println("vuelvo a activar el ranging");
+                            Serial.println("Le pido que haga data report");
+                            state = DATA_REPORT;
+                        }
+                        // And, we reset the ranging
+                       
+                        else{
+
+                            state = RANGING;
+                            DW1000Ranging.setStopRanging(false);
+                            stop_ranging_requested = false;
+                            last_ranging_started = current_time;
+
+                            Serial.println("cambio a initiator. Ahora vuelvo a activar el ranging");
+                        } 
+                        
                     }
 
 
                 }
 
-                if (change_pending && current_time-mode_switch_request >= 500){
-                        Serial.println("reintentado");
-                        change_pending = false;
+                if (mode_switch_pending && current_time-mode_switch_request >= 500){
+                
+                    if(current_time-last_retry >= 1000){
+                        Serial.println("reintentando...");
                         DW1000Ranging.transmitModeSwitch(switchToInitiator);
+                        last_retry = current_time;
+                        num_retries = num_retries +1;
+                    }
+                    if(num_retries == 10){
+                        state = RANGING;
+                        DW1000Ranging.setStopRanging(false);
+                        stop_ranging_requested = false;
+                        last_ranging_started = current_time;
+                        ranging_ended = false;
+                        num_retries = 0;
+
+                        Serial.println("Cambio fallido. Regreso a ranging");
+
+                    }
+                }
+            }
+
+            else if (state == DATA_REPORT){
+
+                if(!data_report_requested){
+
+                    data_report_requested = true;
+                    data_report_request_time = current_time;
+                    DW1000Ranging.transmitDataRequest();
+                    
+                }
+
+                if(data_report_requested && data_report_received){
+
+                    data_report_requested = false;
+                    data_report_received = false;
+
+                    state = RANGING;
+                    DW1000Ranging.setStopRanging(false);
+                    stop_ranging_requested = false;
+                    //ranging_ended = false;
+                    last_ranging_started = current_time;
+
+                    Serial.println("Despues del report, reactivo el ranging");
+                }
+
+                if(data_Report_requested && data_report_request_time - current_time > 500){
+                    DW1000Ranging.transmitDataRequest();
+                    Serial.println("Reintentando el data request");
                 }
             }
         }
