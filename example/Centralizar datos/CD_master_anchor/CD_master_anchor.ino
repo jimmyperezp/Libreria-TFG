@@ -44,7 +44,7 @@ unsigned long mode_switch_request = 0;
 unsigned long last_retry = 0;
 unsigned long data_report_request_time = 0;
 
-const unsigned long ranging_period = 2000;
+const unsigned long ranging_period = 3000;
 
 
 // Control of the slave's mode.
@@ -413,19 +413,23 @@ void loop(){
 
                 if (mode_switch_pending && current_time-mode_switch_request >= 500){
                 
-                    if(current_time-last_retry >= 1000){
+                    if(current_time-last_retry >= 500){
                         Serial.println("reintentando...");
                         DW1000Ranging.transmitModeSwitch(switchToInitiator);
                         last_retry = current_time;
                         num_retries = num_retries +1;
                     }
-                    if(num_retries == 10){
+                    if(num_retries == 5){
                         state = RANGING;
                         DW1000Ranging.setStopRanging(false);
                         stop_ranging_requested = false;
                         last_ranging_started = current_time;
                         ranging_ended = false;
                         num_retries = 0;
+
+                        mode_switch_requested = false;
+                        mode_switch_ack = false;
+                        mode_switch_pending = false;
 
                         Serial.println("Cambio fallido. Regreso a ranging");
 
@@ -457,9 +461,29 @@ void loop(){
                     Serial.println("Despues del report, reactivo el ranging");
                 }
 
-                if(data_report_requested && data_report_request_time - current_time > 500){
-                    DW1000Ranging.transmitDataRequest();
-                    Serial.println("Reintentando el data request");
+                if(data_report_requested && !data_report_received && current_time - data_report_request_time > 500){
+                    
+                    if(current_time-last_retry >= 1000){
+                        Serial.println("Reintentando data report...");
+                        DW1000Ranging.transmitDataRequest();
+                        last_retry = current_time;
+                        num_retries = num_retries +1;
+                    }
+                    if(num_retries == 5){
+                        state = RANGING;
+                        DW1000Ranging.setStopRanging(false);
+                        stop_ranging_requested = false;
+                        last_ranging_started = current_time;
+                        ranging_ended = false;
+                        num_retries = 0;
+
+                        Serial.println("Intento data report fallido. Regreso a ranging");
+                        data_report_requested = false;
+                        data_report_received = false;
+
+                    }
+                    
+                    
                 }
             }
         }

@@ -22,7 +22,7 @@
  */
 
 
-#define INACTIVITY_TIME 1000
+#define INACTIVITY_TIME 7000
 
 #define MASTER_ANCHOR 1
 #define SLAVE_ANCHOR 2
