@@ -16,9 +16,7 @@ const uint8_t PIN_RST = 27; // reset pin
 const uint8_t PIN_IRQ = 34; // irq pin
 const uint8_t PIN_SS = 4;   // spi select pin
 
-
-
-// Devices' own definitions:
+#define DEBUG true
 
 #define IS_MASTER true
 //#define IS_MASTER false
@@ -43,14 +41,11 @@ unsigned long last_ranging_started = 0;
 unsigned long mode_switch_request = 0;
 unsigned long last_retry = 0;
 unsigned long data_report_request_time = 0;
-
 const unsigned long ranging_period = 3000;
-
 
 // Control of the slave's mode.
 static bool slaveIsResponder = true;
 static bool switchToInitiator = true;
-
 
 // States to manage the flow control:
 uint8_t state = 1;
@@ -61,13 +56,12 @@ uint8_t state = 1;
 // Flags to handle the flow control
 static bool mode_switch_requested = false;
 static bool mode_switch_ack = false;
+static bool mode_switch_pending = false;
 
 static bool stop_ranging_requested = false;
 static bool ranging_ended = false;
 static bool seen_first_range = false;
 
-
-static bool mode_switch_pending = false;
 static bool data_report_requested = false;
 static bool data_report_received  = false;
 
@@ -336,10 +330,12 @@ void loop(){
 
                 
                 if(seen_first_range && current_time - last_ranging_started >= ranging_period){
-                    Serial.println("Pido que termine el ranging");
+                    
                     state = SWITCH_SLAVE;
                     DW1000Ranging.setStopRanging(true);
                     stop_ranging_requested = true;
+
+                    if(DEBUG){Serial.println("Pido que termine el ranging");}
                 }
 
             }
@@ -352,26 +348,24 @@ void loop(){
 
                         if(slaveIsResponder){ //Switching to initiator
                             
-                            //Switching to Initiator
                             switchToInitiator = true;
-                            DW1000Ranging.transmitModeSwitch(switchToInitiator);
-                                                       
-                            Serial.println("Solicitado el cambio a initiator");
+                            DW1000Ranging.transmitModeSwitch(switchToInitiator);                      
+                            
                             mode_switch_pending = true;
                             mode_switch_request = current_time;
                             
+                            if(DEBUG){Serial.println("Solicitado el cambio a initiator");}
                         }
     
                         else{  //Switching to Responder
                            
-                            
                             switchToInitiator = false;
                             DW1000Ranging.transmitModeSwitch(switchToInitiator);
-                            
-                            Serial.println("Solicitado el cambio a responder");
 
                             mode_switch_pending = true;
                             mode_switch_request = current_time;
+
+                            if(DEBUG){Serial.println("Solicitado el cambio a responder");}
                             
                         }
 
@@ -383,55 +377,63 @@ void loop(){
 
                     if(mode_switch_requested && mode_switch_ack){
                         
-                        //Now, we reset the ranging: 
-                        
                         
                         mode_switch_requested = false;
                         mode_switch_ack = false;
                         
-                        if(slaveIsResponder){
+                        if(slaveIsResponder){ //Switched back to responder --> Now, data report.
 
-                            Serial.println("Le pido que haga data report");
                             state = DATA_REPORT;
+
+                            if(DEBUG){Serial.println("Le pido que haga data report");}
                         }
-                        // And, we reset the ranging
+                        
                        
-                        else{
+                        else{ //Switched to initiator --> Back to ranging
 
                             state = RANGING;
                             DW1000Ranging.setStopRanging(false);
+
                             stop_ranging_requested = false;
                             last_ranging_started = current_time;
 
-                            Serial.println("cambio a initiator. Ahora vuelvo a activar el ranging");
+                            if(DEBUG){Serial.println("cambio a initiator. Ahora vuelvo a activar el ranging");}
+
                         } 
                         
                     }
 
-
                 }
 
                 if (mode_switch_pending && current_time-mode_switch_request >= 500){
+
+                    //To reatempt the mode switch if it gets lost.
                 
                     if(current_time-last_retry >= 500){
-                        Serial.println("reintentando...");
+                        
                         DW1000Ranging.transmitModeSwitch(switchToInitiator);
                         last_retry = current_time;
                         num_retries = num_retries +1;
+
+                        if(DEBUG){Serial.println("reintentando el mode switch...");}
                     }
+
                     if(num_retries == 5){
+
+                        num_retries = 0;
                         state = RANGING;
+
                         DW1000Ranging.setStopRanging(false);
                         stop_ranging_requested = false;
                         last_ranging_started = current_time;
                         ranging_ended = false;
-                        num_retries = 0;
+                        
 
                         mode_switch_requested = false;
                         mode_switch_ack = false;
                         mode_switch_pending = false;
 
-                        Serial.println("Cambio fallido. Regreso a ranging");
+                        if(DEBUG){Serial.println("Cambio fallido. Regreso a ranging");}
 
                     }
                 }
@@ -444,6 +446,7 @@ void loop(){
                     data_report_requested = true;
                     data_report_request_time = current_time;
                     DW1000Ranging.transmitDataRequest();
+                    if(DEBUG){Serial.println("Data report solicitado");}
                     
                 }
 
@@ -458,28 +461,37 @@ void loop(){
                     //ranging_ended = false;
                     last_ranging_started = current_time;
 
-                    Serial.println("Despues del report, reactivo el ranging");
+                    if(DEBUG){Serial.println("Recibido el data report. Regreso a Ranging");}
                 }
 
                 if(data_report_requested && !data_report_received && current_time - data_report_request_time > 500){
                     
-                    if(current_time-last_retry >= 1000){
-                        Serial.println("Reintentando data report...");
+
+                    if(current_time-last_retry >= 1000){ //Retry every 1 sec.
+                        
                         DW1000Ranging.transmitDataRequest();
                         last_retry = current_time;
                         num_retries = num_retries +1;
+
+                        if(DEBUG){Serial.println("Reintentando data report...");}
                     }
-                    if(num_retries == 5){
+
+
+                    if(num_retries == 5){   //Máx --> 5 retries
+
+                        num_retries = 0;
+
                         state = RANGING;
+
                         DW1000Ranging.setStopRanging(false);
                         stop_ranging_requested = false;
                         last_ranging_started = current_time;
                         ranging_ended = false;
-                        num_retries = 0;
-
-                        Serial.println("Intento data report fallido. Regreso a ranging");
+                        
                         data_report_requested = false;
                         data_report_received = false;
+
+                        if(DEBUG){Serial.println("Data Report NO recibido. Regreso a ranging");}
 
                     }
                     
