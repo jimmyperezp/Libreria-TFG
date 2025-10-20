@@ -489,15 +489,23 @@ void DW1000RangingClass::loop() {
 			return;
 
 		}
-		else if(messageType == MODE_SWITCH_ACK){
+        else if(messageType == MODE_SWITCH_ACK){
 
-			bool isInitiator = data[SHORT_MAC_LEN +1];
-			if(_handleModeSwitchAck){
-				(*_handleModeSwitchAck)(isInitiator);
-			}
+            // Identify the ACK sender so getDistantDevice() points to it
+            byte shortAddress[2];
+            _globalMac.decodeShortMACFrame(data, shortAddress);
+            DW1000Device* ackDevice = searchDistantDevice(shortAddress);
+            if (ackDevice) {
+                _lastDistantDevice = ackDevice->getIndex();
+            }
+
+            bool isInitiator = data[SHORT_MAC_LEN +1];
+            if(_handleModeSwitchAck){
+                (*_handleModeSwitchAck)(isInitiator);
+            }
 
 
-		}
+        }
 		else if(messageType == REQUEST_DATA){
 
 			byte shortAddress[2]; //Creates 2 bytes to save 'shortAddress'
@@ -548,13 +556,15 @@ void DW1000RangingClass::loop() {
 
 				uint8_t responderboardType = data[LONG_MAC_LEN+1];
 
-				if(addNetworkDevices(&myResponder, true)) {
-					_networkDevices[_networkDevicesNumber-1].setBoardType(responderboardType);
+                if(addNetworkDevices(&myResponder, true)) {
+                    // Store board type on the persisted network device entry
+                    _networkDevices[_networkDevicesNumber-1].setBoardType(responderboardType);
 
-					if(_handleNewDevice != 0) {
-						(*_handleNewDevice)(&myResponder);
-					}
-				}
+                    // Notify using the stored device (ensures boardType and state are accurate)
+                    if(_handleNewDevice != 0) {
+                        (*_handleNewDevice)(&_networkDevices[_networkDevicesNumber-1]);
+                    }
+                }
 
 				noteActivity();
 			}
