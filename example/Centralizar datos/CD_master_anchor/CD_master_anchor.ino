@@ -232,7 +232,7 @@ void DataReport(byte* data){
 
             if(Existing_devices[i].data_report_pending == true){
 
-              Existing_devices[i].data_report_pending == false;
+              Existing_devices[i].data_report_pending = false;
                     
             }
         }
@@ -295,7 +295,7 @@ void ModeSwitchAck(bool isInitiator){
 
                 if(Existing_devices[i].mode_switch_pending == true){
 
-                    Existing_devices[i].mode_switch_pending == false;
+                    Existing_devices[i].mode_switch_pending = false;
                     
                 }
 
@@ -401,7 +401,7 @@ void activateRanging(){
 
     DW1000Ranging.setStopRanging(false);
     stop_ranging_requested = false;
-    //ranging_ended = false;
+    ranging_ended = false;
     last_ranging_started = current_time;
     
 }
@@ -411,13 +411,13 @@ void transmitUnicast(uint8_t message_type){
 
     //All messages are sent via unicast. 
     //1st, check what devices are slave anchors:
-
+    if(DEBUG){Serial.println("Enviando mensaje por unicast");}
     for(int i = 0; i < amount_devices; i++){
 
         if(Existing_devices[i].is_slave_anchor == true){
 
             //If it's a slave anchor, I need the device's object:
-            DW1000Device* target = DW1000Ranging.searchDistantDevice(Existing_devices->byte_short_addr);
+            DW1000Device* target = DW1000Ranging.searchDistantDevice(Existing_devices[i].byte_short_addr);
 
             if(target){ //The device was found
 
@@ -428,7 +428,7 @@ void transmitUnicast(uint8_t message_type){
                         Existing_devices[i].mode_switch_pending = true;
                     }
 
-                    if(Existing_devices[i].mode_switch_pending = true){
+                    if(Existing_devices[i].mode_switch_pending == true){
                         
                         
                         //I check the current state of the slave: 
@@ -453,7 +453,7 @@ void transmitUnicast(uint8_t message_type){
                     }
                 }
 
-                else if(message_type = MESSAGE_TYPE_DATA_REQUEST){
+                else if(message_type == MESSAGE_TYPE_DATA_REQUEST){
 
                     if(!data_report_requested){
                         //If starting to ask for the reports
@@ -461,7 +461,7 @@ void transmitUnicast(uint8_t message_type){
                         Existing_devices[i].data_report_pending = true;
                     }
 
-                    if(Existing_devices[i].data_report_pending = true){
+                    if(Existing_devices[i].data_report_pending == true){
                         DW1000Ranging.transmitDataRequest(target);
                         if(DEBUG){Serial.println("Data report solicitado por UNICAST");}
 
@@ -507,15 +507,14 @@ void retryTransmission(uint8_t message_type){
         
         
 
-        if(DEBUG){Serial.println("Cambio fallido. Regr  ranging");}
-
+        
     }
 }
 
 
 void transmissionFailed(){
 
-    void activateRanging();
+    activateRanging();
     
     
 }
