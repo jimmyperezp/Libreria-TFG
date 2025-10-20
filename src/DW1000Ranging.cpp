@@ -315,6 +315,28 @@ DW1000Device* DW1000RangingClass::searchDistantDevice(byte shortAddress[]) {
 	return nullptr;
 }
 
+DW1000Device* DW1000RangingClass::searchDeviceByUintShortAdd(uint16_t short_add) {
+
+	
+
+	byte sa[2];
+
+	sa[0] = (uint8_t)(short_add >> 8);
+	sa[1] = (uint8_t)(short_add & 0xFF);
+
+
+	for(uint16_t i = 0; i < _networkDevicesNumber; i++) { // TODO 8bit?
+		if(memcmp(sa, _networkDevices[i].getByteShortAddress(), 2) == 0) {
+			//we have found our device !
+			return &_networkDevices[i];
+		}
+	}
+
+	return nullptr;
+	
+}
+
+
 DW1000Device* DW1000RangingClass::getDistantDevice() {
 	//we get the device which correspond to the message which was sent (need to be filtered by MAC address)
 	
@@ -527,7 +549,7 @@ void DW1000RangingClass::loop() {
 				uint8_t responderboardType = data[LONG_MAC_LEN+1];
 
 				if(addNetworkDevices(&myResponder, true)) {
-					_networkDevices[_networkDevicesNumber-1].setBoardType	(responderboardType);
+					_networkDevices[_networkDevicesNumber-1].setBoardType(responderboardType);
 
 					if(_handleNewDevice != 0) {
 						(*_handleNewDevice)(&myResponder);
@@ -591,7 +613,7 @@ void DW1000RangingClass::loop() {
 								//we note activity for our device:
 								myDistantDevice->noteActivity();
 								//we indicate our next receive message for our ranging 	protocole
-								uint8_t initiatorType = data[SHORT_MAC_LEN + 2 + 	4*numberDevices];
+								uint8_t initiatorType = data[SHORT_MAC_LEN + 2 + 4*numberDevices];
     							myDistantDevice->setBoardType(initiatorType);
 								_expectedMsgId = RANGE;
 								transmitPollAck(myDistantDevice);
