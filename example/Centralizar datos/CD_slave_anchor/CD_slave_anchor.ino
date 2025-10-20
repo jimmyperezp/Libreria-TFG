@@ -175,23 +175,38 @@ void DataReport(byte* data){
 }
 
 void DataRequested(byte* short_addr_requester){
-
     // Called when the master sends the slave a data request.
-    // The slave answers by sending the data report:
-    
+    // The slave answers by sending the data report.
+    // Adds debug and ensures a clean TX context before replying.
+
     uint16_t numMeasures = amountDevices;
 
+    if (DEBUG) {
+        Serial.print("DATA REQUEST recibido de: ");
+        Serial.print(((uint16_t)short_addr_requester[0] << 8) | short_addr_requester[1], HEX);
+        Serial.print(" | Medidas: ");
+        Serial.println(numMeasures);
+    }
+
+    // Try to unicast back to the requester if known
     DW1000Device* requester = DW1000Ranging.searchDistantDevice(short_addr_requester);
 
+    // Ensure radio is idle before sending a custom frame
+    DW1000.idle();
 
     if(!requester){
-        //In case the requester is not found, sends the data report via broadcast:
-        DW1000Ranging.transmitDataReport((Measurement*)measurements,numMeasures,nullptr);
+        // Requester not found locally → broadcast the report
+        if (DEBUG) Serial.println("Enviando DATA_REPORT por broadcast (requester no encontrado)");
+        DW1000Ranging.transmitDataReport((Measurement*)measurements, numMeasures, nullptr);
         return;
     }
-    //If it is found, sends the report via unicast
-    
-    DW1000Ranging.transmitDataReport((Measurement*)measurements,numMeasures,requester);
+
+    if (DEBUG) {
+        Serial.print("Enviando DATA_REPORT a: ");
+        Serial.println(requester->getShortAddress(), HEX);
+    }
+    // If it is found, sends the report via unicast
+    DW1000Ranging.transmitDataReport((Measurement*)measurements, numMeasures, requester);
 
 }
 
@@ -203,7 +218,8 @@ void ModeSwitchRequested(byte* short_addr_requester, bool toInitiator){
 
         DW1000.idle();
        
-        DW1000Ranging.startAsInitiator(DEVICE_ADDR,DW1000.MODE_1, false);
+        // Preserve board type on role switch
+        DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
         if(requester){ DW1000Ranging.transmitModeSwitchAck(requester,toInitiator);}
        
     }
@@ -211,7 +227,8 @@ void ModeSwitchRequested(byte* short_addr_requester, bool toInitiator){
 
         DW1000.idle();
         
-        DW1000Ranging.startAsResponder(DEVICE_ADDR,DW1000.MODE_1, false);
+        // Preserve board type on role switch
+        DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
         if(requester){ DW1000Ranging.transmitModeSwitchAck(requester,toInitiator);}
     }
 } 
