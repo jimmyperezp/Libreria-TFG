@@ -16,7 +16,7 @@ const uint8_t PIN_RST = 27; // reset pin
 const uint8_t PIN_IRQ = 34; // irq pin
 const uint8_t PIN_SS = 4;   // spi select pin
 
-#define DEBUG true
+#define DEBUG false
 
 #define IS_MASTER true
 //#define IS_MASTER false
@@ -355,7 +355,8 @@ void newRange(){
 
     if(stop_ranging_requested){
         ranging_ended = true;
-        Serial.println("El ranging ha terminado");
+        if(DEBUG){Serial.println("El ranging ha terminado");}
+        
         
     }
     else{
@@ -411,7 +412,7 @@ void transmitUnicast(uint8_t message_type){
 
     //All messages are sent via unicast. 
     //1st, check what devices are slave anchors:
-    if(DEBUG){Serial.println("Enviando mensaje por unicast");}
+    
     for(int i = 0; i < amount_devices; i++){
 
         if(Existing_devices[i].is_slave_anchor == true){
@@ -532,11 +533,12 @@ void loop(){
                 
                 if(seen_first_range && current_time - last_ranging_started >= ranging_period){
                     
-                    state = SWITCH_SLAVE;
+                    
                     DW1000Ranging.setStopRanging(true);
                     stop_ranging_requested = true;
-
-                    if(DEBUG){Serial.println("Pido que termine el ranging");}
+                    ranging_ended = true;
+                    state = SWITCH_SLAVE;
+                    if(DEBUG){Serial.println("Pido que termine el ranging.");}
                 }
 
             }
@@ -606,9 +608,10 @@ void loop(){
 
                 if(!data_report_requested){
 
+                    transmitUnicast(MESSAGE_TYPE_DATA_REQUEST);
                     data_report_requested = true;
                     data_report_request_time = current_time;
-                    transmitUnicast(MESSAGE_TYPE_DATA_REQUEST);
+                    
                     
                 }
 
@@ -617,10 +620,11 @@ void loop(){
                     data_report_requested = false;
                     data_report_received = false;
 
+                    if(DEBUG){Serial.println("Recibido el data report. Regreso a Ranging");}
                     activateRanging();
                     
 
-                    if(DEBUG){Serial.println("Recibido el data report. Regreso a Ranging");}
+                    
                 }
 
                 if(data_report_requested && !data_report_received && current_time - data_report_request_time > 500){
