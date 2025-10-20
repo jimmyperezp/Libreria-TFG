@@ -70,6 +70,8 @@ struct ExistingDevice{
 	bool is_slave_anchor;
 	bool is_responder;
 	bool active;
+	bool mode_switch_pending;
+	bool data_report_pending;
 	float fail_count;
 };
 
