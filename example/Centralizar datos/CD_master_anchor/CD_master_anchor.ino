@@ -33,7 +33,7 @@ Measurement measurements[MAX_DEVICES];
 
 // To send messages via unicast
 ExistingDevice Existing_devices[MAX_DEVICES];
-int amountDevices = 0;
+uint8_t amount_devices = 0;
 
 //Time management
 unsigned long current_time = 0; 
@@ -131,6 +131,22 @@ int searchDevice(uint16_t own_sa,uint16_t dest_sa){
         }
     }
     return -1; // if not, returns -1
+}
+
+void registerDevice(DW1000Device *device){
+
+    Existing_devices[amount_devices].short_addr = device->getShortAddress();
+    uint8_t board_type = device.getBoardType();
+    if(SLAVE_ANCHOR){
+        Existing_devices[amount_devices].is_slave_anchor = true;
+    }
+    else{ Existing_devices[amount_devices].is_slave_anchor = false;}
+
+    Existing_devices[amount_devices].is_responder = false;
+    Existing_devices[amount_devices].active = true;
+    Existing_devices[amount_devices].fail_count = 0;
+    
+    amount_devices ++;
 }
 
 void logMeasure(uint16_t own_sa,uint16_t dest_sa, float dist, float rx_pwr){
@@ -306,6 +322,10 @@ void newDevice(DW1000Device *device){
 
     Serial.print("New Device: ");
     Serial.println(device->getShortAddress(), HEX);
+
+    registerDevice(device);
+
+    
 }
 
 void inactiveDevice(DW1000Device *device){
@@ -314,8 +334,15 @@ void inactiveDevice(DW1000Device *device){
     Serial.print("Lost connection with device: ");
     Serial.println(dest_sa, HEX);
     
-    //int index = searchDevice(own_short_addr,sa);
-    //if (index != 0){ measurements[index].active = false;}
+    for (int i = 0; i < amount_devices ; i++){
+        
+        if(dest_sa == Existing_devices[i].short_addr){
+
+            Existing_devices[i].active = false;
+        }    
+    }
+    
+    
 }
 
 void loop(){
