@@ -221,9 +221,24 @@ void DataReport(byte* data){
 
         logMeasure(origin_short_addr, destiny_short_addr, distance, rxPower);
     }
-
+    if(DEBUG){
+        Serial.print("Data report recibido de: ");
+        Serial.print(origin_short_addr,HEX);
+    }
     showData();
+    for(int i = 0; i <amount_devices; i++){
 
+        if(Existing_devices[i].short_addr == origin_short_addr && Existing_devices[i].is_slave_anchor){
+
+            if(Existing_devices[i].data_report_pending == true){
+
+              Existing_devices[i].data_report_pending == false;
+                    
+            }
+        }
+    }
+
+    
     data_report_received = true;
 
 }
@@ -277,6 +292,12 @@ void ModeSwitchAck(bool isInitiator){
         for(int i = 0; i <amount_devices; i++){
 
             if(Existing_devices[i].short_addr == origin_short_add && Existing_devices[i].is_slave_anchor){
+
+                if(Existing_devices[i].mode_switch_pending == true){
+
+                    Existing_devices[i].mode_switch_pending == false;
+                    
+                }
 
                 //Only if it is registered & is a slave anchor
 
@@ -384,6 +405,8 @@ void activateRanging(){
     last_ranging_started = current_time;
     
 }
+
+
 void transmitUnicast(uint8_t message_type){
 
     //All messages are sent via unicast. 
@@ -400,31 +423,52 @@ void transmitUnicast(uint8_t message_type){
 
                 if(message_type == MESSAGE_TYPE_MODE_SWITCH){
 
-                    //I check the current state of the slave: 
-                    if(Existing_devices[i].is_responder == true){
+                    if(!mode_switch_requested){
+                        //First request to all devices
+                        Existing_devices[i].mode_switch_pending = true;
+                    }
+
+                    if(Existing_devices[i].mode_switch_pending = true){
                         
-                        //Currently responder --> Switch it to initiator
+                        
+                        //I check the current state of the slave: 
+                        if(Existing_devices[i].is_responder == true){
 
-                        switchToInitiator = true;
-                        DW1000Ranging.transmitModeSwitch(switchToInitiator,target);
+                            //Currently responder --> Switch it to initiator
 
-                        if(DEBUG){Serial.println("Solicitado el cambio a initiator por UNICAST");}
+                            switchToInitiator = true;
+                            DW1000Ranging.transmitModeSwitch(switchToInitiator,target);
+
+                            if(DEBUG){Serial.println("Solicitado el cambio a initiator por UNICAST");}
+
+                        }
+                        else if(Existing_devices[i].is_responder == false){
+                            //Currently initiator --> Switch it to responder
+                            switchToInitiator = false;
+                            DW1000Ranging.transmitModeSwitch(switchToInitiator,target);
+                            if(DEBUG){Serial.println("Solicitado el cambio a responder por UNICAST");}
+                        }
+
 
                     }
-                    else if(Existing_devices[i].is_responder == false){
-                        //Currently initiator --> Switch it to responder
-                        switchToInitiator = false;
-                        DW1000Ranging.transmitModeSwitch(switchToInitiator,target);
-                        if(DEBUG){Serial.println("Solicitado el cambio a responder por UNICAST");}
-                    }
-
-
                 }
 
                 else if(message_type = MESSAGE_TYPE_DATA_REQUEST){
 
-                    DW1000Ranging.transmitDataRequest(target);
-                    if(DEBUG){Serial.println("Data report solicitado por UNICAST");}
+                    if(!data_report_requested){
+                        //If starting to ask for the reports
+                        //Sets all pendings to true
+                        Existing_devices[i].data_report_pending = true;
+                    }
+
+                    if(Existing_devices[i].data_report_pending = true){
+                        DW1000Ranging.transmitDataRequest(target);
+                        if(DEBUG){Serial.println("Data report solicitado por UNICAST");}
+
+                    }
+                    
+                    
+                    
                 }
             }
         }
