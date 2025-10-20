@@ -497,6 +497,7 @@ void DW1000RangingClass::loop() {
             DW1000Device* ackDevice = searchDistantDevice(shortAddress);
             if (ackDevice) {
                 _lastDistantDevice = ackDevice->getIndex();
+				ackDevice ->noteActivity();
             }
 
             bool isInitiator = data[SHORT_MAC_LEN +1];
@@ -510,6 +511,8 @@ void DW1000RangingClass::loop() {
 
 			byte shortAddress[2]; //Creates 2 bytes to save 'shortAddress'
 			_globalMac.decodeShortMACFrame(data, shortAddress); //To extract the shortAddress from the frame data[]
+			DW1000Device* req = searchDistantDevice(shortAddress);
+    		if (req){ req->noteActivity(); }
 
 			if(_handleDataRequest){
 				(* _handleDataRequest)(shortAddress);
@@ -519,6 +522,10 @@ void DW1000RangingClass::loop() {
 		}
 		else if(messageType == DATA_REPORT){
 			
+			byte shortAddress[2]; //Creates 2 bytes to save 'shortAddress'
+			_globalMac.decodeShortMACFrame(data, shortAddress); //To extract the shortAddress from the frame data[]
+			DW1000Device* req = searchDistantDevice(shortAddress);
+    		if (req){ req->noteActivity(); }
 			// The master anchor requests the slaves for a data report.
 			// Slaves will have to send their measurements struct
 			
@@ -820,7 +827,10 @@ void DW1000RangingClass::timerTick() {
 			transmitBlink();
 		}
 		//check for inactive devices if we are a INITIATOR or RESPONDER
-		checkForInactiveDevices();
+		 if (ranging_enabled && !stop_ranging) {
+        checkForInactiveDevices();
+    	}
+		
 	}
 	counterForBlink++;
 	if(counterForBlink > 20) {
@@ -1188,7 +1198,7 @@ void DW1000RangingClass::computeRangeAsymmetric(DW1000Device* myDistantDevice, D
 	
 	Serial.print("timePollAckSent ");myDistantDevice->timePollAckSent.print();
 	Serial.print("timePollReceived ");myDistantDevice->timePollReceived.print();
-	Serial.print("reply1 "); Serial.println((long)reply1.getTimestamp());
+	Serial.print("reply1 "); SerialF.println((long)reply1.getTimestamp());
 	
 	Serial.print("timeRangeReceived ");myDistantDevice->timeRangeReceived.print();
 	Serial.print("timePollAckSent ");myDistantDevice->timePollAckSent.print();
