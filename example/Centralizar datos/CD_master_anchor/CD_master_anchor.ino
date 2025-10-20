@@ -43,7 +43,7 @@ unsigned long last_ranging_started = 0;
 unsigned long mode_switch_request = 0;
 unsigned long last_retry = 0;
 unsigned long data_report_request_time = 0;
-const unsigned long ranging_period = 3000;
+const unsigned long ranging_period = 500;
 
 // Control of the slave's mode.
 static bool slaveIsResponder = true;
@@ -356,7 +356,7 @@ void newRange(){
     if(stop_ranging_requested){
         ranging_ended = true;
         if(DEBUG){Serial.println("El ranging ha terminado");}
-        
+        //state = SWITCH_SLAVE;
         
     }
     else{
@@ -591,7 +591,7 @@ void loop(){
 
                 }
 
-                if (mode_switch_pending && current_time-mode_switch_request >= 500){
+                if (mode_switch_pending && current_time-mode_switch_request >= 300){
 
                     //To reatempt the mode switch if it gets lost.
                 
@@ -630,7 +630,7 @@ void loop(){
                 if(data_report_requested && !data_report_received && current_time - data_report_request_time > 500){
                     
 
-                    if(current_time-last_retry >= 1000){ //Retry every 1 sec.
+                    if(current_time-last_retry >=300){ //Retry every 1 sec.
                         if(DEBUG){Serial.println("Reintentando data report...");}
                         retryTransmission(MESSAGE_TYPE_DATA_REQUEST);
                                                
