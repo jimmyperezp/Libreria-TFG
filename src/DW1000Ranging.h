@@ -64,9 +64,11 @@ struct Measurement {
 
 // Struct to know the existing devices of the system. Used to send messages via unicast.
 struct ExistingDevice{
+	
 	uint16_t short_addr;
+	byte byte_short_addr[2];
 	bool is_slave_anchor;
-	bool is_initiator;
+	bool is_responder;
 	bool active;
 	float fail_count;
 };
@@ -130,6 +132,7 @@ public:
 
 	static DW1000Device* getDistantDevice();
 	static DW1000Device* searchDistantDevice(byte shortAddress[]);
+	static DW1000Device* searchDeviceByUintShortAdd(uint16_t shortAddress);
 	
 	//FOR DEBUGGING
 	static void visualizeDatas(byte datas[]);
