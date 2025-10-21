@@ -31,7 +31,7 @@ Posteriormente, desde el programa de Python , se leen esos datos y se decodifica
 ### Resultado: 
 El resultado gráfico obtenido es el siguiente: 
 
-<img src="https://github.com/jimmyperezp/TFG_UWB/blob/main/03%20-%20Posicionamiento%202D/foto%20app%20posicionamiento%202D.jpg" alt="Imagen app python posicionamiento 2D" width="700">
+<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/example/Posicionamiento%202D/foto%20app%20posicionamiento%202D.jpg" alt="Imagen app python posicionamiento 2D" width="700">
 
 
 El tag (representado como círculo azul) se moverá a medida que desplazamos la placa que actúa como tag.  
