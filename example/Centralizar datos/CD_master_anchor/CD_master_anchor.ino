@@ -44,6 +44,9 @@ unsigned long mode_switch_request = 0;
 unsigned long last_retry = 0;
 unsigned long data_report_request_time = 0;
 const unsigned long ranging_period = 500;
+const unsigned long mode_switch_ack_timeout = 30;
+const unsigned long data_report_ack_timeout = 30;
+
 
 // Control of the slave's mode.
 static bool slaveIsResponder = true;
@@ -63,6 +66,7 @@ uint8_t state = 1;
 static bool mode_switch_requested = false;
 static bool mode_switch_ack = false;
 static bool mode_switch_pending = false;
+uint8_t amount_mode_switch_requested = 0;
 
 static bool stop_ranging_requested = false;
 static bool ranging_ended = false;
@@ -70,6 +74,7 @@ static bool seen_first_range = false;
 
 static bool data_report_requested = false;
 static bool data_report_received  = false;
+uint8_t amount_data_reports_requested = 0;
 
 uint8_t num_retries = 0;
 
@@ -190,6 +195,20 @@ void logMeasure(uint16_t own_sa,uint16_t dest_sa, float dist, float rx_pwr){
     }
 }
 
+void waitForResponse(uint16_t waiting_time){
+
+    uint32_t t0 = millis(); 
+    if(DEBUG){Serial.println("Esperando para el Ack");}
+
+    
+    while((uint32_t)(millis()-t0)<waiting_time){
+
+        DW1000Ranging.loop();
+        
+    }
+    return;
+
+}
 
 void DataReport(byte* data){
 
@@ -447,6 +466,7 @@ void transmitUnicast(uint8_t message_type){
                             //Currently initiator --> Switch it to responder
                             switchToInitiator = false;
                             DW1000Ranging.transmitModeSwitch(switchToInitiator,target);
+                            waitForResponse(mode_switch_ack_timeout);
                             if(DEBUG){Serial.println("Solicitado el cambio a responder por UNICAST");}
                         }
 
@@ -464,12 +484,11 @@ void transmitUnicast(uint8_t message_type){
 
                     if(Existing_devices[i].data_report_pending == true){
                         DW1000Ranging.transmitDataRequest(target);
+                        waitForResponse(data_report_ack_timeout);
                         if(DEBUG){Serial.println("Data report solicitado por UNICAST");}
 
                     }
-                    
-                    
-                    
+   
                 }
             }
         }
