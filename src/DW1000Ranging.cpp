@@ -901,8 +901,14 @@ void DW1000RangingClass::transmitPoll(DW1000Device* myDistantDevice) {
 		data[SHORT_MAC_LEN+1] = _networkDevicesNumber;
 		
 		for(uint8_t i = 0; i < _networkDevicesNumber; i++) {
-			//each devices have a different reply delay time.
+
+			/*In this "for", we set up a different reply delay time for each targeted device. 
+			We do so by multiplying the default reply_delay_time by a different numer each time, 
+			giving it enough time to send the messages in each slot.*/
+
+			
 			_networkDevices[i].setReplyTime((2*i+1)*DEFAULT_REPLY_DELAY_TIME);
+			
 			//we write the short address of our device:
 			memcpy(data+SHORT_MAC_LEN+2+4*i, _networkDevices[i].getByteShortAddress(), 2);
 			//Clears 4 bytes per device. The first 2 are for the shortAddress
@@ -1038,6 +1044,8 @@ void DW1000RangingClass::transmitModeSwitch(bool toInitiator, DW1000Device* devi
 	//1: Prepare for new transmission:
 	transmitInit(); //Resets ack flag and sets default parameters (power, bit rate, preamble)
 	
+	bool sent_by_broadcast = false;
+
 	byte dest[2]; //Here, I'll code the message's destination. 
 	
 	//2: Select destination: unicast or broadcast:
@@ -1047,12 +1055,15 @@ void DW1000RangingClass::transmitModeSwitch(bool toInitiator, DW1000Device* devi
 		dest[0] = 0xFF;
 		dest[1] = 0xFF;
 		//According to the IEEE standard used, shortAddress 0xFF 0xFF is reserved as a broadcast, so that all nodes receive the message.
+
+		sent_by_broadcast = true;
 	}
 	else{
 		//If not -> Unicast to the device's address
 		//memcpy function parameters: destiny, origin, number of bytes
 
 		memcpy(dest,device->getByteShortAddress(),2); // This function copies n bytes from the origin to the destiny.
+		sent_by_broadcast = false;
 	}
 
 	//3: Generate shortMacFrame:
@@ -1062,9 +1073,36 @@ void DW1000RangingClass::transmitModeSwitch(bool toInitiator, DW1000Device* devi
 	/* Byte #0 = MODE_SWITCH code
 	   Byte #1 -> 0 = switch to responder. 1 = to initiator.
 	*/
+	uint16_t index = SHORT_MAC_LEN;
+	data[index++] = MODE_SWITCH;
+	data[index++] = toInitiator ? 1:0;
+	data[index++] = sent_by_broadcast ? 1:0;
 
-	data[SHORT_MAC_LEN] = MODE_SWITCH;
-	data[SHORT_MAC_LEN+1] = toInitiator ? 1:0;
+	if(sent_by_broadcast){
+		
+		data[index++] = _networkDevicesNumber;
+		for(uint8_t i = 0; i < _networkDevicesNumber; i++) {
+
+			const byte* add = _networkDevices[i].getByteShortAddress();
+			data[index++] = add[0];
+			data[index++] = add[1];
+
+
+			_networkDevices[i].setReplyTime((2*i+1)*DEFAULT_REPLY_DELAY_TIME);
+			uint16_t replyTime = _networkDevices[i].getReplyTime();
+			memcpy(data+index, &replyTime, sizeof(uint16_t));
+			index += sizeof(uint16_t);
+
+			//TODO: 
+			//Right now, if i>5, the uint16_t overflows. I should switch the _replyTime definitions everywhere to uint32_t
+		}
+	}
+
+	if(index>LEN_DATA){
+		//TODO - Clip the exceeding length, instead of not sending it
+		if(DEBUG) Serial.println("Payload del mode_switch demasiado largo. Ha habido truncamiento");
+		
+	}
 
 	transmit(data); //the data is sent via UWB
 }
