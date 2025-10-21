@@ -43,13 +43,13 @@ unsigned long last_ranging_started = 0;
 unsigned long mode_switch_request = 0;
 unsigned long last_retry = 0;
 unsigned long data_report_request_time = 0;
-const unsigned long ranging_period = 500;
+const unsigned long ranging_period = 250;
 const unsigned long mode_switch_ack_timeout = 30;
 const unsigned long data_report_ack_timeout = 30;
 
 
 // Control of the slave's mode.
-static bool slaveIsResponder = true;
+static bool slaves_are_responders = true;
 static bool switchToInitiator = true;
 
 // States to manage the flow control:
@@ -63,10 +63,13 @@ uint8_t state = 1;
 
 
 // Flags to handle the flow control
+uint8_t amount_active_slaves = 0;
+
 static bool mode_switch_requested = false;
 static bool mode_switch_ack = false;
 static bool mode_switch_pending = false;
-uint8_t amount_mode_switch_requested = 0;
+uint8_t expected_mode_switches = 0;
+uint8_t amount_mode_switch_acks_received = 0;
 
 static bool stop_ranging_requested = false;
 static bool ranging_ended = false;
@@ -74,7 +77,8 @@ static bool seen_first_range = false;
 
 static bool data_report_requested = false;
 static bool data_report_received  = false;
-uint8_t amount_data_reports_requested = 0;
+uint8_t expected_data_reports =0;
+uint8_t amount_data_reports_received = 0;
 
 uint8_t num_retries = 0;
 
@@ -212,9 +216,11 @@ void waitForResponse(uint16_t waiting_time){
 
 void DataReport(byte* data){
 
+    
     uint16_t index = SHORT_MAC_LEN + 1;
 
-    uint16_t origin_short_addr = ((uint16_t)data[index] << 8) | data[index + 1];
+    uint16_t origin_short_addr = ((uint16_t)data[index+1] << 8) | data[index];
+    
     index += 2;
 
     uint16_t numMeasures = data[index++];
@@ -244,21 +250,29 @@ void DataReport(byte* data){
         Serial.print("Data report recibido de: ");
         Serial.print(origin_short_addr,HEX);
     }
-    showData();
+    
+    
     for(int i = 0; i <amount_devices; i++){
 
-        if(Existing_devices[i].short_addr == origin_short_addr && Existing_devices[i].is_slave_anchor){
+        if(Existing_devices[i].short_addr == origin_short_addr && Existing_devices[i].is_slave_anchor == true){
 
+            
             if(Existing_devices[i].data_report_pending == true){
 
-              Existing_devices[i].data_report_pending = false;
-                    
+                Existing_devices[i].data_report_pending = false;
+                amount_data_reports_received++;
+                
+                
             }
         }
     }
 
+    if(amount_data_reports_received == expected_data_reports){
+        showData();
+        amount_data_reports_received = 0;
+        data_report_received = true;
+    }
     
-    data_report_received = true;
 
 }
 
@@ -312,28 +326,34 @@ void ModeSwitchAck(bool isInitiator){
 
             if(Existing_devices[i].short_addr == origin_short_add && Existing_devices[i].is_slave_anchor){
 
+                
+
                 if(Existing_devices[i].mode_switch_pending == true){
 
                     Existing_devices[i].mode_switch_pending = false;
+                    amount_mode_switch_acks_received++;
                     
                 }
 
                 //Only if it is registered & is a slave anchor
+                if(DEBUG){
+                    Serial.print(" Cambio Realizado: ");
+                    Serial.print(origin_short_add,HEX);
+                    Serial.print(" es --> ");
+                    Serial.println(isInitiator ? "INITIATOR" : "RESPONDER");
+                }
 
-                Serial.print(" Cambio Realizado: ");
-                Serial.print(origin_short_add,HEX);
-                Serial.print(" es --> ");
-                Serial.println(isInitiator ? "INITIATOR" : "RESPONDER");
+                
+                Existing_devices[i].is_responder =  !isInitiator;
 
-                slaveIsResponder = !isInitiator;
-                Existing_devices[i].is_responder = slaveIsResponder;
-
-                mode_switch_ack = true;
-                if(mode_switch_pending){mode_switch_pending = false;}
-
-                //TODO
-                /*Comprobar que todos los slaves han enviado el ack del cambio adecuado*/
-
+                if(amount_mode_switch_acks_received == expected_mode_switches){
+                    amount_mode_switch_acks_received = 0;
+                    mode_switch_ack = true;
+                    
+                    slaves_are_responders = !switchToInitiator;
+                    if(mode_switch_pending){mode_switch_pending = false;}
+                }
+                
             }
         }
     }
@@ -343,7 +363,7 @@ void ModeSwitchAck(bool isInitiator){
 
 void showData(){
 
-    Serial.println("--------- NUEVA MEDIDA ---------");
+    Serial.println("--------------------------- NUEVA MEDIDA ---------------------------");
     
     for (int i = 0; i < amount_measurements ; i++){ 
         
@@ -358,7 +378,7 @@ void showData(){
             Serial.println(" dBm");
         
     }
-    Serial.println("--------------------------------");
+    Serial.println("--------------------------------------------------------------------");
     
 }
 
@@ -406,7 +426,22 @@ void inactiveDevice(DW1000Device *device){
     
     for (int i = 0; i < amount_devices ; i++){
         
+        
+
         if(dest_sa == Existing_devices[i].short_addr){
+
+            if (Existing_devices[i].mode_switch_pending && state == SWITCH_SLAVE) {
+
+                Existing_devices[i].mode_switch_pending = false;
+                if (expected_mode_switches > 0) expected_mode_switches--;
+            }
+             
+            if (Existing_devices[i].data_report_pending && state == DATA_REPORT) {
+                 
+                Existing_devices[i].data_report_pending = false;
+                if (expected_data_reports > 0) expected_data_reports--;
+            }
+
 
             Existing_devices[i].active = false;
         }    
@@ -423,6 +458,9 @@ void activateRanging(){
     stop_ranging_requested = false;
     ranging_ended = false;
     last_ranging_started = current_time;
+
+    amount_active_slaves = 0;
+
     
 }
 
@@ -432,6 +470,8 @@ void transmitUnicast(uint8_t message_type){
     //All messages are sent via unicast. 
     //1st, check what devices are slave anchors:
     
+
+
     for(int i = 0; i < amount_devices; i++){
 
         if(Existing_devices[i].is_slave_anchor == true){
@@ -443,10 +483,7 @@ void transmitUnicast(uint8_t message_type){
 
                 if(message_type == MESSAGE_TYPE_MODE_SWITCH){
 
-                    if(!mode_switch_requested){
-                        //First request to all devices
-                        Existing_devices[i].mode_switch_pending = true;
-                    }
+                    
 
                     if(Existing_devices[i].mode_switch_pending == true){
                         
@@ -458,7 +495,8 @@ void transmitUnicast(uint8_t message_type){
 
                             switchToInitiator = true;
                             DW1000Ranging.transmitModeSwitch(switchToInitiator,target);
-
+                            
+                            waitForResponse(mode_switch_ack_timeout);
                             if(DEBUG){Serial.println("Solicitado el cambio a initiator por UNICAST");}
 
                         }
@@ -466,6 +504,7 @@ void transmitUnicast(uint8_t message_type){
                             //Currently initiator --> Switch it to responder
                             switchToInitiator = false;
                             DW1000Ranging.transmitModeSwitch(switchToInitiator,target);
+                            
                             waitForResponse(mode_switch_ack_timeout);
                             if(DEBUG){Serial.println("Solicitado el cambio a responder por UNICAST");}
                         }
@@ -476,14 +515,10 @@ void transmitUnicast(uint8_t message_type){
 
                 else if(message_type == MESSAGE_TYPE_DATA_REQUEST){
 
-                    if(!data_report_requested){
-                        //If starting to ask for the reports
-                        //Sets all pendings to true
-                        Existing_devices[i].data_report_pending = true;
-                    }
-
                     if(Existing_devices[i].data_report_pending == true){
+
                         DW1000Ranging.transmitDataRequest(target);
+                        
                         waitForResponse(data_report_ack_timeout);
                         if(DEBUG){Serial.println("Data report solicitado por UNICAST");}
 
@@ -557,6 +592,7 @@ void loop(){
                     stop_ranging_requested = true;
                     ranging_ended = true;
                     state = SWITCH_SLAVE;
+                    amount_active_slaves = 0;
                     if(DEBUG){Serial.println("Pido que termine el ranging.");}
                 }
 
@@ -568,14 +604,28 @@ void loop(){
 
                     if(!mode_switch_requested && !mode_switch_ack){ 
                         //If not requested yet
+                        
+                        expected_mode_switches = 0;
+                        for(int i = 0; i < amount_devices; i++){
 
-                        transmitUnicast(MESSAGE_TYPE_MODE_SWITCH);
+                            if(Existing_devices[i].is_slave_anchor == true && Existing_devices[i].active == true){
+                                
+                                //First request to all devices
+                                Existing_devices[i].mode_switch_pending = true;
+                    
+                                expected_mode_switches++;
+                            }
+
+                        }
 
                         mode_switch_requested = true;
                         mode_switch_pending = true;
                         mode_switch_request = current_time;
-                        
                         mode_switch_ack = false;
+                        transmitUnicast(MESSAGE_TYPE_MODE_SWITCH);
+
+                        
+                        
                     }
 
                     //Mode switch requested. Now Waiting for ack:
@@ -585,11 +635,12 @@ void loop(){
                         mode_switch_requested = false;
                         mode_switch_ack = false;
                         
-                        if(slaveIsResponder){ 
+                        if(slaves_are_responders){ 
 
                             //Switched back to responder --> Now, data report.
-
+                            
                             state = DATA_REPORT;
+                            amount_active_slaves = 0;
                             //TODO
                             /*Pasar solo a data report cuando se han recibido TODOs Los Acks.
                             Además, en el retry, debería ver a qué slaves no le han llegado*/
@@ -614,7 +665,7 @@ void loop(){
 
                     //To reatempt the mode switch if it gets lost.
                 
-                    if(current_time-last_retry >= 500){
+                    if(current_time-last_retry >= 100){
                         
                         if(DEBUG){Serial.println("reintentando el mode switch...");}
                         retryTransmission(MESSAGE_TYPE_MODE_SWITCH);
@@ -627,9 +678,21 @@ void loop(){
 
                 if(!data_report_requested){
 
-                    transmitUnicast(MESSAGE_TYPE_DATA_REQUEST);
+                    expected_data_reports = 0;
+                    for(int i = 0; i < amount_devices; i++){
+
+                        if(Existing_devices[i].is_slave_anchor == true && Existing_devices[i].active == true){
+
+                            Existing_devices[i].data_report_pending = true;
+                            expected_data_reports++;
+                        }
+
+                    }
                     data_report_requested = true;
                     data_report_request_time = current_time;
+                    transmitUnicast(MESSAGE_TYPE_DATA_REQUEST);
+                    
+                    
                     
                     
                 }
@@ -649,7 +712,7 @@ void loop(){
                 if(data_report_requested && !data_report_received && current_time - data_report_request_time > 500){
                     
 
-                    if(current_time-last_retry >=300){ //Retry every 1 sec.
+                    if(current_time-last_retry >=100){ 
                         if(DEBUG){Serial.println("Reintentando data report...");}
                         retryTransmission(MESSAGE_TYPE_DATA_REQUEST);
                                                

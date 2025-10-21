@@ -60,18 +60,17 @@ Son de gran importancia.
 
 ## Mejoras pendientes del código
 
-Actualmente, el envío del data request y mode switch se realiza por broadcast, y la gestión de las banderas internas se hace atendiendo a solo un esclavo. Habría que mejorar: 
+El último paso que logré fue realizar las peticiones de los distintos tipos de mensajes por unicast. Ahora falta por mejorar la gestión interna de las banderas. 
 
-- Hacer los envíos por unicast
+Lógicamente, me interesará que las peticiones y recepciones se hagan de todos los dispositivos, pero actualmente, está dimensionado para solo 1 anchor esclavo. Tendría que preparar el código para poder escalarlo con más placas, asegurándome de que todas hagan los cambios correctos. 
+
 - Gestionar la lógica para activar las banderas y modificar los estados cuando existe más de un esclavo. 
 
-Para hacerlo, he creado en el DW1000Ranging un tipo de struct llamado ExistingDevices. Además, modifiqué el callback de newDevice para que, el mensaje que lo hace saltar lleve metido también un bit indicando su tipo de placa. 
-Debería llevar un control, usando ese struct de manera local en el CD_master_anchor para saber qué placas son de cada tipo, y guardarme su DW1000Device.
+
 
 ### Posibles mejoras en CD_anchor
 
 - Pulir el asegurarme de que ha terminado el ranging antes de enviar mensajes de otro tipo
-- Enviar mensajes por unicast se hace aquí
 - Limpiar los códigos de los esclavos y del tag, para que solo tengan la información pertinente a ellos. 
 
 
