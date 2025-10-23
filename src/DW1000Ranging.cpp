@@ -741,6 +741,8 @@ void DW1000RangingClass::loop() {
 							//Skip first range
 							if (myDistantDevice->getRange() != 0.0f) {
 								curRange = filterValue(curRange, myDistantDevice->getRange(), _rangeFilterValue);
+								myDistantDevice->noteActivity();
+
 							}
 						}
 
@@ -815,26 +817,37 @@ void DW1000RangingClass::resetInactive() {
 }
 
 void DW1000RangingClass::timerTick() {
+
+	if(ranging_enabled && !stop_ranging){
+
 	if(_networkDevicesNumber > 0 && counterForBlink != 0) {
 		if(_type == INITIATOR) {
 			_expectedMsgId = POLL_ACK;
 			//send a prodcast poll
-			transmitPoll(nullptr);
+			
+
+				transmitPoll(nullptr);
+			
+			
 		}
 	}
 	else if(counterForBlink == 0) {
 		if(_type == INITIATOR) {
-			transmitBlink();
+			
+				transmitBlink();
+			
+			
 		}
 		//check for inactive devices if we are a INITIATOR or RESPONDER
-		 if (ranging_enabled && !stop_ranging) {
+		
         checkForInactiveDevices();
-    	}
+    	
 		
 	}
 	counterForBlink++;
 	if(counterForBlink > 20) {
 		counterForBlink = 0;
+	}
 	}
 }
 
