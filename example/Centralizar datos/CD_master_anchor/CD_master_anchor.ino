@@ -47,6 +47,8 @@ const unsigned long ranging_period = 250;
 const unsigned long mode_switch_ack_timeout = 30;
 const unsigned long data_report_ack_timeout = 30;
 
+unsigned long start_initiators_ranging = 0;
+static bool initiators_ranging = false;
 
 // Control of the slave's mode.
 static bool slaves_are_responders = true;
@@ -161,7 +163,7 @@ void registerDevice(DW1000Device *device){
     }
     else{ Existing_devices[amount_devices].is_slave_anchor = false;}
 
-    Existing_devices[amount_devices].is_responder = false;
+    Existing_devices[amount_devices].is_responder = true;
     Existing_devices[amount_devices].active = true;
     Existing_devices[amount_devices].fail_count = 0;
     
@@ -197,6 +199,14 @@ void logMeasure(uint16_t own_sa,uint16_t dest_sa, float dist, float rx_pwr){
     else{
         Serial.println("Devices list is full");
     }
+}
+
+void clearMeasures(){
+
+    for(int i=0;i <amount_measurements;i++){
+        measurements[i].active = false;
+    }
+
 }
 
 void waitForResponse(uint16_t waiting_time){
@@ -269,6 +279,7 @@ void DataReport(byte* data){
 
     if(amount_data_reports_received == expected_data_reports){
         showData();
+        clearMeasures();
         amount_data_reports_received = 0;
         data_report_received = true;
     }
@@ -367,6 +378,7 @@ void showData(){
     
     for (int i = 0; i < amount_measurements ; i++){ 
         
+        if(measurements[i].active == true){
             Serial.print(" Dispositivos: ");
             Serial.print(measurements[i].short_addr_origin,HEX);
             Serial.print(" -> ");
@@ -376,7 +388,7 @@ void showData(){
             Serial.print(" m \t RX power: ");
             Serial.print(measurements[i].rxPower);
             Serial.println(" dBm");
-        
+        }
     }
     Serial.println("--------------------------------------------------------------------");
     
@@ -390,7 +402,7 @@ void newRange(){
     float rx_pwr = DW1000Ranging.getDistantDevice()->getRXPower();
 
     logMeasure(own_short_addr,dest_sa, dist, rx_pwr);
-    seen_first_range = true; 
+    
 
     if(stop_ranging_requested){
         ranging_ended = true;
@@ -494,6 +506,7 @@ void transmitUnicast(uint8_t message_type){
                             //Currently responder --> Switch it to initiator
 
                             switchToInitiator = true;
+                            DW1000.idle();
                             DW1000Ranging.transmitModeSwitch(switchToInitiator,target);
                             
                             waitForResponse(mode_switch_ack_timeout);
@@ -503,6 +516,9 @@ void transmitUnicast(uint8_t message_type){
                         else if(Existing_devices[i].is_responder == false){
                             //Currently initiator --> Switch it to responder
                             switchToInitiator = false;
+                            
+                            DW1000.idle();
+
                             DW1000Ranging.transmitModeSwitch(switchToInitiator,target);
                             
                             waitForResponse(mode_switch_ack_timeout);
@@ -517,6 +533,7 @@ void transmitUnicast(uint8_t message_type){
 
                     if(Existing_devices[i].data_report_pending == true){
 
+                        DW1000.idle();
                         DW1000Ranging.transmitDataRequest(target);
                         
                         waitForResponse(data_report_ack_timeout);
@@ -651,6 +668,8 @@ void loop(){
                        
                         else{ //Switched to initiator --> Back to ranging
 
+                            initiators_ranging = true;
+                            start_initiators_ranging = current_time;
                             activateRanging();
                             
                             if(DEBUG){Serial.println("cambio a initiator. Ahora vuelvo a activar el ranging");}
@@ -672,7 +691,17 @@ void loop(){
 
                     }
                 }
+            
+                if(initiators_ranging == true){
+                    if(current_time -start_initiators_ranging>500){
+                        initiators_ranging = false;
+                        activateRanging();
+                            
+                        if(DEBUG){Serial.println("cambio a initiator. Ahora vuelvo a activar el ranging");}
+                    }
+                }
             }
+                
 
             else if (state == DATA_REPORT){
 
