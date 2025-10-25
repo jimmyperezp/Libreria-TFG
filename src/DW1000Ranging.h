@@ -25,6 +25,10 @@
 #define REQUEST_DATA 8 // The master anchor sends this message to request the slave anchors the data they've collected (this data includes the measurements from the slave to the rest of devices)
 #define DATA_REPORT 9 // The slave anchors respond with this message. In it, the requested data is codified.
 
+#define STOP_RANGING 10
+#define STOP_RANGING_ACK 11
+
+
 //Length of tha payload in the sent messages.
 #define LEN_DATA 90
 
@@ -72,6 +76,7 @@ struct ExistingDevice{
 	bool active;
 	bool mode_switch_pending;
 	bool data_report_pending;
+	bool stop_ranging_pending;
 	float fail_count;
 };
 
@@ -131,6 +136,10 @@ public:
 	//Callback for when the master receives a data_report message (only the master anchor has access to this)
 	static void attachDataReport(void (*handleDataReport)(byte* dataReport)){ _handleDataReport = handleDataReport;}
 
+	static void attachStopRangingRequested( void(*handleStopRanging)(byte* shortAddress)){
+		_handleStopRanging = handleStopRanging;	}
+
+	static void attachStopRangingAck(void(*handleStopRangingAck)(void)){_handleStopRangingAck = handleStopRangingAck;}
 
 	static DW1000Device* getDistantDevice();
 	static DW1000Device* searchDistantDevice(byte shortAddress[]);
@@ -145,6 +154,9 @@ public:
 	//Acknowledgement: sent by the master back to the master.
 	void transmitModeSwitchAck(DW1000Device* device,bool isInitiator);
 
+	void transmitStopRanging(DW1000Device* device);
+
+	void transmitStopRangingAck(DW1000Device* device);
 
 	// To request a data request --> Sent by the master. Receives as parameter, the target device 
 	void transmitDataRequest(DW1000Device* device = nullptr);
@@ -152,6 +164,7 @@ public:
 	// To send the data report. Sent by the slaves to the master.
 	void transmitDataReport(Measurement* measurements, int numMedidas, DW1000Device* device = nullptr);
 
+	
 private:
 	//other devices in the network
 	static DW1000Device _networkDevices[MAX_DEVICES];
@@ -175,6 +188,10 @@ private:
 
 	static void (* _handleDataRequest)(byte* shortAddress);
 	static void (* _handleDataReport)(byte* dataReport);
+
+	static void (* _handleStopRanging)(byte* shortAddress);
+	static void (* _handleStopRangingAck)(void);
+	
 	
 	//sketch type (Initiator or responder)
 	static int16_t          _type; //0 for Initiator and 1 for responder

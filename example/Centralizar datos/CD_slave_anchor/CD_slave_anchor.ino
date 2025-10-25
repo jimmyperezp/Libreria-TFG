@@ -24,6 +24,7 @@ const uint8_t PIN_SS = 4;   // spi select pin
 uint16_t own_short_addr = 0; //I'll get it during the setup.
 uint16_t Adelay = 16580;
 #define IS_MASTER false
+#define DEBUG true
 
 // Variables & constants to register the incoming ranges
 #define MAX_DEVICES 5
@@ -35,12 +36,15 @@ unsigned long current_time = 0;
 unsigned long last_switch = 0;
 unsigned long last_report = 0;
 
-const unsigned long switch_time = 5000; //Switch the slaves' mode every 10 secs
-const unsigned long report_time = 12000; // Ask for a data report every 40 secs
 
-// Current mode management. Used to call the switch mode function.
-static bool slaveIsInitiator = false;
-static bool report_pending = false;
+unsigned long last_ranging_started  =0;
+
+
+static bool stop_ranging_requested = false;
+static bool ranging_ended = false;
+static bool seen_first_range = false;
+
+byte* short_addr_master;
 
 // CODE:
 void setup(){
@@ -74,6 +78,8 @@ void setup(){
        
         //2: Must answer to a data request message (also sent by master)
         DW1000Ranging.attachDataRequested(DataRequested);
+
+        DW1000Ranging.attachStopRangingRequested(stopRangingRequested);
 
         //Finally, slaves are started as responders:
         DW1000Ranging.startAsResponder(DEVICE_ADDR,DW1000.MODE_1, false,SLAVE_ANCHOR);
@@ -146,7 +152,7 @@ void DataRequested(byte* short_addr_requester){
     // Called when the master sends the slave a data request.
     // The slave answers by sending the data report.
     // Adds debug and ensures a clean TX context before replying.
-
+    Serial.println("Data report pedido");
     uint16_t numMeasures = amountDevices;
 
     if (DEBUG) {
@@ -176,6 +182,10 @@ void DataRequested(byte* short_addr_requester){
     // If it is found, sends the report via unicast
     DW1000Ranging.transmitDataReport((Measurement*)measurements, numMeasures, requester);
     clearMeasures();
+    Serial.println("lo envío y rehabilito el ranging");
+    DW1000Ranging.setStopRanging(false);
+    
+    stop_ranging_requested = false;
 }
 
 void ModeSwitchRequested(byte* short_addr_requester, bool toInitiator){
@@ -184,8 +194,11 @@ void ModeSwitchRequested(byte* short_addr_requester, bool toInitiator){
 
     if(toInitiator == true){
 
+        Serial.println("Pasando a INITIATOR");
         DW1000.idle();
-       
+        DW1000Ranging.setStopRanging(false);
+        Serial.println("activo el ranging");
+        stop_ranging_requested = false;
         // Preserve board type on role switch
         DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
         if(requester){ DW1000Ranging.transmitModeSwitchAck(requester,toInitiator);}
@@ -201,7 +214,16 @@ void ModeSwitchRequested(byte* short_addr_requester, bool toInitiator){
     }
 } 
 
+void stopRangingRequested(byte* short_addr_requester){
 
+    Serial.println("Stop ranging request recibido");
+    short_addr_master = short_addr_requester;
+    DW1000Device* requester = DW1000Ranging.searchDistantDevice(short_addr_requester);
+    DW1000Ranging.setStopRanging(true);
+    stop_ranging_requested = true;
+    
+    
+}
 
 
 
@@ -212,6 +234,30 @@ void newRange(){
     float rx_pwr = DW1000Ranging.getDistantDevice()->getRXPower();
 
     logMeasure(own_short_addr,dest_sa, dist, rx_pwr);
+
+    if(stop_ranging_requested){
+
+        DW1000Device* requester = DW1000Ranging.searchDistantDevice(short_addr_master);
+        if(DEBUG){Serial.println("El ranging ha terminado");}
+        
+        if(requester){
+            DW1000Ranging.transmitStopRangingAck(requester);
+        }
+        else{
+            DW1000Ranging.transmitStopRangingAck(nullptr);
+        }
+
+        //state = SWITCH_SLAVE;
+        
+        
+    }
+    else{
+        ranging_ended = false;
+    }
+    if(!seen_first_range){
+        seen_first_range = true;
+        last_ranging_started = current_time;
+    }
 
 }
 

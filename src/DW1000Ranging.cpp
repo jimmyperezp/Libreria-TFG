@@ -65,9 +65,12 @@ void (* DW1000RangingClass::_handleBlinkDevice)(DW1000Device*) = 0;
 void (* DW1000RangingClass::_handleNewDevice)(DW1000Device*) = 0;
 void (* DW1000RangingClass::_handleInactiveDevice)(DW1000Device*) = 0;
 void (* DW1000RangingClass::_handleModeSwitchRequest)(byte*, bool toInitiator) = 0;
-void (* DW1000RangingClass:: _handleModeSwitchAck)(bool isInitiator) = 0;
+void (* DW1000RangingClass::_handleModeSwitchAck)(bool isInitiator) = 0;
 void (* DW1000RangingClass::_handleDataRequest)(byte*) = 0;
 void (* DW1000RangingClass::_handleDataReport)(byte*) = 0;
+void (* DW1000RangingClass::_handleStopRanging)(byte*) = 0;
+void (* DW1000RangingClass::_handleStopRangingAck)(void) = 0;
+
 
 /* ###########################################################################
  * #### Init and end #######################################################
@@ -507,6 +510,38 @@ void DW1000RangingClass::loop() {
 
 
         }
+		
+		else if(messageType == STOP_RANGING){
+
+			byte shortAddress[2]; //Creates 2 bytes to save 'shortAddress' from the requester.
+			_globalMac.decodeShortMACFrame(data, shortAddress);
+
+			DW1000Device* ackDevice = searchDistantDevice(shortAddress);
+            if (ackDevice) {
+                _lastDistantDevice = ackDevice->getIndex();
+				ackDevice ->noteActivity();
+            }
+
+			if(_handleStopRanging){
+                (*_handleStopRanging)(shortAddress);
+            }
+
+		}
+		else if(messageType == STOP_RANGING_ACK){
+
+			byte shortAddress[2];
+            _globalMac.decodeShortMACFrame(data, shortAddress);
+            DW1000Device* ackDevice = searchDistantDevice(shortAddress);
+            if (ackDevice) {
+                _lastDistantDevice = ackDevice->getIndex();
+				ackDevice ->noteActivity();
+            }
+
+            bool isInitiator = data[SHORT_MAC_LEN +1];
+            if(_handleStopRangingAck){
+                (*_handleStopRangingAck)();
+            }
+		}
 		else if(messageType == REQUEST_DATA){
 
 			byte shortAddress[2]; //Creates 2 bytes to save 'shortAddress'
@@ -1052,6 +1087,52 @@ void DW1000RangingClass::receiver() {
 * -------------------------------------------------
 ###################################################### */
 
+void DW1000RangingClass::transmitStopRanging(DW1000Device* device){
+
+	transmitInit();
+	byte dest[2];
+	bool sent_by_broadcast = false;
+
+	if(device==nullptr){
+		dest[0] = 0xFF;
+		dest[1] = 0xFF;
+
+		sent_by_broadcast = true;
+	}
+
+	else{
+
+		memcpy(dest,device->getByteShortAddress(),2); 
+		sent_by_broadcast = false;
+
+	}
+	_globalMac.generateShortMACFrame(data, _currentShortAddress, dest);
+	
+	data[SHORT_MAC_LEN ] = STOP_RANGING;
+	transmit(data);
+	
+}
+
+void DW1000RangingClass::transmitStopRangingAck(DW1000Device* device){
+
+	transmitInit();
+	byte dest[2];
+
+	if(device == nullptr){
+		dest[0] = 0xFF;
+		dest[1] = 0xFF;
+	}
+	else{
+
+		memcpy(dest,device->getByteShortAddress(),2);
+	}
+
+	_globalMac.generateShortMACFrame(data, _currentShortAddress, dest);
+	data[SHORT_MAC_LEN] = STOP_RANGING_ACK;
+	transmit(data);
+}
+
+
 void DW1000RangingClass::transmitModeSwitch(bool toInitiator, DW1000Device* device){
 
 	//1: Prepare for new transmission:
@@ -1092,6 +1173,8 @@ void DW1000RangingClass::transmitModeSwitch(bool toInitiator, DW1000Device* devi
 	data[index++] = sent_by_broadcast ? 1:0;
 
 	if(sent_by_broadcast){
+
+		//If sent by broadcast, I set a reply time to avoid colissions.
 		
 		data[index++] = _networkDevicesNumber;
 		for(uint8_t i = 0; i < _networkDevicesNumber; i++) {
@@ -1242,23 +1325,7 @@ void DW1000RangingClass::computeRangeAsymmetric(DW1000Device* myDistantDevice, D
 	DW1000Time reply2 = (myDistantDevice->timeRangeSent-myDistantDevice->timePollAckReceived).wrap();
 	
 	myTOF->setTimestamp((round1*round2-reply1*reply2)/(round1+round2+reply1+reply2));
-	/*
-	Serial.print("timePollAckReceived ");myDistantDevice->timePollAckReceived.print();
-	Serial.print("timePollSent ");myDistantDevice->timePollSent.print();
-	Serial.print("round1 "); Serial.println((long)round1.getTimestamp());
 	
-	Serial.print("timePollAckSent ");myDistantDevice->timePollAckSent.print();
-	Serial.print("timePollReceived ");myDistantDevice->timePollReceived.print();
-	Serial.print("reply1 "); SerialF.println((long)reply1.getTimestamp());
-	
-	Serial.print("timeRangeReceived ");myDistantDevice->timeRangeReceived.print();
-	Serial.print("timePollAckSent ");myDistantDevice->timePollAckSent.print();
-	Serial.print("round2 "); Serial.println((long)round2.getTimestamp());
-	
-	Serial.print("timeRangeSent ");myDistantDevice->timeRangeSent.print();
-	Serial.print("timePollAckReceived ");myDistantDevice->timePollAckReceived.print();
-	Serial.print("reply2 "); Serial.println((long)reply2.getTimestamp());
-	 */
 }
 
 
