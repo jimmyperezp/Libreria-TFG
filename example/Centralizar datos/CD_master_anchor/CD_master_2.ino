@@ -1,13 +1,7 @@
-/* CENTRALIZE DATA IN AN ANCHOR */
-
-/* This is the Anchor(s) code. One of them must be declared as the master, and the rest must be slaves.
-Don't forget to change the DEVICE_ADDR on each anchor used */
-
 #include <SPI.h>
 #include "DW1000Ranging.h"
 #include "DW1000.h"
 
-//Board's pins definitions:
 #define SPI_SCK 18
 #define SPI_MISO 19
 #define SPI_MOSI 23
@@ -19,59 +13,40 @@ const uint8_t PIN_SS = 4;   // spi select pin
 #define DEBUG false
 
 #define IS_MASTER true
-//#define IS_MASTER false
-
-// Address: A for Anchors, B for Tags
 #define DEVICE_ADDR "A1:00:5B:D5:A9:9A:E2:9C" 
-
-uint16_t own_short_addr = 0; //I'll get it during the setup.
+uint16_t own_short_addr = 0; 
 uint16_t Adelay = 16580;
 
-// To register incoming data reports.
 #define MAX_DEVICES 5
 Measurement measurements[MAX_DEVICES];
 uint8_t amount_measurements = 0;
 
-// To send messages via unicast
 ExistingDevice Existing_devices[MAX_DEVICES];
 uint8_t amount_devices = 0;
-uint8_t amount_slave_anchors = 0;
 
-//Time management
 unsigned long current_time = 0; 
-unsigned long last_ranging_started = 0;
-unsigned long mode_switch_request = 0;
-unsigned long last_retry = 0;
-unsigned long data_report_request_time = 0;
-const unsigned long ranging_period = 250;
-const unsigned long mode_switch_ack_timeout = 30;
-const unsigned long data_report_ack_timeout = 30;
 
-unsigned long start_initiators_ranging = 0;
-static bool initiators_ranging = false;
 
-// Control of the slave's mode.
-static bool slaves_are_responders = true;
-static bool switchToInitiator = true;
-
-// STATES
 uint8_t state = 1;
 #define MASTER_RANGING 1
-#define SLAVES_RANGING 2
-#define DATA_REPORT 3
-#define WAIT_SLAVE 4
+#define SLAVE_RANGING 2
+#define MODE_SWITCH 3
+#define DATA_REPORT 4
+#define WAIT_SLAVE 5
+
+static bool master_ranging = false;
+static bool seen_first_range = false;
 
 
-
-
+uint8_t MSG_DATA_REQUEST = 1;
+uint8_t MSG_MODE_SWITCH = 2;
 
 
 void setup(){
 
     Serial.begin(115200);
-    delay(1000); // 1 sec to launch the serial monitor
-
-    SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI); // SPI bus start
+    delay(1000);
+    SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI); 
     DW1000Ranging.initCommunication(PIN_RST, PIN_SS, PIN_IRQ); // DW1000 Start
 
     DW1000.setAntennaDelay(Adelay);
@@ -81,42 +56,42 @@ void setup(){
     DW1000Ranging.attachNewDevice(newDevice);
     DW1000Ranging.attachInactiveDevice(inactiveDevice);   
 
-    last_ranging_started = millis();
-    state = RANGING;
+    
 
-    if (IS_MASTER){
+    DW1000Ranging.attachDataReport(DataReport);
+    DW1000Ranging.attachModeSwitchAck(ModeSwitchAck);
+    
 
-        //Master's callbacks: 
-        // For when the slaves send a data report:
-        DW1000Ranging.attachDataReport(DataReport);
-        DW1000Ranging.attachModeSwitchAck(ModeSwitchAck);
-
-        DW1000Ranging.startAsInitiator(DEVICE_ADDR,DW1000.MODE_1, false,MASTER_ANCHOR);
-
-        // This means that the anchor is in charge of starting the comunication (polling)
-    }
-  
+    DW1000Ranging.startAsInitiator(DEVICE_ADDR,DW1000.MODE_1, false,MASTER_ANCHOR);
 
     own_short_addr = getOwnShortAddress();
-    // I save the own_short_addr after the device has been set up propperly
+
+    state = WAIT_SLAVE;
+    all_slaves_responders = true;
 }
 
-uint16_t getOwnShortAddress() {
-    byte* sa = DW1000Ranging.getCurrentShortAddress();
-    return ((uint16_t)sa[0] << 8) | sa[1];
-}
+void showData(){
 
-int searchDevice(uint16_t own_sa,uint16_t dest_sa){
+    Serial.println("--------------------------- NUEVA MEDIDA ---------------------------");
     
-    for (int i=0 ; i < amount_measurements ; i++){
-
-        if ((measurements[i].short_addr_origin == own_sa)&&(measurements[i].short_addr_dest == dest_sa)) {
-            return i; 
-            // If found, returns the index
+    for (int i = 0; i < amount_measurements ; i++){ 
+        
+        if(measurements[i].active == true){
+            Serial.print(" Dispositivos: ");
+            Serial.print(measurements[i].short_addr_origin,HEX);
+            Serial.print(" -> ");
+            Serial.print(measurements[i].short_addr_dest,HEX);
+            Serial.print("\t Distancia: ");
+            Serial.print(measurements[i].distance);
+            Serial.print(" m \t RX power: ");
+            Serial.print(measurements[i].rxPower);
+            Serial.println(" dBm");
         }
     }
-    return -1; // if not, returns -1
+    Serial.println("--------------------------------------------------------------------");
+    
 }
+
 
 void registerDevice(DW1000Device *device){
 
@@ -127,31 +102,61 @@ void registerDevice(DW1000Device *device){
 
     if(board_type == SLAVE_ANCHOR){
         Existing_devices[amount_devices].is_slave_anchor = true;
-        amount_slave_anchors ++;
+        active_slaves = true;
+        
     }
-    else{ Existing_devices[amount_devices].is_slave_anchor = false;}
+    else{ 
+        Existing_devices[amount_devices].is_slave_anchor = false;
+    }
 
     Existing_devices[amount_devices].is_responder = true;
     Existing_devices[amount_devices].active = true;
-    Existing_devices[amount_devices].fail_count = 0;
+    
     
     amount_devices ++;
 }
 
-uint8_t checkActiveSlaves(){
+void newDevice(DW1000Device *device){
 
-    uint8_t number_of_active_slaves = 0;
-    for(int i =0; i<amount_devices; i++){
+    Serial.print("New Device: ");
+    Serial.println(device->getShortAddress(), HEX);
 
-        if(Existing_devices[i].is_slave_anchor == true && Existing_devices[i].active == true){
+    registerDevice(device);
+}
 
-            number_of_active_slaves++;
+void inactiveDevice(DW1000Device *device){
+
+    uint16_t dest_sa = device->getShortAddress();
+    Serial.print("Lost connection with device: ");
+    Serial.println(dest_sa, HEX);
+    amount_devices--;
+    
+    for(int i = 0; i<amount_devices; i++){
+
+        Existing_devices[i].active = false;
+        if(Existing_devices[i].is_slave_anchor){
+            amount_slaves--;
+            if(amount_slaves == 0){
+                active_slaves = false;
+                state = WAIT_SLAVES;
+            }
         }
-            
     }
 
-    return number_of_active_slaves;
-}
+    
+
+        slave_disconnected = true;
+        if(mode_switch_pending){
+            mode_switch_pending = false;
+            state = WAIT_SLAVE;
+        }
+        else if(data_report_pending){
+            data_report_pending = false;
+            state = WAIT_SLAVE;
+        }
+    }
+    
+    
 
 
 void logMeasure(uint16_t own_sa,uint16_t dest_sa, float dist, float rx_pwr){
@@ -185,183 +190,6 @@ void logMeasure(uint16_t own_sa,uint16_t dest_sa, float dist, float rx_pwr){
     }
 }
 
-void clearMeasures(){
-
-    for(int i=0;i <amount_measurements;i++){
-        measurements[i].active = false;
-    }
-
-}
-
-void waitForResponse(uint16_t waiting_time){
-
-    uint32_t t0 = millis(); 
-    if(DEBUG){Serial.println("Esperando para el Ack");}
-
-    
-    while((uint32_t)(millis()-t0)<waiting_time){
-
-        DW1000Ranging.loop();
-        
-    }
-    return;
-
-}
-
-void DataReport(byte* data){
-
-    
-    uint16_t index = SHORT_MAC_LEN + 1;
-
-    uint16_t origin_short_addr = ((uint16_t)data[index+1] << 8) | data[index];
-    
-    index += 2;
-
-    uint16_t numMeasures = data[index++];
-
-    //First, I check if the size is OK:
-    if(numMeasures*10>LEN_DATA-SHORT_MAC_LEN-4){
-        
-        //Each measure is 10 bytes
-        // The header includes short_mac_len + 2 bytes for shortAddress + 1 byte for messageType + 1 byte for numMeasures.
-
-        Serial.println("The Data received is too long");
-        return;
-    }
-
-    for (int i = 0; i < numMeasures; i++) {
-
-        uint16_t destiny_short_addr = ((uint16_t)data[index] << 8) | data[index + 1];
-        index += 2;
-
-        float distance, rxPower;
-        memcpy(&distance, data + index, 4); index += 4;
-        memcpy(&rxPower,   data + index, 4); index += 4;
-
-        logMeasure(origin_short_addr, destiny_short_addr, distance, rxPower);
-    }
-    if(DEBUG){
-        Serial.print("Data report recibido de: ");
-        Serial.print(origin_short_addr,HEX);
-    }
-    
-    
-    for(int i = 0; i <amount_devices; i++){
-
-        if(Existing_devices[i].short_addr == origin_short_addr && Existing_devices[i].is_slave_anchor == true){
-
-            
-            if(Existing_devices[i].data_report_pending == true){
-
-                Existing_devices[i].data_report_pending = false;
-                amount_data_reports_received++;
-                
-                
-            }
-        }
-    }
-
-    if(amount_data_reports_received == expected_data_reports){
-        showData();
-        clearMeasures();
-        amount_data_reports_received = 0;
-        data_report_received = true;
-    }
-    
-
-}
- 
-void switchSlavesMode(){
-
-    if(!switching_slaves_mode){
-
-        //TODO: 
-        //Poner todos los slaves con mode_switch_pending = true;
-        expected_slaves_ranging = checkActiveSlaves();
-        switching_slaves_mode = true;
-        current_slave = 0;
-    }
-
-    else{
-
-        current_slave++;
-        if(Existing_devices[current_slave].is_slave_anchor == true && Existing_devices[current_slave].active == true){
-
-            DW1000.idle();
-            transmitUnicast(MODE_SWITCH,Existing_devices[current_slave]);
-        }
-       
-    }
-}
-
-void ModeSwitchAck(bool isInitiator){
-
-    if(mode_switch_requested){ 
-        // To avoid false reads
-        uint16_t origin_short_add = DW1000Ranging.getDistantDevice()->getShortAddress();
-        
-        for(int i = 0; i <amount_devices; i++){
-
-            if(Existing_devices[i].short_addr == origin_short_add && Existing_devices[i].is_slave_anchor){
-
-                
-
-                if(Existing_devices[i].mode_switch_pending == true){
-
-                    Existing_devices[i].mode_switch_pending = false;
-                    amount_mode_switch_acks_received++;
-                    
-                }
-
-                //Only if it is registered & is a slave anchor
-                if(DEBUG){
-                    Serial.print(" Cambio Realizado: ");
-                    Serial.print(origin_short_add,HEX);
-                    Serial.print(" es --> ");
-                    Serial.println(isInitiator ? "INITIATOR" : "RESPONDER");
-                }
-
-                
-                Existing_devices[i].is_responder =  !isInitiator;
-
-                if(amount_mode_switch_acks_received == expected_mode_switches){
-                    amount_mode_switch_acks_received = 0;
-                    mode_switch_ack = true;
-                    
-                    slaves_are_responders = !switchToInitiator;
-                    if(mode_switch_pending){mode_switch_pending = false;}
-                }
-                
-            }
-        }
-    }
-    
- 
-}
-
-void showData(){
-
-    Serial.println("--------------------------- NUEVA MEDIDA ---------------------------");
-    
-    for (int i = 0; i < amount_measurements ; i++){ 
-        
-        if(measurements[i].active == true){
-            Serial.print(" Dispositivos: ");
-            Serial.print(measurements[i].short_addr_origin,HEX);
-            Serial.print(" -> ");
-            Serial.print(measurements[i].short_addr_dest,HEX);
-            Serial.print("\t Distancia: ");
-            Serial.print(measurements[i].distance);
-            Serial.print(" m \t RX power: ");
-            Serial.print(measurements[i].rxPower);
-            Serial.println(" dBm");
-        }
-    }
-    Serial.println("--------------------------------------------------------------------");
-    
-}
-
-
 void newRange(){
 
     uint16_t dest_sa = DW1000Ranging.getDistantDevice()->getShortAddress();
@@ -372,222 +200,250 @@ void newRange(){
     
 
     if(stop_ranging_requested){
-        ranging_ended = true;
-        if(DEBUG){Serial.println("El ranging ha terminado");}
-        //state = SWITCH_SLAVE;
+        
+        if(DEBUG){Serial.println("El ranging ha terminado");}      
         
     }
-    else{
-        ranging_ended = false;
-    }
+    
     if(!seen_first_range){
         seen_first_range = true;
-        last_ranging_started = current_time;
+        ranging_begin = current_time;
     }
 
 }
 
-void newDevice(DW1000Device *device){
-
-    Serial.print("New Device: ");
-    Serial.println(device->getShortAddress(), HEX);
-
-    registerDevice(device);
-
-    
-}
-
-void inactiveDevice(DW1000Device *device){
-
-    uint16_t dest_sa = device->getShortAddress();
-    Serial.print("Lost connection with device: ");
-    Serial.println(dest_sa, HEX);
-    
-    for (int i = 0; i < amount_devices ; i++){
-        
-        
-
-        if(dest_sa == Existing_devices[i].short_addr){
-
-            if (Existing_devices[i].mode_switch_pending && state == SWITCH_SLAVE) {
-
-                Existing_devices[i].mode_switch_pending = false;
-                if (expected_mode_switches > 0) expected_mode_switches--;
-            }
-             
-            if (Existing_devices[i].data_report_pending && state == DATA_REPORT) {
-                 
-                Existing_devices[i].data_report_pending = false;
-                if (expected_data_reports > 0) expected_data_reports--;
-            }
 
 
-            Existing_devices[i].active = false;
-        }    
-    }
-    
+
+void stopRanging(){
+
+    DW1000Ranging.setStopRanging(true);
+    stop_ranging_requested = true;
     
 }
 
 void activateRanging(){
 
     DW1000Ranging.setStopRanging(false);
-    ranging_active = true;
     stop_ranging_requested = false;
-    //ranging_ended = false;
-    last_ranging_started = current_time;
-    
-}
-
-void rangingPeriod(){
-
-    if(ranging_active == true){
-
-        if(current_time - ranging_started >= ranging_period){
-
-            ranging_active = false;
-            DW1000Ranging.setStopRanging(true);
-            stop_ranging_requested = true;
-            state = SLAVES_RANGING; 
-
-            if(DEBUG){Serial.println("Pido que termine el ranging.");}
-            if(DEBUG){Serial.println("Y paso a estado 'SLAVES_RANGING'.");}
-        }
-    }
+    seen_first_range = false;
+   
 }
 
 
-void transmitUnicast(uint8_t message_type, uint8_t target_index){
+void waitForResponse(uint16_t waiting_time){
 
-    //All messages are sent via unicast. 
-    //1st, check what devices are slave anchors:
+    uint32_t t0 = millis(); 
+    if(DEBUG){Serial.println("Esperando para el Ack");}
+
     
-    DW1000Device* _target = DW1000Ranging.searchDistantDevice(Existing_devices[target_index].byte_short_addr);
+    while((uint32_t)(millis()-t0)<waiting_time){
 
-    if(target){ //The device was found
-
-        if(message_type == MODE_SWITCH){
-
-            DW1000Ranging.transmitModeSwitch(switchToInitiator,target);
-            state = WAIT_SLAVE;
-        }
-
+        DW1000Ranging.loop();
+                
     }
-    else{
-        Serial.print("Dispositivo: ");
-        Serial.print(Existing_devices[target_index].short_addr,HEX);
-        Serial.println(" No encontrado para unicast.");
+    return;
 
-        current_slave++; //incremento en 1 para volver a buscar al siguiente.
-    }
+}
 
-    for(int i = 0; i < amount_devices; i++){
+void transmitUnicast(uint8_t message_type){
+
+    for(int i=0; i<amount_devices;i++){
 
         if(Existing_devices[i].is_slave_anchor == true){
 
-            //If it's a slave anchor, I need the device's object:
             DW1000Device* target = DW1000Ranging.searchDistantDevice(Existing_devices[i].byte_short_addr);
 
-            if(target){ //The device was found
+            if(target){
 
-                if(message_type == MESSAGE_TYPE_MODE_SWITCH){
-
-                    
+                if(message_type == MSG_MODE_SWITCH){
 
                     if(Existing_devices[i].mode_switch_pending == true){
-                        
-                        
-                        //I check the current state of the slave: 
 
                         if(Existing_devices[i].is_responder == true){
 
-                            //Currently responder --> Switch it to initiator
+                            switch_to_initiator = true;
 
-                            switchToInitiator = true;
-                            DW1000.idle();
-                            DW1000Ranging.transmitModeSwitch(switchToInitiator,target);
-                            
-                            waitForResponse(mode_switch_ack_timeout);
-                            if(DEBUG){Serial.println("Solicitado el cambio a initiator por UNICAST");}
+                            if(DEBUG){
+
+                                Serial.print("Mode switch enviado a: ");
+                                Serial.print(Existing_devices[i].short_addr,HEX);
+                                Serial.print("Cambio a: ");
+                                Serial.println(switch_to_initiator ? " initiator." : " responder.");
+                            }
+
+                            transmitModeSwitch(switch_to_initiator,target);
+                            waitForResponse(timeout);
+
+
 
                         }
-                        else if(Existing_devices[i].is_responder == false){
-                            //Currently initiator --> Switch it to responder
-                            switchToInitiator = false;
-                            
-                            DW1000.idle();
 
-                            DW1000Ranging.transmitModeSwitch(switchToInitiator,target);
+                        if(Existing_devices[i].is_responder == false){
+
+                            switch_to_initiator = false;
+
+                            if(DEBUG){
+
+                                Serial.print("Mode switch enviado a: ");
+                                Serial.print(Existing_devices[i].short_addr,HEX);
+                                Serial.print("Cambio a: ");
+                                Serial.println(switch_to_initiator ? " initiator." : " responder.");
+                            }
+
+                            transmitModeSwitch(switch_to_initiator,target);
+                            waitForResponse(timeout);
                             
-                            waitForResponse(mode_switch_ack_timeout);
-                            if(DEBUG){Serial.println("Solicitado el cambio a responder por UNICAST");}
                         }
+
+
 
 
                     }
+
                 }
 
-                else if(message_type == MESSAGE_TYPE_DATA_REQUEST){
+                else if(message_type == MSG_DATA_REQUEST){
 
                     if(Existing_devices[i].data_report_pending == true){
 
-                        DW1000.idle();
+                        if(DEBUG){
+                            Serial.print("Data request enviado a: ");
+                            Serial.print(Existing_devices[i].short_addr,HEX);
+                            
+                        }
+
                         DW1000Ranging.transmitDataRequest(target);
                         
-                        waitForResponse(data_report_ack_timeout);
-                        if(DEBUG){Serial.println("Data report solicitado por UNICAST");}
-
+                        waitForResponse(timeout);
+                        
                     }
-   
                 }
             }
+
         }
     }
+    
 
+    
 }
 
 
-void retryTransmission(uint8_t message_type){
+void DataReport(byte* data){
 
-    transmitUnicast(message_type);
-    last_retry = current_time;
-    num_retries = num_retries +1;
+    
+    
+    uint16_t index = SHORT_MAC_LEN + 1;
+    uint16_t origin_short_addr = ((uint16_t)data[index+1] << 8) | data[index];
+    
+    for(int i=0;i<amount_devices;i++){
 
-    if(num_retries == 5){
+        if(Existing_devices[i].short_addr == origin_short_addr){
 
-        num_retries = 0;
-        transmissionFailed();                                           
+            Existing_devices[i].data_report_pending = false;
+            data_reports_received++;
 
-        if(message_type == MESSAGE_TYPE_MODE_SWITCH){
-            
-            mode_switch_requested = false;
-            mode_switch_ack = false;
+            index += 2;
+
+            uint16_t numMeasures = data[index++];
+
+            //First, I check if the size is OK:
+            if(numMeasures*10>LEN_DATA-SHORT_MAC_LEN-4){
+        
+                Serial.println("The Data received is too long");
+                return;
+            }
+
+            for (int i = 0; i < numMeasures; i++) {
+
+                uint16_t destiny_short_addr = ((uint16_t)data[index] << 8) | data[index + 1];
+                index += 2;
+
+                float distance, rxPower;
+                memcpy(&distance, data + index, 4); index += 4;
+                memcpy(&rxPower, data + index, 4); index += 4;
+
+                logMeasure(origin_short_addr, destiny_short_addr, distance, rxPower);
+            }
+
+            if(DEBUG){
+                Serial.print("Data report recibido de: ");
+                Serial.print(origin_short_addr,HEX);
+            }
+
+        }
+    }
+    
+    
+    if(data_reports_received == expected_data_reports){
+
+        data_report_pending = false;
+        showData();
+
+        if(DEBUG){Serial.println("vuelvo a master ranging");}
+        state = MASTER_RANGING;
+    }
+    
+    
+
+
+    
+    
+}
+
+
+void ModeSwitchAck(bool isInitiator){
+
+    if(mode_switch_pending){ // To avoid false reads
+        
+        uint16_t origin_short_addr = DW1000Ranging.getDistantDevice()->getShortAddress();
+
+        
+        for(int i = 0; i <amount_devices; i++){
+
+            if(Existing_devices[i].short_addr == origin_short_addr && Existing_devices[i].is_slave_anchor && Existing_devices[i].mode_switch_pending == true){
+
+                Existing_devices[i].mode_switch_pending = false;
+                Existing_devices[i].is_responder =  !isInitiator;
+                
+                mode_switch_acks_received++;
+
+
+            }
+
+            if(DEBUG){
+                    Serial.print(" Cambio Realizado: ");
+                    Serial.print(origin_short_add,HEX);
+                    Serial.print(" es --> ");
+                    Serial.println(isInitiator ? "INITIATOR" : "RESPONDER");
+                }
+
+        }
+
+        if(mode_switch_acks_received == expected_mode_switches){
+
+
+            mode_switch_acks_received = 0;
             mode_switch_pending = false;
+            mode_switch_done = true;
 
-            if(DEBUG){Serial.println("Cambio fallido. Regreso a ranging");}
-
+            if(isInitiator){
+                slaves_are_responders = false;
+                state = SLAVES_RANGING; 
+            }
+            else{
+                slaves_are_responders = true;
+                state = DATA_REPORT;
+            }
         }
-        else if(message_type == MESSAGE_TYPE_DATA_REQUEST){
-
-            data_report_requested = false;
-            data_report_received = false;
-
-            if(DEBUG){Serial.println("Data Report NO recibido. Regreso a ranging");}
-        }
-        
-        
 
         
+
     }
 }
 
 
-void transmissionFailed(){
 
-    activateRanging();
-    
-    
-}
 
 void loop(){
 
@@ -596,37 +452,138 @@ void loop(){
 
     if(state == MASTER_RANGING){
 
-        activateRanging();
-        rangingPeriod();
+        if(!master_ranging){
+            Serial.println("El master comienza a hacer ranging");
+            master_ranging = true;
+            activateRanging();
+
+        }
+
+        if(master_ranging){
+
+            if(seen_first_range && current_time - ranging_begin >= ranging_period){
+
+                stopRanging();
+                master_ranging = false;
+                state = MODE_SWITCH;
+            }
+        }
+
     }
 
-    else if(state == SLAVES_RANGING && ranging_ended == true){
+    else if (state == SLAVE_RANGING){
+
+        if(!slaves_ranging){
+            slaves_ranging = true;
+            slaves_ranging_begin = current_time;
+        }
         
-        switchSlavesMode();
+        else{
+
+            if(current_time - slaves_ranging_begin > ranging_period){
+                slaves_ranging = false;
+                state = MODE_SWITCH;
+            }
+        }
 
     }
 
+    else if (state == MODE_SWITCH){
+
+        if(!mode_switch_pending){
+
+            mode_switch_pending = true;
+            expected_mode_switches = 0;
+            
+            mode_switch_started = current_time;
+
+            for(int i = 0; i<amount_devices;i++){
+
+                if(Existing_devices[i].is_slave_anchor && Existing_devices[i].active){
+
+                    Existing_devices[i].mode_switch_pending = true;
+                    expected_mode_switches++;
+                }
+            }
+
+            transmitUnicast(MSG_MODE_SWITCH);
+        }
+
+        
+        if(mode_switch_pending && current_time - mode_switch_started >= waiting_time){
+
+            if(current_time - last_retry >= retry_time){
+
+                if(DEBUG){Serial.println("reintentando el mode switch...");}
+                retryTransmission(MSG_MODE_SWITCH);
+
+            }
+            
+
+        }
+        
+        
+  
+
+    }
 
     else if(state == DATA_REPORT){
 
+        if(!data_report_pending){
+            data_report_pending = true;
+            data_report_started = current_time;
 
+            for(int i = 0; i<amount_devices;i++){
+
+                if(Existing_devices[i].is_slave_anchor && Existing_devices[i].active){
+
+                    Existing_devices[i].data_report_pending = true;
+                    expected_data_reports++;
+                }
+            }
+
+            data_report_request = current_time;
+            transmitUnicast(MSG_DATA_REQUEST);
+        }
+
+        if(data_report_pending && current_time - data_report_started >= waiting_time){
+
+            if(current_time - last_retry >= retry_time){
+                
+                if(DEBUG){Serial.println("Reintentando data report...");}
+                retryTransmission(MSG_DATA_REQUEST);
+            }
+        }
+
+
+
+        
     }
-    
-    else if(state == WAIT_SLAVE){
 
-        if(!waiting){
-            waiting = true;
-            waiting_started = current_time;
+    else if(state == WAIT_SLAVES){
+
+        if(!wait_slaves){
+
+            wait_slaves = true;
+            mode_switch_pending = false;
+            mode_switch_acks_received = 0;
+
+            data_report_pending = false;
+            data_reports_received = 0;
+
+            for(int i = 0; i<amount_devices; i++){
+
+                Existing_devices[i].mode_switch_pending = false;
+                Existing_devices[i].data_report_pending = false;
+            }
+
+        }
+
+        else{
+
+            if(slaves_active = true;)
         }
         
-        else if(waiting && current_time - waiting_started >= waiting_timeout){
-
-            Existing_devices[current_slave].waiting_ranging_ack = false;
-            waiting = false;
-            if(DEBUG){
-                Serial.println("Timeout ")
-            }
-            state = SLAVES_RANGING;
-        }
     }
+
 }
