@@ -76,8 +76,7 @@ struct ExistingDevice{
 	bool active;
 	bool mode_switch_pending;
 	bool data_report_pending;
-	bool stop_ranging_pending;
-	float fail_count;
+	
 };
 
 
