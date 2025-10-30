@@ -1,7 +1,6 @@
 /* CENTRALIZE DATA IN AN ANCHOR */
 
-/* This is the Anchor(s) code. One of them must be declared as the master, and the rest must be slaves.
-Don't forget to change the DEVICE_ADDR on each anchor used */
+/* Anchor's code. If used on more than 1 device, user should change the shortAddress. */
 
 #include <SPI.h>
 #include "DW1000Ranging.h"
@@ -36,9 +35,7 @@ unsigned long current_time = 0;
 unsigned long last_switch = 0;
 unsigned long last_report = 0;
 
-
 unsigned long last_ranging_started  =0;
-
 
 static bool stop_ranging_requested = false;
 static bool ranging_ended = false;

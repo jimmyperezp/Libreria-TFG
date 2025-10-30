@@ -68,10 +68,7 @@ Lógicamente, me interesará que las peticiones y recepciones se hagan de todos 
 
 
 
-### Posibles mejoras en CD_anchor
 
-- Pulir el asegurarme de que ha terminado el ranging antes de enviar mensajes de otro tipo
-- Limpiar los códigos de los esclavos y del tag, para que solo tengan la información pertinente a ellos. 
 
 
 

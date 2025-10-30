@@ -10,7 +10,7 @@ const uint8_t PIN_RST = 27; // reset pin
 const uint8_t PIN_IRQ = 34; // irq pin
 const uint8_t PIN_SS = 4;   // spi select pin
 
-#define DEBUG false
+#define DEBUG true
 
 #define IS_MASTER true
 #define DEVICE_ADDR "A1:00:5B:D5:A9:9A:E2:9C" 
@@ -45,7 +45,7 @@ uint8_t num_retries = 0;
 //Todo: si voy a usar el mismo tiempo, podría unificar en una sola variable
 const unsigned long waiting_time = 500;
 const unsigned long retry_time = 500;
-const unsigned long ranging_period = 500;
+const unsigned long ranging_period = 1000;
 const unsigned long timeout = 50;
 
 
@@ -59,7 +59,7 @@ static bool seen_first_range = false;
 static bool stop_ranging_requested = false;
 
 static bool mode_switch_pending = false;
-static bool switch_to_initiator = false;
+static bool switch_to_initiator = true; // At start, all slaves are responders.
 
 static bool mode_switch_done = false;
 uint8_t mode_switch_acks_received = 0;
@@ -143,6 +143,11 @@ void registerDevice(DW1000Device *device){
     if(board_type == SLAVE_ANCHOR){
         Existing_devices[amount_devices].is_slave_anchor = true;
         slaves_active = true;
+        amount_slaves ++;
+        if(DEBUG){
+            Serial.print("El dispositivo ");
+            Serial.print(Existing_devices[amount_devices].short_addr,HEX);
+            Serial.println(" es esclavo");}
         
     }
     else{ 
@@ -179,23 +184,30 @@ void newDevice(DW1000Device *device){
 
 void inactiveDevice(DW1000Device *device){
 
-    uint16_t dest_sa = device->getShortAddress();
+    uint16_t origin_short_addr = device->getShortAddress();
     Serial.print("Lost connection with device: ");
-    Serial.println(dest_sa, HEX);
-    amount_devices--;
+    Serial.println(origin_short_addr, HEX);
     
+    
+
     for(int i = 0; i<amount_devices; i++){
 
-        Existing_devices[i].active = false;
-        if(Existing_devices[i].is_slave_anchor){
-            amount_slaves--;
-            if(amount_slaves == 0){
-                slaves_active = false;
-                state = WAIT_SLAVES;
+        if(Existing_devices[i].short_addr == origin_short_addr){
+
+            Existing_devices[i].active = false;
+
+            if(Existing_devices[i].is_slave_anchor){
+            
+                amount_slaves--;
+                if(amount_slaves == 0){
+                    slaves_active = false;
+                    state = WAIT_SLAVES;
+                }
             }
-        }
+        } 
     }
 
+    amount_devices--;
     
 }
     
@@ -244,7 +256,7 @@ void newRange(){
 
     if(stop_ranging_requested){
         
-        if(DEBUG){Serial.println("El ranging ha terminado");}      
+        if(DEBUG){Serial.println("El ranging del maestro ha terminado");}      
         
     }
     
@@ -270,6 +282,7 @@ void activateRanging(){
     DW1000Ranging.setStopRanging(false);
     stop_ranging_requested = false;
     seen_first_range = false;
+    ranging_begin = current_time;
    
 }
 
@@ -277,7 +290,7 @@ void activateRanging(){
 void waitForResponse(uint16_t waiting_time){
 
     uint32_t t0 = millis(); 
-    if(DEBUG){Serial.println("Esperando para el Ack");}
+    //if(DEBUG){Serial.println("Esperando para el Ack");}
 
     
     while((uint32_t)(millis()-t0)<waiting_time){
@@ -303,40 +316,37 @@ void transmitUnicast(uint8_t message_type){
 
                     if(Existing_devices[i].mode_switch_pending == true){
 
-                        if(Existing_devices[i].is_responder == true){
+                        if(Existing_devices[i].is_responder == true && switch_to_initiator == true){
 
-                            switch_to_initiator = true;
-
+                            
                             if(DEBUG){
 
                                 Serial.print("Mode switch enviado a: ");
                                 Serial.print(Existing_devices[i].short_addr,HEX);
-                                Serial.print("Cambio a: ");
-                                Serial.println(switch_to_initiator ? " initiator." : " responder.");
-                            }
-
-                            DW1000Ranging.transmitModeSwitch(switch_to_initiator,target);
-                            waitForResponse(timeout);
-
-
-
-                        }
-
-                        if(Existing_devices[i].is_responder == false){
-
-                            switch_to_initiator = false;
-
-                            if(DEBUG){
-
-                                Serial.print("Mode switch enviado a: ");
-                                Serial.print(Existing_devices[i].short_addr,HEX);
-                                Serial.print("Cambio a: ");
+                                Serial.print("\tCambio a: ");
                                 Serial.println(switch_to_initiator ? " initiator." : " responder.");
                             }
 
                             DW1000Ranging.transmitModeSwitch(switch_to_initiator,target);
                             waitForResponse(timeout);
                             
+                        }
+
+                        if(Existing_devices[i].is_responder == false && switch_to_initiator == false){
+
+                            
+
+                            if(DEBUG){
+
+                                Serial.print("Mode switch enviado a: ");
+                                Serial.print(Existing_devices[i].short_addr,HEX);
+                                Serial.print("\tCambio a: ");
+                                Serial.println(switch_to_initiator ? " initiator." : " responder.");
+                            }
+
+                            DW1000Ranging.transmitModeSwitch(switch_to_initiator,target);
+                            waitForResponse(timeout);
+                                                                                   
                         }
 
 
@@ -352,7 +362,7 @@ void transmitUnicast(uint8_t message_type){
 
                         if(DEBUG){
                             Serial.print("Data request enviado a: ");
-                            Serial.print(Existing_devices[i].short_addr,HEX);
+                            Serial.println(Existing_devices[i].short_addr,HEX);
                             
                         }
 
@@ -401,35 +411,25 @@ void retryTransmission(uint8_t message_type){
 }
 
 
-
 void modeSwitchFailed(){
 
-    bool switching_to_initiator = false;
+    for (int i = 0; i < amount_devices; i++) {
 
-    for(int i = 0; i<amount_devices;i++){
-
-        if(Existing_devices[i].is_slave_anchor && mode_switch_pending == true){
-
-
+        if (Existing_devices[i].is_slave_anchor && Existing_devices[i].mode_switch_pending) {
             Existing_devices[i].mode_switch_pending = false;
-            bool switching_to_initiator = Existing_devices[i].is_responder;
-            Existing_devices[i].is_responder = !Existing_devices[i].is_responder;
-   
             
         }
-
     }
+
+
 
     mode_switch_pending = false;
     mode_switch_done = true;
     mode_switch_acks_received = 0;
+    expected_mode_switches = 0;
 
-    if(switching_to_initiator){
-        state = SLAVES_RANGING;
-    }
-    else{
-        state = DATA_REPORT;
-    }
+    if(DEBUG){Serial.println("Mode Switch fallido. Regresando a master ranging.");}
+    state = MASTER_RANGING;
 }
 
 
@@ -439,19 +439,16 @@ void DataReportFailed(){
 
         if(Existing_devices[i].is_slave_anchor && data_report_pending == true){
 
-
-
             Existing_devices[i].data_report_pending = false;
             
-            data_reports_received = 0;
-            data_report_pending = false;
-            
-            showData();
-
-            
         }
+
     }
 
+    data_reports_received = 0;
+    data_report_pending = false;
+    state = MASTER_RANGING;
+    if(DEBUG){Serial.println("Data report fallido. Regresando a master ranging");}
 
 }
 
@@ -494,19 +491,29 @@ void DataReport(byte* data){
 
             if(DEBUG){
                 Serial.print("Data report recibido de: ");
-                Serial.print(origin_short_addr,HEX);
+                Serial.println(origin_short_addr,HEX);
             }
 
         }
     }
     
+    if(DEBUG){
+        Serial.print("cantidad recibida --> ");
+        Serial.print(data_reports_received);
+
+        Serial.print("\tcantidad recibida --> ");
+        Serial.println(expected_data_reports);
+
+    }
     
     if(data_reports_received == expected_data_reports){
 
         data_report_pending = false;
+        data_reports_received = 0;
+        expected_data_reports = 0;
         showData();
 
-        if(DEBUG){Serial.println("vuelvo a master ranging");}
+        if(DEBUG){Serial.println("Data report hecho. vuelvo a master ranging");}
         state = MASTER_RANGING;
     }
     
@@ -520,6 +527,8 @@ void DataReport(byte* data){
 
 void ModeSwitchAck(bool isInitiator){
 
+    if (state != MODE_SWITCH) return;
+
     if(mode_switch_pending){ // To avoid false reads
         
         uint16_t origin_short_addr = DW1000Ranging.getDistantDevice()->getShortAddress();
@@ -532,39 +541,53 @@ void ModeSwitchAck(bool isInitiator){
                 Existing_devices[i].mode_switch_pending = false;
                 Existing_devices[i].is_responder =  !isInitiator;
                 
-                mode_switch_acks_received++;
-
-
-            }
-
-            if(DEBUG){
-                    Serial.print(" Cambio Realizado: ");
+                if(DEBUG){
+                    Serial.print("Cambio Realizado: ");
                     Serial.print(origin_short_addr,HEX);
                     Serial.print(" es --> ");
                     Serial.println(isInitiator ? "INITIATOR" : "RESPONDER");
-                }
+                }               
+                mode_switch_acks_received++;
+
+            }        
 
         }
 
         if(mode_switch_acks_received == expected_mode_switches){
 
 
+            if(DEBUG){
+                Serial.print("Mode switches expected --> ");
+                Serial.print(expected_mode_switches);
+
+                Serial.print("\tMS recibidos --> ");
+                Serial.println(mode_switch_acks_received);
+            }
+
             mode_switch_acks_received = 0;
             mode_switch_pending = false;
             mode_switch_done = true;
+            
 
-            if(isInitiator){
+            if(switch_to_initiator){
                 
                 state = SLAVES_RANGING; 
+                slaves_are_ranging = false;
+
+                if(DEBUG){
+                    Serial.println("cambiados todos a initiator. Paso a SLAVE RANGING");
+                }
             }
             else{
                 
                 state = DATA_REPORT;
+                if(DEBUG){
+                    Serial.println("Todos cambiados a responder. Paso a data report");
+                }
             }
+            switch_to_initiator = !switch_to_initiator;
+           
         }
-
-        
-
     }
 }
 
@@ -579,7 +602,8 @@ void loop(){
     if(state == MASTER_RANGING){
 
         if(!master_ranging){
-            Serial.println("El master comienza a hacer ranging");
+
+            if(DEBUG){Serial.println("El master comienza a hacer ranging");}
             master_ranging = true;
             activateRanging();
 
@@ -590,6 +614,7 @@ void loop(){
             if(seen_first_range && current_time - ranging_begin >= ranging_period){
 
                 stopRanging();
+                if(DEBUG){Serial.println("Maestro pide fin ranging. Pasando a mode switch");}
                 master_ranging = false;
                 state = MODE_SWITCH;
             }
@@ -602,11 +627,15 @@ void loop(){
         if(!slaves_are_ranging){
             slaves_are_ranging = true;
             slaves_ranging_begin = current_time;
+            if(DEBUG){Serial.println("Comienza el ranging del esclavo");}
         }
         
         else{
 
             if(current_time - slaves_ranging_begin > ranging_period){
+                if(DEBUG){
+                    Serial.println("El esclavo ha terminado su ranging");
+                }
                 slaves_are_ranging = false;
                 state = MODE_SWITCH;
             }
@@ -627,8 +656,16 @@ void loop(){
 
                 if(Existing_devices[i].is_slave_anchor && Existing_devices[i].active){
 
-                    Existing_devices[i].mode_switch_pending = true;
-                    expected_mode_switches++;
+                    if(switch_to_initiator == true){
+
+                        if(Existing_devices[i].is_responder){ Existing_devices[i].mode_switch_pending = true; expected_mode_switches++;}
+                    }
+                    
+                    else{
+
+                        if(Existing_devices[i].is_responder == false){Existing_devices[i].mode_switch_pending = true; expected_mode_switches++;}
+                    }
+                    
                 }
             }
 
@@ -645,12 +682,7 @@ void loop(){
 
             }
             
-
         }
-        
-        
-  
-
     }
 
     else if(state == DATA_REPORT){
@@ -658,6 +690,7 @@ void loop(){
         if(!data_report_pending){
             data_report_pending = true;
             data_report_started = current_time;
+            expected_data_reports = 0;
 
             for(int i = 0; i<amount_devices;i++){
 
@@ -679,11 +712,7 @@ void loop(){
                 if(DEBUG){Serial.println("Reintentando data report...");}
                 retryTransmission(MSG_DATA_REQUEST);
             }
-        }
-
-
-
-        
+        }       
     }
 
     else if(state == WAIT_SLAVES){
@@ -691,9 +720,11 @@ void loop(){
         if(!wait_slaves){
 
             wait_slaves = true;
+            slaves_active = false;
+
             mode_switch_pending = false;
             mode_switch_acks_received = 0;
-
+            
             data_report_pending = false;
             data_reports_received = 0;
 
@@ -703,16 +734,16 @@ void loop(){
                 Existing_devices[i].data_report_pending = false;
             }
 
+            if(DEBUG){Serial.println("Esperando a esclavos");}
+
         }
 
         else{
-
-            if(slaves_active = true){
+            if(slaves_active == true){
                 wait_slaves = false;
                 state = MASTER_RANGING;
+                if(DEBUG){Serial.println("Esclavos detectados");}
             }
-        }
-        
+        }   
     }
-
 }
