@@ -318,26 +318,31 @@ DW1000Device* DW1000RangingClass::searchDistantDevice(byte shortAddress[]) {
 	return nullptr;
 }
 
-DW1000Device* DW1000RangingClass::searchDeviceByUintShortAdd(uint16_t short_add) {
-
-	
-
-	byte sa[2];
-
-	sa[0] = (uint8_t)(short_add >> 8);
-	sa[1] = (uint8_t)(short_add & 0xFF);
 
 
-	for(uint16_t i = 0; i < _networkDevicesNumber; i++) { // TODO 8bit?
-		if(memcmp(sa, _networkDevices[i].getByteShortAddress(), 2) == 0) {
-			//we have found our device !
+DW1000Device* searchDeviceByShortAddHeader(uint8_t short_addr_header){
+
+/**
+* @brief Searches for a device in the local network using only the 1st byte (header) of its shortAddress.
+* Assumes that the first byte is unique (ex: 0xA1), and second one is 0x00.
+*
+* @param short_addr_header First byte of the shortAddress (uint8_t).
+* @return DW1000Device* - A pointer to the device (if found). If not, returns nullptr.
+*/
+
+	for(uint16_t i = 0; i < _networkDevicesNumber; i++) { 
+		
+		if(short_addr_header == _networkDevices[i].getShortAddressHeader()) {
+			// Found!
 			return &_networkDevices[i];
 		}
 	}
 
-	return nullptr;
-	
+	return nullptr; // Not found.
 }
+
+
+
 
 
 DW1000Device* DW1000RangingClass::getDistantDevice() {
@@ -1278,35 +1283,33 @@ void DW1000RangingClass::transmitDataReport(Measurement* measurements, int numMe
     // Variable "index" is used to fill up the data buffer.
     uint8_t index = SHORT_MAC_LEN + 1;
 
-    // 2 bytes for the slave's shortAddress
-    data[index++] = _currentShortAddress[0];
-    data[index++] = _currentShortAddress[1];
-
     // 1 byte for number of measurements that are going to be sent.
     data[index++] = numMeasures;
 
     // Before sending, I check if there's enough space for the full message:
 
-    size_t totalPayloadSize = 3 + numMeasures * 10;  // 3 "constant" bytes + 10 for each measure sent.
-    size_t totalMessageSize = SHORT_MAC_LEN + 1 + totalPayloadSize;
+    size_t totalPayloadSize = 1 + numMeasures * 5;  // 3 "constant" bytes + 10 for each measure sent.
+    size_t totalMessageSize = SHORT_MAC_LEN + 1 + totalPayloadSize; //+1 because of the message type.
 
     if (totalMessageSize > LEN_DATA) {
         if (DEBUG) {
-            Serial.println("Error: DATA_REPORT exceeds the size of the data[] byffer");
+            Serial.println("Error: DATA_REPORT exceeds the size of the data[] buffer");
         }
         return;  // If there isn't enough space, I return without sending it.
     }
 
-    // 10 bytes for each devices' measurement:
-	// 2 for the shortAddress of the measured device
-	// 4 for the float with the measured distance
-	// 4 for the rx Power measured in that communication. 
-
-    for (uint8_t i = 0; i < numMeasures; i++) {
-        memcpy(data + index, &measurements[i].short_addr_dest, 2); index += 2;
-        memcpy(data + index, &measurements[i].distance, 4); index += 4;
-        memcpy(data + index, &measurements[i].rxPower, 4);   index += 4;
-    }
+    //1 byte for the destiny's short Address
+    data[index++] = (uint8_t)measurements[i].short_addr_dest;
+    
+    // Distante measured (sent as cm to reduce message length)
+    uint16_t distance_cm = (uint16_t)(measurements[i].distance * 100.0f);
+    memcpy(data + index, &distance_cm, 2); 
+    index += 2;
+    
+    // 2 bytes for the rx power. Sent as 2 bytes.
+    int16_t rxPower_tx = (int16_t)(measurements[i].rxPower * 100.0f); // Using a signed integer (int instead o uint), the negative sign is saved correctly.
+    memcpy(data + index, &rxPower_tx, 2); 
+    index += 2;
 
     transmit(data); //Finally, sends the message
 }
