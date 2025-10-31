@@ -59,8 +59,8 @@
 
 // Struct to handle the known measurements among the system's devices:
 struct Measurement {
-    uint16_t short_addr_origin;   
-    uint16_t short_addr_dest;
+    uint8_t short_addr_origin;   
+    uint8_t short_addr_dest;
     float distance;     // Last measured distance (in meters)
     float rxPower;      // Last RX power measured with the destiny (in dBm)
     bool active;        // Checks if the destiny device is active. 
@@ -142,7 +142,7 @@ public:
 
 	static DW1000Device* getDistantDevice();
 	static DW1000Device* searchDistantDevice(byte shortAddress[]);
-	static DW1000Device* searchDeviceByUintShortAdd(uint16_t shortAddress);
+	static DW1000Device* searchDeviceByShortAddHeader(uint8_t short_addr_header);
 	
 	//FOR DEBUGGING
 	static void visualizeDatas(byte datas[]);
