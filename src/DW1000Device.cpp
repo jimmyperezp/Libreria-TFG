@@ -59,31 +59,20 @@ byte* DW1000Device::getByteAddress() {
 	return _ownAddress;
 }
 
-/*
-String DW1000Device::getAddress(){
-    char string[25];
-    sprintf(string, "%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X",
-            _ownAddress[0], _ownAddress[1], _ownAddress[2], _ownAddress[3], _ownAddress[4], _ownAddress[5], _ownAddress[6], _ownAddress[7]);
-    return String(string);
-}*/
+
 
 byte* DW1000Device::getByteShortAddress() {
 	return _shortAddress;
 }
 
-/*
-String DW1000Device::getShortAddress(){
-    char string[6];
-    sprintf(string, "%02X:%02X",
-            _shortAddress[0], _shortAddress[1]);
-    return String(string);
-}
-*/
 
 uint16_t DW1000Device::getShortAddress() {
 	return _shortAddress[1]*256+_shortAddress[0];
 }
 
+uint8_t DW1000Device::getShortAddressHeader(){
+	return _shortAddress[0];
+}
 
 boolean DW1000Device::isAddressEqual(DW1000Device* device) {
 	return memcmp(this->getByteAddress(), device->getByteAddress(), 8) == 0;

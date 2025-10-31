@@ -73,10 +73,11 @@ public:
 	
 	int8_t getIndex() { return _index; }
 	
-	//String getAddress();
+
 	byte* getByteShortAddress();
 	uint16_t getShortAddress();
-	//String getShortAddress();
+	uint8_t getShortAddressHeader();
+
 	
 	float getRange();
 	float getRXPower();
