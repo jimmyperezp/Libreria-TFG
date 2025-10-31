@@ -46,7 +46,7 @@ uint8_t state = 1;
 #define DATA_REPORT 4
 #define WAIT_SLAVE 5
 
-static bool master_ranging = false;
+static bool master_is_ranging = false;
 static bool seen_first_range = false;
 static bool stop_ranging_requested = false;
 static bool slave_ranging = false;
@@ -57,9 +57,6 @@ static bool data_report_pending = false;
 static bool slave_is_responder = true;
 static bool slave_disconnected = true;
 static bool waiting_slaves = false;
-
-uint8_t MSG_DATA_REQUEST = 1;
-uint8_t MSG_MODE_SWITCH = 2;
 
 uint8_t slave_position = 0;
 uint8_t num_retries = 0;
@@ -240,11 +237,9 @@ void retryTransmission(uint8_t message_type){
 
     if(num_retries == 5){
 
-        num_retries = 0;
-                                                  
+        num_retries = 0;                                            
 
         if(message_type == MSG_MODE_SWITCH){
-            
             
             mode_switch_pending = false;
 
@@ -261,8 +256,7 @@ void retryTransmission(uint8_t message_type){
         
         slave_is_responder = isSlaveResponder();
         state =  MASTER_RANGING;
-         
-               
+
     }
 }
 
@@ -288,7 +282,7 @@ void showData(){
     Serial.println("--------------------------------------------------------------------");
     
 }
-                
+
 
 void newRange(){
 
@@ -388,7 +382,7 @@ void activateRanging(){
     stop_ranging_requested = false;
     
     seen_first_range = false;
-   
+
 }
 
 
@@ -496,20 +490,21 @@ void loop(){
 
     if(state == MASTER_RANGING){
 
-        if(!master_ranging){
+        if(!master_is_ranging){
             Serial.println("El master comienza a hacer ranging");
-            master_ranging = true;
+            master_is_ranging = true;
             activateRanging();
 
         }
 
-        if(master_ranging){
+        if(master_is_ranging){
 
             if(seen_first_range && current_time - ranging_begin >= ranging_period){
 
                 stopRanging();
-                master_ranging = false;
+                master_is_ranging = false;
                 state = MODE_SWITCH;
+                if(DEBUG){Serial.println("Ranging del maestro finalizado. Paso a mode switch");}
             }
         }
 
@@ -583,11 +578,9 @@ void loop(){
                 
                     if(DEBUG){Serial.println("Reintentando data report...");}
                     retryTransmission(MSG_DATA_REQUEST);
-                                               
+
                 }
         }
-
-        
     }
 
     else if(state == WAIT_SLAVE){
@@ -600,9 +593,9 @@ void loop(){
         else{
         
             if(!slave_disconnected){
-               Serial.println("Esclavo detectado. Comienza el ciclo");
-               waiting_slaves = false;
-               state = MASTER_RANGING;
+                Serial.println("Esclavo detectado. Comienza el ciclo");
+                waiting_slaves = false;
+                state = MASTER_RANGING;
             }
         }
     }
