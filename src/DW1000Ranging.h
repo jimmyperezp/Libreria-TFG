@@ -79,6 +79,10 @@ struct ExistingDevice{
 	
 };
 
+uint8_t MSG_DATA_REQUEST = 1;
+uint8_t MSG_MODE_SWITCH = 2;
+uint8_t MSG_MODE_SWITCH_ACK = 3;
+
 
 class DW1000RangingClass {
 public:
@@ -151,7 +155,7 @@ public:
 	//Request: sent by the master to the slaves.
 	void transmitModeSwitch(bool toInitiator, DW1000Device* device = nullptr);
 	//Acknowledgement: sent by the master back to the master.
-	void transmitModeSwitchAck(DW1000Device* device,bool isInitiator);
+	void transmitModeSwitchAck(DW1000Device* device = nullptr,bool isInitiator);
 
 	void transmitStopRanging(DW1000Device* device);
 
