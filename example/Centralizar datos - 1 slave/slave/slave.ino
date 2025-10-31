@@ -178,6 +178,12 @@ void ModeSwitchRequested(byte* short_addr_requester, bool toInitiator){
 
         DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
         if(requester){ DW1000Ranging.transmitModeSwitchAck(requester,toInitiator);}
+        else{
+            if(DEBUG){
+                Serial.println("Dispositivo no encontrado. Enviando por broadcast");
+                DW1000Ranging.transmitModeSwitchAck(nullptr,toInitiator);
+            }
+        }
     }
     else{
 
@@ -185,9 +191,18 @@ void ModeSwitchRequested(byte* short_addr_requester, bool toInitiator){
         
         // Preserve board type on role switch
         DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
-        if(requester){ DW1000Ranging.transmitModeSwitchAck(requester,toInitiator);}
+        if(requester){ 
+            DW1000Ranging.transmitModeSwitchAck(requester,toInitiator);
+        }
+        else{
+            if(DEBUG){
+                Serial.println("Dispositivo no encontrado. Enviando por broadcast");
+                DW1000Ranging.transmitModeSwitchAck(nullptr,toInitiator);
+            }
+        }
     }
 } 
+
 
 void stopRangingRequested(byte* short_addr_requester){
 
@@ -199,7 +214,6 @@ void stopRangingRequested(byte* short_addr_requester){
     
     
 }
-
 
 
 void newRange(){
@@ -251,6 +265,6 @@ void inactiveDevice(DW1000Device *device){
 void loop(){
 
     DW1000Ranging.loop();
-       
+
 
 }
