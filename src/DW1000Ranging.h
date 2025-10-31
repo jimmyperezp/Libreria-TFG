@@ -69,7 +69,7 @@ struct Measurement {
 // Struct to know the existing devices of the system. Used to send messages via unicast.
 struct ExistingDevice{
 	
-	uint16_t short_addr;
+	uint8_t short_addr;
 	byte byte_short_addr[2];
 	bool is_slave_anchor;
 	bool is_responder;
