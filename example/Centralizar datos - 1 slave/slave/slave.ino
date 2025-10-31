@@ -20,7 +20,7 @@ const uint8_t PIN_SS = 4;   // spi select pin
 // Nomenclature: A for master, B for slave, C for tags
 #define DEVICE_ADDR "B1:00:5B:D5:A9:9A:E2:9C" 
 
-uint16_t own_short_addr = 0; //I'll get it during the setup.
+uint8_t own_short_addr = 0; //I'll get it during the setup.
 uint16_t Adelay = 16580;
 #define IS_MASTER false
 #define DEBUG true
@@ -59,28 +59,23 @@ void setup(){
     DW1000Ranging.attachNewDevice(newDevice);
     DW1000Ranging.attachInactiveDevice(inactiveDevice);   
 
-      
     DW1000Ranging.attachModeSwitchRequested(ModeSwitchRequested);
-
     DW1000Ranging.attachDataRequested(DataRequested);
-
     DW1000Ranging.attachStopRangingRequested(stopRangingRequested);
 
-  
     DW1000Ranging.startAsResponder(DEVICE_ADDR,DW1000.MODE_1, false,SLAVE_ANCHOR);
-        
-
 
     own_short_addr = getOwnShortAddress();
     // I save the own_short_addr after the device has been set up propperly
 }
 
-uint16_t getOwnShortAddress() {
+uint8_t getOwnShortAddress() {
     byte* sa = DW1000Ranging.getCurrentShortAddress();
-    return ((uint16_t)sa[0] << 8) | sa[1];
+    //return ((uint16_t)sa[0] << 8) | sa[1];
+    return sa[0];
 }
 
-int searchDevice(uint16_t own_sa,uint16_t dest_sa){
+int searchDevice(uint8_t own_sa,uint8_t dest_sa){
     
     for (int i=0 ; i < amountDevices ; i++){
 
@@ -92,7 +87,7 @@ int searchDevice(uint16_t own_sa,uint16_t dest_sa){
     return -1; // if not, returns -1
 }
 
-void logMeasure(uint16_t own_sa,uint16_t dest_sa, float dist, float rx_pwr){
+void logMeasure(uint8_t own_sa,uint8_t dest_sa, float dist, float rx_pwr){
 
     // Firstly, checks if that communication has been logged before
     int index = searchDevice(own_sa,dest_sa);
@@ -137,7 +132,7 @@ void DataRequested(byte* short_addr_requester){
     
     
     Serial.println("Data report pedido");
-    uint16_t numMeasures = amountDevices;
+    uint8_t numMeasures = amountDevices;
 
     if (DEBUG) {
         Serial.print("DATA REQUEST recibido de: ");
@@ -168,7 +163,7 @@ void DataRequested(byte* short_addr_requester){
     DW1000Ranging.transmitDataReport((Measurement*)measurements, numMeasures, requester);
     clearMeasures();
     Serial.println("lo envío y rehabilito el ranging");
- 
+
 }
 
 void ModeSwitchRequested(byte* short_addr_requester, bool toInitiator){
@@ -183,7 +178,6 @@ void ModeSwitchRequested(byte* short_addr_requester, bool toInitiator){
 
         DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
         if(requester){ DW1000Ranging.transmitModeSwitchAck(requester,toInitiator);}
-       
     }
     else{
 
@@ -210,26 +204,15 @@ void stopRangingRequested(byte* short_addr_requester){
 
 void newRange(){
 
-    uint16_t dest_sa = DW1000Ranging.getDistantDevice()->getShortAddress();
+    uint8_t destiny_short_addr = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
     float dist = DW1000Ranging.getDistantDevice()->getRange();
     float rx_pwr = DW1000Ranging.getDistantDevice()->getRXPower();
 
-    logMeasure(own_short_addr,dest_sa, dist, rx_pwr);
+    logMeasure(own_short_addr,destiny_short_addr, dist, rx_pwr);
 
     if(stop_ranging_requested){
 
-        DW1000Device* requester = DW1000Ranging.searchDistantDevice(short_addr_master);
         if(DEBUG){Serial.println("El ranging ha terminado");}
-        
-        if(requester){
-            DW1000Ranging.transmitStopRangingAck(requester);
-        }
-        else{
-            DW1000Ranging.transmitStopRangingAck(nullptr);
-        }
-
-        //state = SWITCH_SLAVE;
-        
         
     }
     else{
@@ -242,7 +225,7 @@ void newRange(){
 
     if(DEBUG){
         Serial.print("Desde: ");
-        Serial.print(dest_sa,HEX);
+        Serial.print(destiny_short_addr,HEX);
         Serial.print("\t Distancia: ");
         Serial.print(DW1000Ranging.getDistantDevice()->getRange());
         Serial.print(" m");
@@ -259,9 +242,9 @@ void newDevice(DW1000Device *device){
 
 void inactiveDevice(DW1000Device *device){
 
-    uint16_t dest_sa = device->getShortAddress();
+    uint8_t destiny_short_addr = device->getShortAddressHeader();
     Serial.print("Lost connection with device: ");
-    Serial.println(dest_sa, HEX);
+    Serial.println(destiny_short_addr, HEX);
     
 }
 

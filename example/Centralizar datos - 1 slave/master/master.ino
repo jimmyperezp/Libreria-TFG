@@ -19,7 +19,7 @@ const uint8_t PIN_SS = 4;   // spi select pin
 
 #define IS_MASTER true
 #define DEVICE_ADDR "A1:00:5B:D5:A9:9A:E2:9C" 
-uint16_t own_short_addr = 0; 
+uint8_t own_short_addr = 0; 
 uint16_t Adelay = 16580;
 
 #define MAX_DEVICES 5
@@ -98,12 +98,13 @@ void setup(){
 
 
 uint16_t getOwnShortAddress() {
-        byte* sa = DW1000Ranging.getCurrentShortAddress();
-    return ((uint16_t)sa[0] << 8) | sa[1];
+    byte* sa = DW1000Ranging.getCurrentShortAddress();
+    //return ((uint16_t)sa[0] << 8) | sa[1];
+    return (uint8_t)sa[0];
 }
 
 
-int searchDevice(uint16_t own_sa,uint16_t dest_sa){
+int searchDevice(uint8_t own_sa,uint8_t dest_sa){
     
     for (int i=0 ; i < amount_measurements ; i++){
 
@@ -119,7 +120,7 @@ int searchDevice(uint16_t own_sa,uint16_t dest_sa){
 void registerDevice(DW1000Device *device){
 
 
-    Existing_devices[amount_devices].short_addr = device->getShortAddress();
+    Existing_devices[amount_devices].short_addr = device->getShortAddressHeader();
     memcpy(Existing_devices[amount_devices].byte_short_addr, device->getByteShortAddress(), 2);
     uint8_t board_type = device->getBoardType();
 
@@ -170,8 +171,8 @@ bool isSlaveResponder(){
 
 void transmitUnicast(uint8_t message_type){
 
-    
-    DW1000Device* target = DW1000Ranging.searchDistantDevice(Existing_devices[getSlaveIndex()].byte_short_addr);
+
+    DW1000Device* target = DW1000Ranging.searchDeviceByShortAddHeader(Existing_devices[getSlaveIndex()].short_addr);
 
     if(target){
 
@@ -204,6 +205,10 @@ void transmitUnicast(uint8_t message_type){
             waitForResponse(timeout);
 
         }
+    }
+
+    else{
+        if(DEBUG){Serial.println("No encontrado el dispositivo destino. Transmisión no enviada.");}
     }
 
 }
@@ -287,11 +292,11 @@ void showData(){
 
 void newRange(){
 
-    uint16_t origin_short_addr = DW1000Ranging.getDistantDevice()->getShortAddress();
+    uint8_t destiny_short_addr = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
     float dist = DW1000Ranging.getDistantDevice()->getRange();
     float rx_pwr = DW1000Ranging.getDistantDevice()->getRXPower();
 
-    logMeasure(own_short_addr,origin_short_addr, dist, rx_pwr);
+    logMeasure(own_short_addr,destiny_short_addr, dist, rx_pwr);
     
 
     if(stop_ranging_requested){
@@ -312,7 +317,7 @@ void newRange(){
 void newDevice(DW1000Device *device){
 
     Serial.print("New Device: ");
-    Serial.println(device->getShortAddress(), HEX);
+    Serial.println(device->getShortAddressHeader(), HEX);
 
     registerDevice(device);
 
@@ -322,12 +327,12 @@ void newDevice(DW1000Device *device){
 
 void inactiveDevice(DW1000Device *device){
 
-    uint16_t dest_sa = device->getShortAddress();
+    uint8_t origin_short_addr = device->getShortAddressHeader();
     Serial.print("Lost connection with device: ");
-    Serial.println(dest_sa, HEX);
+    Serial.println(origin_short_addr, HEX);
     amount_devices--;
     
-    if(dest_sa == Existing_devices[getSlaveIndex()].short_addr){
+    if(origin_short_addr == Existing_devices[getSlaveIndex()].short_addr){
 
         slave_disconnected = true;
         if(mode_switch_pending){
@@ -344,7 +349,7 @@ void inactiveDevice(DW1000Device *device){
 }
 
 
-void logMeasure(uint16_t own_sa,uint16_t dest_sa, float dist, float rx_pwr){
+void logMeasure(uint8_t own_sa,uint8_t dest_sa, float dist, float rx_pwr){
 
     // Firstly, checks if that communication has been logged before
     int index = searchDevice(own_sa,dest_sa);
@@ -399,7 +404,7 @@ void ModeSwitchAck(bool isInitiator){
 
     if(mode_switch_pending){ // To avoid false reads
         
-        uint16_t origin_short_addr = DW1000Ranging.getDistantDevice()->getShortAddress();
+        uint8_t origin_short_addr = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
 
         if(getSlaveIndex()>0){
             if(Existing_devices[getSlaveIndex()].short_addr == origin_short_addr){
@@ -430,35 +435,38 @@ void ModeSwitchAck(bool isInitiator){
         }
 
     }
-}
-              
+}          
+
 
 void DataReport(byte* data){
 
     
-    uint16_t index = SHORT_MAC_LEN + 1;
-
-    uint16_t origin_short_addr = ((uint16_t)data[index+1] << 8) | data[index];
-    
-    index += 2;
-
-    uint16_t numMeasures = data[index++];
+    uint8_t origin_short_addr = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
+    uint16_t index = SHORT_MAC_LEN+1;
+    uint8_t numMeasures = data[index++];
 
     //First, I check if the size is OK:
-    if(numMeasures*10>LEN_DATA-SHORT_MAC_LEN-4){
-        
+    if(numMeasures*5>LEN_DATA-SHORT_MAC_LEN-4){
+        // x5 because every measure takes 5 bytes.
         Serial.println("The Data received is too long");
         return;
     }
 
     for (int i = 0; i < numMeasures; i++) {
 
-        uint16_t destiny_short_addr = ((uint16_t)data[index] << 8) | data[index + 1];
-        index += 2;
+        uint16_t destiny_short_addr = data[index++];
 
-        float distance, rxPower;
-        memcpy(&distance, data + index, 4); index += 4;
-        memcpy(&rxPower,   data + index, 4); index += 4;
+        uint16_t distance_cm;
+        memcpy(&distance_cm, data + index, 2); 
+        index += 2;
+        // Now, transforms the distance in cm to distance in meters.
+        float distance = (float)distance_cm / 100.0f;
+
+        int16_t _rxPower; // int16_t (already has a sign)
+        memcpy(&_rxPower, data + index, 2); 
+        index += 2; 
+        // Same as before, now I transform it.
+        float rxPower = (float)rxPower_tx / 100.0f;
 
         logMeasure(origin_short_addr, destiny_short_addr, distance, rxPower);
     }
