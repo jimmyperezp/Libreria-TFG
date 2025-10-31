@@ -17,8 +17,8 @@ const uint8_t PIN_IRQ = 34; // irq pin
 const uint8_t PIN_SS = 4;   // spi select pin
 
 // Devices' own definitions:
-// Nomenclature: A for Anchors, B for Tags
-#define DEVICE_ADDR "A2:00:5B:D5:A9:9A:E2:9C" 
+// Nomenclature: A for master, B for slave, C for tags
+#define DEVICE_ADDR "B1:00:5B:D5:A9:9A:E2:9C" 
 
 uint16_t own_short_addr = 0; //I'll get it during the setup.
 uint16_t Adelay = 16580;

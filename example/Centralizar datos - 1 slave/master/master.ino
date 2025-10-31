@@ -287,11 +287,11 @@ void showData(){
 
 void newRange(){
 
-    uint16_t dest_sa = DW1000Ranging.getDistantDevice()->getShortAddress();
+    uint16_t origin_short_addr = DW1000Ranging.getDistantDevice()->getShortAddress();
     float dist = DW1000Ranging.getDistantDevice()->getRange();
     float rx_pwr = DW1000Ranging.getDistantDevice()->getRXPower();
 
-    logMeasure(own_short_addr,dest_sa, dist, rx_pwr);
+    logMeasure(own_short_addr,origin_short_addr, dist, rx_pwr);
     
 
     if(stop_ranging_requested){

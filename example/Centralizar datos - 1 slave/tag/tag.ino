@@ -17,7 +17,7 @@ const uint8_t PIN_SS = 4;   // spi select pin
 
 // TAG antenna delay defaults to 16384
 
-#define DEVICE_ADDR "B1:00:22:EA:82:60:3B:9C"
+#define DEVICE_ADDR "C1:00:22:EA:82:60:3B:9C"
 
 void setup()
 {
