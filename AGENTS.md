@@ -27,7 +27,7 @@ Para hacer esto, tuve en cuenta lo siguiente:
 
 ## Estructura de la librería
 
-Los archivos principales son DW1000Ranging, DW1000 y DW1000Device. 
+Los archivos principales son DW1000Ranging, DW1000 y DW1000Device 
 
 ### DW1000Ranging
 
@@ -60,9 +60,8 @@ Son de gran importancia.
 
 ## Mejoras pendientes del código
 
-El último paso que logré fue realizar las peticiones de los distintos tipos de mensajes por unicast. Ahora falta por mejorar la gestión interna de las banderas. 
+Ahora mismo, consigo que el código funcione, pero únicamente si existen 1 maestro, 1 esclavo y 1 tag. Falta optimizar y escalar el código para prepararlo para más dispositivos de tipo slave. 
 
-Lógicamente, me interesará que las peticiones y recepciones se hagan de todos los dispositivos, pero actualmente, está dimensionado para solo 1 anchor esclavo. Tendría que preparar el código para poder escalarlo con más placas, asegurándome de que todas hagan los cambios correctos. 
 
 - Gestionar la lógica para activar las banderas y modificar los estados cuando existe más de un esclavo. 
 
