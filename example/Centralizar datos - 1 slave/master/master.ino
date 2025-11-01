@@ -15,7 +15,7 @@ const uint8_t PIN_RST = 27; // reset pin
 const uint8_t PIN_IRQ = 34; // irq pin
 const uint8_t PIN_SS = 4;   // spi select pin
 
-#define DEBUG false
+#define DEBUG true
 
 #define IS_MASTER true
 #define DEVICE_ADDR "A1:00:5B:D5:A9:9A:E2:9C" 
@@ -60,6 +60,11 @@ static bool waiting_slaves = false;
 
 uint8_t slave_position = 0;
 uint8_t num_retries = 0;
+
+uint8_t MSG_DATA_REQUEST = 1;
+uint8_t MSG_MODE_SWITCH = 2;
+uint8_t MSG_MODE_SWITCH_ACK = 3;
+
 
 
 /* CODE */
@@ -460,13 +465,13 @@ void DataReport(byte* data){
         memcpy(&_rxPower, data + index, 2); 
         index += 2; 
         // Same as before, now I transform it.
-        float rxPower = (float)rxPower_tx / 100.0f;
+        float rxPower = (float)_rxPower / 100.0f;
 
         logMeasure(origin_short_addr, destiny_short_addr, distance, rxPower);
     }
     if(DEBUG){
         Serial.print("Data report recibido de: ");
-        Serial.print(origin_short_addr,HEX);
+        Serial.println(origin_short_addr,HEX);
     }
     
     if(data_report_pending){
@@ -491,7 +496,7 @@ void loop(){
     if(state == MASTER_RANGING){
 
         if(!master_is_ranging){
-            Serial.println("El master comienza a hacer ranging");
+            if(DEBUG) {Serial.println("El master comienza a hacer ranging");}
             master_is_ranging = true;
             activateRanging();
 
@@ -595,6 +600,7 @@ void loop(){
             if(!slave_disconnected){
                 Serial.println("Esclavo detectado. Comienza el ciclo");
                 waiting_slaves = false;
+                slave_is_responder = false;
                 state = MASTER_RANGING;
             }
         }
