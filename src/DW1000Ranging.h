@@ -155,7 +155,7 @@ public:
 	//Request: sent by the master to the slaves.
 	void transmitModeSwitch(bool toInitiator, DW1000Device* device = nullptr);
 	//Acknowledgement: sent by the master back to the master.
-	void transmitModeSwitchAck(DW1000Device* device = nullptr,bool isInitiator);
+	void transmitModeSwitchAck(DW1000Device* device,bool isInitiator);
 
 	void transmitStopRanging(DW1000Device* device);
 
