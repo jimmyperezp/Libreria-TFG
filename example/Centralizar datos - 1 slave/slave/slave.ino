@@ -177,7 +177,13 @@ void ModeSwitchRequested(byte* short_addr_requester, bool toInitiator){
         
 
         DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
-        if(requester){ DW1000Ranging.transmitModeSwitchAck(requester,toInitiator);}
+        if(requester){ 
+            DW1000Ranging.transmitModeSwitchAck(requester,toInitiator);
+            if(DEBUG){
+                Serial.print("Enviando el ACK por unicast a -->");
+                Serial.println(requester->getShortAddressHeader(),HEX);
+            }
+        }
         else{
             if(DEBUG){
                 Serial.println("Dispositivo no encontrado. Enviando por broadcast");
