@@ -22,6 +22,7 @@ const uint8_t PIN_SS = 4;   // spi select pin
 
 uint8_t own_short_addr = 0; //I'll get it during the setup.
 uint16_t Adelay = 16580;
+
 #define IS_MASTER false
 #define DEBUG true
 
@@ -172,7 +173,7 @@ void ModeSwitchRequested(byte* short_addr_requester, bool toInitiator){
 
     if(toInitiator == true){
 
-        Serial.println("Pasando a INITIATOR");
+        if(DEBUG) {Serial.println("Pasando a INITIATOR");}
         DW1000.idle();
         
 
@@ -193,12 +194,17 @@ void ModeSwitchRequested(byte* short_addr_requester, bool toInitiator){
     }
     else{
 
+        if(DEBUG){Serial.println("Pasando a responder");}
         DW1000.idle();
         
         // Preserve board type on role switch
         DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
         if(requester){ 
             DW1000Ranging.transmitModeSwitchAck(requester,toInitiator);
+            if(DEBUG){
+                Serial.print("Enviando el ACK por unicast a -->");
+                Serial.println(requester->getShortAddressHeader(),HEX);
+            }
         }
         else{
             if(DEBUG){
