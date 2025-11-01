@@ -79,9 +79,6 @@ struct ExistingDevice{
 	
 };
 
-uint8_t MSG_DATA_REQUEST = 1;
-uint8_t MSG_MODE_SWITCH = 2;
-uint8_t MSG_MODE_SWITCH_ACK = 3;
 
 
 class DW1000RangingClass {
