@@ -320,17 +320,11 @@ DW1000Device* DW1000RangingClass::searchDistantDevice(byte shortAddress[]) {
 
 
 
-DW1000Device* searchDeviceByShortAddHeader(uint8_t short_addr_header){
+DW1000Device* DW1000RangingClass::searchDeviceByShortAddHeader(uint8_t short_addr_header){
 
-/**
-* @brief Searches for a device in the local network using only the 1st byte (header) of its shortAddress.
-* Assumes that the first byte is unique (ex: 0xA1), and second one is 0x00.
-*
-* @param short_addr_header First byte of the shortAddress (uint8_t).
-* @return DW1000Device* - A pointer to the device (if found). If not, returns nullptr.
-*/
 
-	for(uint16_t i = 0; i < _networkDevicesNumber; i++) { 
+
+	for(uint8_t i = 0; i < _networkDevicesNumber; i++) { 
 		
 		if(short_addr_header == _networkDevices[i].getShortAddressHeader()) {
 			// Found!
@@ -1298,18 +1292,21 @@ void DW1000RangingClass::transmitDataReport(Measurement* measurements, int numMe
         return;  // If there isn't enough space, I return without sending it.
     }
 
-    //1 byte for the destiny's short Address
-    data[index++] = (uint8_t)measurements[i].short_addr_dest;
-    
-    // Distante measured (sent as cm to reduce message length)
-    uint16_t distance_cm = (uint16_t)(measurements[i].distance * 100.0f);
-    memcpy(data + index, &distance_cm, 2); 
-    index += 2;
-    
-    // 2 bytes for the rx power. Sent as 2 bytes.
-    int16_t rxPower_tx = (int16_t)(measurements[i].rxPower * 100.0f); // Using a signed integer (int instead o uint), the negative sign is saved correctly.
-    memcpy(data + index, &rxPower_tx, 2); 
-    index += 2;
+	for (uint8_t i = 0; i < numMeasures; i++) {
+    	//1 byte for the destiny's short Address
+    	data[index++] = (uint8_t)measurements[i].short_addr_dest;
+		
+    	// Distante measured (sent as cm to reduce message length)
+    	uint16_t distance_cm = (uint16_t)(measurements[i].distance * 100.0f);
+    	memcpy(data + index, &distance_cm, 2); 
+    	index += 2;
+		
+    	// 2 bytes for the rx power. Sent as 2 bytes.
+    	int16_t rxPower_tx = (int16_t)(measurements[i].rxPower * 100.0f); // Using a signed integer (int instead o uint), the negative sign is saved correctly.
+    	memcpy(data + index, &rxPower_tx, 2); 
+    	index += 2;
+	}
+	
 
     transmit(data); //Finally, sends the message
 }
