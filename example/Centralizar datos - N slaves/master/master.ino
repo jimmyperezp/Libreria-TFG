@@ -212,41 +212,46 @@ void inactiveDevice(DW1000Device *device){
     Serial.print("Lost connection with device: ");
     Serial.println(origin_short_addr, HEX);
     
-    
-    
-    for(int i = 0; i<amount_devices; i++){
-
+    bool was_a_slave = false;
+    for(int i = 0; i < amount_devices; i++){
         if(Existing_devices[i].short_addr == origin_short_addr){
 
-            Existing_devices[i].active = false;
+            Existing_devices[i].active = false; // <-- SOLO MARCAR, NO BORRAR
 
             if(Existing_devices[i].is_slave_anchor){
-            
-                amount_slaves--;
-                if(amount_slaves == 0){
-                    slaves_discovered = false;
-                    
-                }
+                was_a_slave = true;
             }
-        
-            else if(Existing_devices[i].data_report_pending){
-                Existing_devices[i].data_report_pending = false;
-                state = DATA_REPORT;
-
-            }
-
-            else if(Existing_devices[i].mode_switch_pending){
-
-                Existing_devices[i].mode_switch_pending = false;
-                state = INITIATOR_HANDOFF;
-            }
-        
+            break; 
         } 
     }
 
-    amount_devices--;
+
+    if(was_a_slave){
+        if(DEBUG){Serial.println("A SLAVE has disconnected! Aborting current cycle, returning to MASTER_RANGING.");}
+
+        // Resetea todas las banderas de estado transitorio de la FSM
+        master_is_ranging = false;
+        initiator_handoff_started = false;
+        data_report_started = false;
+        waiting_initiator_switch_ack = false;
+        waiting_responder_switch_ack = false;
+        slave_is_ranging = false;
+        waiting_data_report = false;
+        num_retries = 0;
+
+
+        for (int i = 0; i < amount_devices; i++) {
+            Existing_devices[i].mode_switch_pending = false;
+            Existing_devices[i].data_report_pending = false;
+        }
+
+
+        state = MASTER_RANGING; 
+    }
+    
     
 }
+
     
     
 
@@ -499,6 +504,18 @@ void DataReport(byte* data){
     
     uint8_t origin_short_addr = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
     
+    for (int i = 0; i < amount_devices; i++) {
+        if (Existing_devices[i].short_addr == origin_short_addr && !Existing_devices[i].active) {
+            Existing_devices[i].active = true;
+            if(DEBUG){ Serial.print("Device RE-ACTIVATED via Report: "); Serial.println(origin_short_addr, HEX); }
+            if (Existing_devices[i].is_slave_anchor) {
+                slaves_discovered = true;
+            }
+            break;
+        }
+    }
+
+    
     if(Existing_devices[slaves_indexes[reporting_slave_index]].short_addr == origin_short_addr && Existing_devices[slaves_indexes[reporting_slave_index]].data_report_pending == true){
 
         Existing_devices[slaves_indexes[reporting_slave_index]].data_report_pending = false;
@@ -555,6 +572,17 @@ void DataReport(byte* data){
 void ModeSwitchAck(bool is_initiator){
 
     uint8_t origin_short_addr = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
+
+    for (int i = 0; i < amount_devices; i++) {
+        if (Existing_devices[i].short_addr == origin_short_addr && !Existing_devices[i].active) {
+            Existing_devices[i].active = true;
+            if(DEBUG){ Serial.print("Device RE-ACTIVATED via ACK: "); Serial.println(origin_short_addr, HEX); }
+            if (Existing_devices[i].is_slave_anchor) {
+                slaves_discovered = true;
+            }
+            break;
+        }
+    }
 
     if(Existing_devices[slaves_indexes[active_slave_index]].short_addr == origin_short_addr && Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending == true){
 
