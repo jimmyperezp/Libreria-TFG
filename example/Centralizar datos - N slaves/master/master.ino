@@ -24,7 +24,7 @@ uint8_t amount_measurements = 0;
 ExistingDevice Existing_devices[MAX_DEVICES];
 uint8_t amount_devices = 0;
 
-slaves_indexes[];
+uint8_t slaves_indexes[MAX_DEVICES];
 uint8_t amount_slaves = 0;
 
 
@@ -60,8 +60,13 @@ unsigned long last_retry = 0;
 uint8_t num_retries = 0;
 
 
+/*Flags used in activating and stop ranging*/
+static bool stop_ranging_requested = false;
+static bool seen_first_range = false;
+
 /*Flags used in state = discovering*/
 static bool discovering = false;
+static bool slaves_discovered = false;
 
 /*Flags used in state = master_ranging*/
 static bool master_is_ranging = false;
@@ -114,7 +119,7 @@ void setup(){
 
     own_short_addr = getOwnShortAddress();
 
-    state = WAIT_SLAVES;
+    state = DISCOVERY;
     
 }
 
@@ -160,7 +165,7 @@ void registerDevice(DW1000Device *device){
         Existing_devices[amount_devices].is_slave_anchor = true;
         slaves_indexes[amount_slaves] = amount_devices;
         
-        slaves_active = true;
+        slaves_discovered = true;
         amount_slaves ++;
 
         if(DEBUG){
@@ -219,7 +224,7 @@ void inactiveDevice(DW1000Device *device){
             
                 amount_slaves--;
                 if(amount_slaves == 0){
-                    slaves_active = false;
+                    slaves_discovered = false;
                     
                 }
             }
@@ -294,7 +299,7 @@ void newRange(){
     
     if(!seen_first_range){
         seen_first_range = true;
-        ranging_begin = current_time;
+        
     }
 
 }
@@ -314,7 +319,7 @@ void activateRanging(){
     DW1000Ranging.setStopRanging(false);
     stop_ranging_requested = false;
     seen_first_range = false;
-    ranging_begin = current_time;
+    master_ranging_start = current_time;
    
 }
 
@@ -482,70 +487,56 @@ void DataReport(byte* data){
 
     
     
-    uint16_t index = SHORT_MAC_LEN + 1;
-    uint16_t origin_short_addr = ((uint16_t)data[index+1] << 8) | data[index];
+    uint8_t origin_short_addr = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
     
-    for(int i=0;i<amount_devices;i++){
+    if(Existing_devices[slaves_indexes[reporting_slave_index]].short_addr == origin_short_addr && Existing_devices[slaves_indexes[reporting_slave_index]].data_report_pending == true){
 
-        if(Existing_devices[i].short_addr == origin_short_addr){
+        Existing_devices[slaves_indexes[reporting_slave_index]].data_report_pending = false;
 
-            Existing_devices[i].data_report_pending = false;
-            data_reports_received++;
+        uint16_t index = SHORT_MAC_LEN+1;
+        uint8_t numMeasures = data[index++];
 
-            index += 2;
-
-            uint16_t numMeasures = data[index++];
-
-            //First, I check if the size is OK:
-            if(numMeasures*10>LEN_DATA-SHORT_MAC_LEN-4){
-        
-                Serial.println("The Data received is too long");
-                return;
-            }
-
-            for (int i = 0; i < numMeasures; i++) {
-
-                uint16_t destiny_short_addr = ((uint16_t)data[index] << 8) | data[index + 1];
-                index += 2;
-
-                float distance, rxPower;
-                memcpy(&distance, data + index, 4); index += 4;
-                memcpy(&rxPower, data + index, 4); index += 4;
-
-                logMeasure(origin_short_addr, destiny_short_addr, distance, rxPower);
-            }
-
-            if(DEBUG){
-                Serial.print("Data report recibido de: ");
-                Serial.println(origin_short_addr,HEX);
-            }
-
+        //First, I check if the size is OK:
+        if(numMeasures*5>LEN_DATA-SHORT_MAC_LEN-4){
+            // x5 because every measure takes 5 bytes.
+            Serial.println("The Data received is too long");
+            return;
         }
+
+        for (int i = 0; i < numMeasures; i++) {
+
+            uint16_t destiny_short_addr = data[index++];
+
+            uint16_t distance_cm;
+            memcpy(&distance_cm, data + index, 2); 
+            index += 2;
+            // Now, transforms the distance in cm to distance in meters.
+            float distance = (float)distance_cm / 100.0f;
+
+            int16_t _rxPower; // int16_t (already has a sign)
+            memcpy(&_rxPower, data + index, 2); 
+            index += 2; 
+            // Same as before, now I transform it.
+            float rxPower = (float)_rxPower / 100.0f;
+
+            logMeasure(origin_short_addr, destiny_short_addr, distance, rxPower);
+        }
+        if(DEBUG){
+            Serial.print("Data report recibido de: ");
+            Serial.println(origin_short_addr,HEX);
+        }
+
+
+        if(DEBUG){
+            Serial.print("Data Report received from: ");
+            Serial.println(Existing_devices[slaves_indexes[reporting_slave_index]].short_addr,HEX);
+            Serial.println("Moving on to the next. Back to state = data report");
+        }
+
+        state = DATA_REPORT;
+    
+
     }
-    
-    if(DEBUG){
-        Serial.print("cantidad recibida --> ");
-        Serial.print(data_reports_received);
-
-        Serial.print("\tcantidad recibida --> ");
-        Serial.println(expected_data_reports);
-
-    }
-    
-    if(data_reports_received == expected_data_reports){
-
-        data_report_pending = false;
-        data_reports_received = 0;
-        expected_data_reports = 0;
-        showData();
-
-        if(DEBUG){Serial.println("Data report hecho. vuelvo a master ranging");}
-        state = MASTER_RANGING;
-    }
-    
-    
-
-
     
     
 }
@@ -561,8 +552,6 @@ void ModeSwitchAck(bool is_initiator){
 
         Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = false;
         Existing_devices[slaves_indexes[active_slave_index]].is_responder = !is_initiator;
-
-        mode_switch_ack_received = true;
 
         if(DEBUG){
             Serial.print("Mode switch completed: ");
@@ -617,13 +606,13 @@ void loop(){
 
         if(!master_is_ranging){
             master_is_ranging = true;
-            master_ranging_start = current_time;
             activateRanging();
             if(DEBUG){Serial.println("Master starts ranging");}
         }
 
         if(current_time - master_ranging_start >= ranging_period){
 
+            //Master_ranging_start is set inside "activateRanging"
             if(seen_first_range){
                 stopRanging();
                
@@ -681,7 +670,7 @@ void loop(){
             if(current_time - waiting_switch_start >= waiting_time){
                 waiting_switch_start = current_time;
                 retryTransmission(MSG_SWITCH_TO_INITIATOR);
-                if(DEBUG){Serial.println("Retrying switch to initiator.")}
+                if(DEBUG){Serial.println("Retrying switch to initiator.");}
             }
         }
     }
@@ -727,7 +716,7 @@ void loop(){
             if(current_time - waiting_switch_start >= waiting_time){
                 waiting_switch_start = current_time;
                 retryTransmission(MSG_SWITCH_TO_RESPONDER);
-                if(DEBUG){Serial.println("Retrying switch to responder.")}
+                if(DEBUG){Serial.println("Retrying switch to responder.");}
             }
         }
     }
@@ -778,7 +767,7 @@ void loop(){
             if(current_time - waiting_data_report_start >= waiting_time){
                 waiting_data_report_start = current_time;
                 retryTransmission(MSG_DATA_REQUEST);
-                if(DEBUG){Serial.println("Retrying data report.")}
+                if(DEBUG){Serial.println("Retrying data report.");}
             }
         }
         
