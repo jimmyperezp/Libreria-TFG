@@ -290,6 +290,16 @@ void newRange(){
 
     logMeasure(own_short_addr,dest_sa, dist, rx_pwr);
     
+    for (int i = 0; i < amount_devices; i++) {
+        if (Existing_devices[i].short_addr == dest_sa && !Existing_devices[i].active) {
+            Existing_devices[i].active = true;
+            if(DEBUG){
+                Serial.print("Device RE-ACTIVATED: ");
+                Serial.println(dest_sa, HEX);
+            }
+            break; 
+        }
+    }
 
     if(stop_ranging_requested){
         
@@ -522,7 +532,7 @@ void DataReport(byte* data){
             logMeasure(origin_short_addr, destiny_short_addr, distance, rxPower);
         }
         if(DEBUG){
-            Serial.print("Data report recibido de: ");
+            Serial.print("Data report received from: ");
             Serial.println(origin_short_addr,HEX);
         }
 
@@ -546,7 +556,7 @@ void ModeSwitchAck(bool is_initiator){
 
     uint8_t origin_short_addr = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
 
-    if(Existing_devices[slaves_indexes[active_slave_index]].short_addr == origin_short_addr && Existing_devices[active_slave_index].mode_switch_pending == true){
+    if(Existing_devices[slaves_indexes[active_slave_index]].short_addr == origin_short_addr && Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending == true){
 
         //Only if the ack is received from the active slave, and if it has the mode switch pending.
 
@@ -564,7 +574,7 @@ void ModeSwitchAck(bool is_initiator){
             state = SLAVE_RANGING;
         }
         else{
-            state == INITIATOR_HANDOFF; //Back to responder. Now, turn for the next slave.
+            state = INITIATOR_HANDOFF; //Back to responder. Now, turn for the next slave.
         }
     }      
 
@@ -617,6 +627,8 @@ void loop(){
                 stopRanging();
                
                 if(DEBUG){Serial.println("Master ranging ended. Now --> Mode switch");}
+
+                state = INITIATOR_HANDOFF;
             }
 
             else{                
@@ -635,22 +647,30 @@ void loop(){
         }
         active_slave_index++;
 
-        if(active_slave_index < amount_slaves){
+        if(Existing_devices[slaves_indexes[active_slave_index]].active){
+            if(active_slave_index < amount_slaves){
 
-            Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = true;
-            
-            if(DEBUG){Serial.println("Switching next slave to initiator.");}
-            
-            transmitUnicast(MSG_SWITCH_TO_INITIATOR);
-            state = WAIT_SWITCH_TO_INITIATOR_ACK;
+                Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = true;
 
+                if(DEBUG){Serial.println("Switching next slave to initiator.");}
+
+                transmitUnicast(MSG_SWITCH_TO_INITIATOR);
+                state = WAIT_SWITCH_TO_INITIATOR_ACK;
+
+            }
+
+            else{
+                initiator_handoff_started = false;
+                state = DATA_REPORT;
+
+                if(DEBUG){Serial.println("All slaves have been initiators and ranged. Now, starting data reports");}
+            }
         }
-
         else{
-            initiator_handoff_started = false;
-            state = DATA_REPORT;
-
-            if(DEBUG){Serial.println("All slaves have been initiators and ranged. Now, starting data reports");}
+            if(DEBUG){
+                Serial.print("Skipped an inactive slave: ");
+                Serial.println(Existing_devices[slaves_indexes[active_slave_index]].short_addr,HEX);
+            }
         }
     }
 
@@ -732,21 +752,31 @@ void loop(){
 
         reporting_slave_index++;
 
-        if(reporting_slave_index < amount_slaves){
+        if(Existing_devices[slaves_indexes[reporting_slave_index]].active){
+            if(reporting_slave_index < amount_slaves){
 
-            Existing_devices[slaves_indexes[reporting_slave_index]].data_report_pending = true;
-            transmitUnicast(MSG_DATA_REQUEST);
+                Existing_devices[slaves_indexes[reporting_slave_index]].data_report_pending = true;
+                transmitUnicast(MSG_DATA_REQUEST);
 
-            state = WAIT_DATA_REPORT;
+                state = WAIT_DATA_REPORT;
 
+            }
+
+            else{
+
+                data_report_started = false;
+                showData();
+                state = MASTER_RANGING;
+
+            }
         }
 
         else{
 
-            data_report_started = false;
-            showData();
-            state = MASTER_RANGING;
-
+            if(DEBUG){
+                Serial.print("Skipped inactive slave for data report: ");
+                Serial.println(Existing_devices[slaves_indexes[reporting_slave_index]].short_addr,HEX);
+            }
         }
     }
 
