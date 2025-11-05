@@ -58,7 +58,7 @@ Por ejemplo, dentro del código de newRange, lanzado cuando el maestro recibe un
 
 ```c++
 
-    uint16_t origin_short_addr = DW1000Ranging.getDistantDevice()->getShortAddress();
+    uint8_t origin_short_addr = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
     float dist = DW1000Ranging.getDistantDevice()->getRange();
     float rx_pwr = DW1000Ranging.getDistantDevice()->getRXPower();
 
@@ -76,15 +76,13 @@ Está claro, por tanto, que dentro de este dispositivo iré guardando sus valore
 
 2. Posicionamiento 2D. Plottea con una app de python la posición relativa de un tag con respecto a 2 anchors fijos y cuya posición conozco. No tiene un gran uso
 
-3. Centralizar datos (CD). Este es el importante. 
-    Este es el que uso para lograr la centralización que se explica antes. Este código es el que se le sube a las placas.
-    A continuación, haré un apartado comentando únicamente los códigos existentes dentro de este ejemplo. 
+3. Centralizar datos con 1 slave.
 
+4. Centralizar datos con N slaves
 
+(Más adelante explico a más sobre estos ejemplos de centralizar datos)
 
-
-
-### Ejemplo 3: Centralizar datos
+### Ejemplo 3: Centralizar datos con 1 slave
 
 Este es el código importante. Es el que le subo a las placas para realizar la tarea de centralización que ya he explicado antes. 
 Concretamente, en este ejemplo existen 3 archivos distintos: 
@@ -111,6 +109,52 @@ Estoy teniendo problemas en este código, puesto que veo que el slave hace el ca
 #### Tag.ino
 
 Este es muy simple. No tiene realmente nada, es soimplemente una placa en modo responder, que se limita a hacer ranging con aquellos dispositivos que se lo soliciten. 
+
+
+
+### Centralizar datos con N slaves. 
+
+Esta es una ampliación del ejemplo anterior, adaptando al sistema para detectar un número de "slaves" desconocido. 
+
+El control de este flujo se realiza utilizando una FSM cuyos estados te explico a continuación. 
+
+En una vista general, los pasos que realiza el sistema son los siguientes:
+
+1. El maestro empezará "descubriendo" a los dispositivos con los que llega a hacer ranging, y medirá su distancia con ellos (esta es la fase de "master ranging")
+2. Después, pasarán a hacer ranging los esclavos. Cada uno de ellos se comportará como initiator durante cierto periodo, realizando sus medidas con todos aquellos dispositivos que tengan el ranging activado del sistema.
+3. Una vez todos los esclavos han hecho ranging con aquellos dispositivos que alcanzan, deberán comenzar a ir pasando sus datos (haciendo los data reports) hasta que el maestro conozca todas las distancias medidas.
+
+
+Las limitaciones del sistema son las siguientes:
+
+1. Sólo debe haber un dispositivo "initiator" en cada instante, para que los "responders" no se vuelvan locos a la hora de recibir ranging polls.
+2. Hay que asegurarse de que los slaves tienen tiempo suficiente para hacer ranging con aquellos dispositivos existentes.
+
+
+Teniendo todo esto en cuenta, los estados de la FSM de este código son los siguientes:
+
+1. Estado discovery: el maestro detecta todos los dispositivos que alcanza a medir. Una vez ha pasado el tiempo de descubrimiento, hará una transición al estado master_ranging sólo si se ha descubierto algún dispositivo que sea un esclavo. 
+Todos los dispositivos que descubre el maestro son, al principio, "responders", de tal manera que el maestro pueda hacer ranging con ellos.
+
+2. El maestro hará el ranging con todos los dispositivos descubiertos durante un ```ranging_time = 500 (milisegundos)``` .
+Pasado este tiempo, el maestro apaga su ranging, y pasa a dejar a los esclavos que actúen como initiators (uno a cada vez), para que hagan sus medidas.
+
+3. El maestro pasa a dejarle el turno a cada slave para que actúe como initiator. Este estado se llama "initiator_handoff". 
+Utilizando un array con los índices de los dispositivos detectados que sí que son esclavos, se va pidiéndole a cada uno que cambie su modo de funcionamiento. 
+El proceso es: le pido que cambie de modo a initiator -> espero el ack -> le dejo tiempo -> le pido que pase a responder -> espero el ack -> repito el proceso con el siguiente esclavo.
+Este ciclo, por tanto, se repetirá mientras que el número de vueltas sea menor que el número de esclavos existentes.
+
+4. Espera de Acks: Hay dos estados análogos, cuando espero el ack de que el dispositivo es responder, y el ack de cuando el esclavo es initiator.
+Los trato de dos maneras distintas: Si no me llega el cambio a initiator, no es tan grave. Simplemente significa que ese slave durante ese ciclo no va a medir. 
+Sin embargo, si lo que no llega es el cambio a responder, tengo un problema. Eso implicaría que existan varios initiators simultáneamente, y el sistema se volvería loco con colisiones de mensajes y temporizaciones mal codificadas.
+
+5. Pasar a responder. Es lo que acabo de ver, me quedaré en este estado en bucle hasta que el esclavo activo realmente ha vuelto a ser un "responder" antes de pasar al siguiente.
+
+6. Data report -> Una vez todos los esclavos han tenido su ranging_period siendo initiators, el ciclo de ranging ha terminado, y ahora comienza el ciclo de data reports.
+Siguiendo el mismo procedimiento que antes, le voy pidiendo el data report uno a uno a cada esclavo, utilizando el mismo array de índices utilizado para el ciclo de ranging.
+
+7. Tras terminar de recibir todos los reports, el maestro muestra los resultados, y el sistema reinicia, y el maestro vuelve a hacer su ranging. 
+
 
 
 
