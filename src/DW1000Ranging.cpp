@@ -901,7 +901,7 @@ void DW1000RangingClass::timerTick() {
         }
 
         counterForBlink++;
-        if (counterForBlink > 20) { // 20 * 80ms (DEFAULT_TIMER_DELAY) = 1.6s
+        if (counterForBlink > 6) { // 20 * 80ms (DEFAULT_TIMER_DELAY) = 1.6s
             counterForBlink = 0;
         }
     }

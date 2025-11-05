@@ -453,7 +453,7 @@ void DataReport(byte* data){
 
     for (int i = 0; i < numMeasures; i++) {
 
-        uint16_t destiny_short_addr = data[index++];
+        uint8_t destiny_short_addr = data[index++];
 
         uint16_t distance_cm;
         memcpy(&distance_cm, data + index, 2); 

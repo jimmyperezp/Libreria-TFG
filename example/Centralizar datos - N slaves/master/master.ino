@@ -14,7 +14,7 @@ const uint8_t PIN_SS = 4;   // spi select pin
 
 #define IS_MASTER true
 #define DEVICE_ADDR "A1:00:5B:D5:A9:9A:E2:9C" 
-uint16_t own_short_addr = 0; 
+uint8_t own_short_addr = 0; 
 uint16_t Adelay = 16580;
 
 #define MAX_DEVICES 5
@@ -124,9 +124,10 @@ void setup(){
 }
 
 
-uint16_t getOwnShortAddress() {
+uint8_t getOwnShortAddress() {
     byte* sa = DW1000Ranging.getCurrentShortAddress();
-    return ((uint16_t)sa[0] << 8) | sa[1];
+    //return ((uint16_t)sa[0] << 8) | sa[1];
+    return (uint8_t)sa[0];
 }
 
 
@@ -186,7 +187,7 @@ void registerDevice(DW1000Device *device){
 }
 
 
-int searchDevice(uint16_t own_sa,uint16_t dest_sa){
+int searchDevice(uint8_t own_sa,uint8_t dest_sa){
     
     for (int i=0 ; i < amount_measurements ; i++){
 
@@ -256,7 +257,7 @@ void inactiveDevice(DW1000Device *device){
     
 
 
-void logMeasure(uint16_t own_sa,uint16_t dest_sa, float dist, float rx_pwr){
+void logMeasure(uint8_t own_sa,uint8_t dest_sa, float dist, float rx_pwr){
 
     // Firstly, checks if that communication has been logged before
     int index = searchDevice(own_sa,dest_sa);
@@ -289,7 +290,7 @@ void logMeasure(uint16_t own_sa,uint16_t dest_sa, float dist, float rx_pwr){
 
 void newRange(){
 
-    uint16_t dest_sa = DW1000Ranging.getDistantDevice()->getShortAddress();
+    uint8_t dest_sa = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
     float dist = DW1000Ranging.getDistantDevice()->getRange();
     float rx_pwr = DW1000Ranging.getDistantDevice()->getRXPower();
 
@@ -520,7 +521,7 @@ void DataReport(byte* data){
 
         Existing_devices[slaves_indexes[reporting_slave_index]].data_report_pending = false;
 
-        uint16_t index = SHORT_MAC_LEN+1;
+        uint8_t index = SHORT_MAC_LEN+1;
         uint8_t numMeasures = data[index++];
 
         //First, I check if the size is OK:
@@ -532,7 +533,7 @@ void DataReport(byte* data){
 
         for (int i = 0; i < numMeasures; i++) {
 
-            uint16_t destiny_short_addr = data[index++];
+            uint8_t destiny_short_addr = data[index++];
 
             uint16_t distance_cm;
             memcpy(&distance_cm, data + index, 2); 
@@ -548,11 +549,7 @@ void DataReport(byte* data){
 
             logMeasure(origin_short_addr, destiny_short_addr, distance, rxPower);
         }
-        if(DEBUG){
-            Serial.print("Data report received from: ");
-            Serial.println(origin_short_addr,HEX);
-        }
-
+        
 
         if(DEBUG){
             Serial.print("Data Report received from: ");
@@ -561,10 +558,7 @@ void DataReport(byte* data){
         }
 
         state = DATA_REPORT;
-    
-
     }
-    
     
 }
 
@@ -675,6 +669,7 @@ void loop(){
         if(!initiator_handoff_started){
             initiator_handoff_started = true;
             active_slave_index = -1; //Set at -1 so that when doing active_slave_index++, the first index is 0.
+            if(DEBUG) Serial.println("Initiator handoff started.");
         }
         active_slave_index++;
 
@@ -731,7 +726,12 @@ void loop(){
         if(!slave_is_ranging){
             slave_is_ranging = true;
             slave_ranging_start = current_time;
-
+            if(DEBUG){
+                Serial.print("The device ");
+                Serial.print(Existing_devices[slaves_indexes[active_slave_index]].short_addr,HEX,);
+                Serial.println(" starts its ranging");
+            }
+            
         }
 
         else{
@@ -748,7 +748,7 @@ void loop(){
 
         Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = true;
         transmitUnicast(MSG_SWITCH_TO_RESPONDER);
-        if(DEBUG) Serial.println("Swithch to responder sent");
+        if(DEBUG) Serial.println("Switch to responder sent");
         state = WAIT_SWITCH_TO_RESPONDER_ACK;
     }
     
@@ -790,6 +790,10 @@ void loop(){
                 Existing_devices[slaves_indexes[reporting_slave_index]].data_report_pending = true;
                 transmitUnicast(MSG_DATA_REQUEST);
 
+                if(DEBUG){
+                    Serial.print("Requesting data report to: ");
+                    Serial.println(Existing_devices[slaves_indexes[reporting_slave_index]].short_addr,HEX);
+                }
                 state = WAIT_DATA_REPORT;
 
             }
@@ -830,7 +834,10 @@ void loop(){
             if(current_time - waiting_data_report_start >= waiting_time){
                 waiting_data_report_start = current_time;
                 retryTransmission(MSG_DATA_REQUEST);
-                if(DEBUG){Serial.println("Retrying data report.");}
+                if(DEBUG){
+                    Serial.print("Retrying data report from: ");
+                    Serial.println(Existing_devices[slaves_indexes[reporting_slave_index]].short_addr,HEX);
+                }
             }
         }
         
