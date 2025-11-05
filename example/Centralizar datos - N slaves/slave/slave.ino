@@ -150,7 +150,7 @@ void DataRequested(byte* short_addr_requester){
         if (DEBUG) {
             Serial.print("Data report sent to: ");
             Serial.print(requester->getShortAddressHeader(), HEX);
-            Serial.print("\tSent ");
+            Serial.print("\t Sent ");
             Serial.print(num_measures);
             Serial.println(" measures");
         }
