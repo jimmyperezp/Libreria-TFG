@@ -1,7 +1,6 @@
 /* CENTRALIZE DATA IN AN ANCHOR */
 
-/* This is the Anchor(s) code. One of them must be declared as the master, and the rest must be slaves.
-Don't forget to change the DEVICE_ADDR on each anchor used */
+/* Anchor's code. If used on more than 1 device, user should change the shortAddress. */
 
 #include <SPI.h>
 #include "DW1000Ranging.h"
@@ -18,11 +17,12 @@ const uint8_t PIN_IRQ = 34; // irq pin
 const uint8_t PIN_SS = 4;   // spi select pin
 
 // Devices' own definitions:
-// Nomenclature: A for Anchors, B for Tags
-#define DEVICE_ADDR "A2:00:5B:D5:A9:9A:E2:9C" 
+// Nomenclature: A for master, B for slave, C for tags
+#define DEVICE_ADDR "B1:00:5B:D5:A9:9A:E2:9C" 
 
-uint16_t own_short_addr = 0; //I'll get it during the setup.
+uint8_t own_short_addr = 0; //I'll get it during the setup.
 uint16_t Adelay = 16580;
+
 #define IS_MASTER false
 #define DEBUG true
 
@@ -36,9 +36,7 @@ unsigned long current_time = 0;
 unsigned long last_switch = 0;
 unsigned long last_report = 0;
 
-
 unsigned long last_ranging_started  =0;
-
 
 static bool stop_ranging_requested = false;
 static bool ranging_ended = false;
@@ -62,40 +60,23 @@ void setup(){
     DW1000Ranging.attachNewDevice(newDevice);
     DW1000Ranging.attachInactiveDevice(inactiveDevice);   
 
-    last_switch = millis();
-    last_report = millis();
+    DW1000Ranging.attachModeSwitchRequested(ModeSwitchRequested);
+    DW1000Ranging.attachDataRequested(DataRequested);
+    DW1000Ranging.attachStopRangingRequested(stopRangingRequested);
 
-    if (IS_MASTER){
-
-        
-    }
-    else{
-
-        //Callbacks for the slave anchors:
-        
-        //1: They must respond to a change request message (Sent by the master)        
-        DW1000Ranging.attachModeSwitchRequested(ModeSwitchRequested);
-       
-        //2: Must answer to a data request message (also sent by master)
-        DW1000Ranging.attachDataRequested(DataRequested);
-
-        DW1000Ranging.attachStopRangingRequested(stopRangingRequested);
-
-        //Finally, slaves are started as responders:
-        DW1000Ranging.startAsResponder(DEVICE_ADDR,DW1000.MODE_1, false,SLAVE_ANCHOR);
-        
-    } 
+    DW1000Ranging.startAsResponder(DEVICE_ADDR,DW1000.MODE_1, false,SLAVE_ANCHOR);
 
     own_short_addr = getOwnShortAddress();
     // I save the own_short_addr after the device has been set up propperly
 }
 
-uint16_t getOwnShortAddress() {
+uint8_t getOwnShortAddress() {
     byte* sa = DW1000Ranging.getCurrentShortAddress();
-    return ((uint16_t)sa[0] << 8) | sa[1];
+    //return ((uint16_t)sa[0] << 8) | sa[1];
+    return sa[0];
 }
 
-int searchDevice(uint16_t own_sa,uint16_t dest_sa){
+int searchDevice(uint8_t own_sa,uint8_t dest_sa){
     
     for (int i=0 ; i < amountDevices ; i++){
 
@@ -107,7 +88,7 @@ int searchDevice(uint16_t own_sa,uint16_t dest_sa){
     return -1; // if not, returns -1
 }
 
-void logMeasure(uint16_t own_sa,uint16_t dest_sa, float dist, float rx_pwr){
+void logMeasure(uint8_t own_sa,uint8_t dest_sa, float dist, float rx_pwr){
 
     // Firstly, checks if that communication has been logged before
     int index = searchDevice(own_sa,dest_sa);
@@ -149,74 +130,109 @@ void clearMeasures(){
 
 
 void DataRequested(byte* short_addr_requester){
-    // Called when the master sends the slave a data request.
-    // The slave answers by sending the data report.
-    // Adds debug and ensures a clean TX context before replying.
-    Serial.println("Data report pedido");
-    uint16_t numMeasures = amountDevices;
+    
+    
+    uint8_t num_measures = amountDevices;
 
     if (DEBUG) {
-        Serial.print("DATA REQUEST recibido de: ");
-        Serial.print(((uint16_t)short_addr_requester[0] << 8) | short_addr_requester[1], HEX);
-        Serial.print(" | Medidas: ");
-        Serial.println(numMeasures);
+        Serial.print("Data report requested from: ");
+        Serial.println(((uint16_t)short_addr_requester[0] << 8) | short_addr_requester[1], HEX);
     }
 
-    // Try to unicast back to the requester if known
+    
     DW1000Device* requester = DW1000Ranging.searchDistantDevice(short_addr_requester);
 
-    // Ensure radio is idle before sending a custom frame
+    
     DW1000.idle();
 
-    if(!requester){
-        // Requester not found locally → broadcast the report
-        if (DEBUG) Serial.println("Enviando DATA_REPORT por broadcast (requester no encontrado)");
-        DW1000Ranging.transmitDataReport((Measurement*)measurements, numMeasures, nullptr);
-        return;
+    if(requester){
+
+        if (DEBUG) {
+            Serial.print("Data report sent to: ");
+            Serial.print(requester->getShortAddressHeader(), HEX);
+            Serial.print("\tSent ");
+            Serial.print(num_measures);
+            Serial.println(" measures");
+        }
+        DW1000Ranging.transmitDataReport((Measurement*)measurements, num_measures, requester);
     }
 
-    if (DEBUG) {
-        Serial.print("Enviando DATA_REPORT a: ");
-        Serial.println(requester->getShortAddress(), HEX);
+    else{
+
+        if(DEBUG){
+            Serial.println("Requester not found. Sent data report via broadcast.");
+            Serial.print("\tSent ");
+            Serial.print(num_measures);
+            Serial.println(" measures");
+        } 
+              
+        DW1000Ranging.transmitDataReport((Measurement*)measurements, num_measures, nullptr);
     }
-    // If it is found, sends the report via unicast
-    DW1000Ranging.transmitDataReport((Measurement*)measurements, numMeasures, requester);
+
+        
     clearMeasures();
-    Serial.println("lo envío y rehabilito el ranging");
-    DW1000Ranging.setStopRanging(false);
-    
-    stop_ranging_requested = false;
+
 }
 
-void ModeSwitchRequested(byte* short_addr_requester, bool toInitiator){
+void ModeSwitchRequested(byte* short_addr_requester, bool to_initiator){
 
     DW1000Device* requester = DW1000Ranging.searchDistantDevice(short_addr_requester);
 
-    if(toInitiator == true){
+    if(to_initiator == true){
 
-        Serial.println("Pasando a INITIATOR");
-        DW1000.idle();
-        DW1000Ranging.setStopRanging(false);
-        Serial.println("activo el ranging");
-        stop_ranging_requested = false;
-        // Preserve board type on role switch
+        if(DEBUG) {Serial.println("Switching to INITIATOR");}
+        
+        //DW1000.idle();
+        
         DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
-        if(requester){ DW1000Ranging.transmitModeSwitchAck(requester,toInitiator);}
-       
+        
+        if(requester){ 
+            
+            if(DEBUG){
+                Serial.print("Sending switch ACK via Unicast to -->");
+                Serial.println(requester->getShortAddressHeader(),HEX);
+            }
+            DW1000Ranging.transmitModeSwitchAck(requester,to_initiator);
+        }
+        else{
+
+            if(DEBUG){
+                Serial.println("Requester not found. Sending ACK via broadcast."); 
+            }
+            DW1000Ranging.transmitModeSwitchAck(nullptr,to_initiator);
+        }
     }
     else{
 
+        if(DEBUG){Serial.println("Switching to RESPONDER");}
         DW1000.idle();
         
         // Preserve board type on role switch
         DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
-        if(requester){ DW1000Ranging.transmitModeSwitchAck(requester,toInitiator);}
+        
+        if(requester){ 
+            
+            if(DEBUG){
+                Serial.print("Sending switch ACK via Unicast to-->");
+                Serial.println(requester->getShortAddressHeader(),HEX);
+            }
+
+            DW1000Ranging.transmitModeSwitchAck(requester,to_initiator);
+
+        }
+        else{
+            if(DEBUG){
+                Serial.println("Requester not found. Sending ACK via broadcast.");
+                DW1000Ranging.transmitModeSwitchAck(nullptr,to_initiator);
+            }
+        }
     }
 } 
 
+
 void stopRangingRequested(byte* short_addr_requester){
 
-    Serial.println("Stop ranging request recibido");
+    Serial.println("Stop ranging request received");
     short_addr_master = short_addr_requester;
     DW1000Device* requester = DW1000Ranging.searchDistantDevice(short_addr_requester);
     DW1000Ranging.setStopRanging(true);
@@ -226,29 +242,17 @@ void stopRangingRequested(byte* short_addr_requester){
 }
 
 
-
 void newRange(){
 
-    uint16_t dest_sa = DW1000Ranging.getDistantDevice()->getShortAddress();
+    uint8_t destiny_short_addr = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
     float dist = DW1000Ranging.getDistantDevice()->getRange();
     float rx_pwr = DW1000Ranging.getDistantDevice()->getRXPower();
 
-    logMeasure(own_short_addr,dest_sa, dist, rx_pwr);
+    logMeasure(own_short_addr,destiny_short_addr, dist, rx_pwr);
 
     if(stop_ranging_requested){
 
-        DW1000Device* requester = DW1000Ranging.searchDistantDevice(short_addr_master);
-        if(DEBUG){Serial.println("El ranging ha terminado");}
-        
-        if(requester){
-            DW1000Ranging.transmitStopRangingAck(requester);
-        }
-        else{
-            DW1000Ranging.transmitStopRangingAck(nullptr);
-        }
-
-        //state = SWITCH_SLAVE;
-        
+        if(DEBUG){Serial.println("Ranging has ended");}
         
     }
     else{
@@ -259,6 +263,15 @@ void newRange(){
         last_ranging_started = current_time;
     }
 
+    if(DEBUG){
+        Serial.print("From: ");
+        Serial.print(destiny_short_addr,HEX);
+        Serial.print("\t Distance: ");
+        Serial.print(DW1000Ranging.getDistantDevice()->getRange());
+        Serial.print(" m");
+        Serial.print("\t RX power: ");
+        Serial.println(DW1000Ranging.getDistantDevice()->getRXPower());
+    }
 }
 
 void newDevice(DW1000Device *device){
@@ -269,17 +282,15 @@ void newDevice(DW1000Device *device){
 
 void inactiveDevice(DW1000Device *device){
 
-    uint16_t dest_sa = device->getShortAddress();
+    uint8_t destiny_short_addr = device->getShortAddressHeader();
     Serial.print("Lost connection with device: ");
-    Serial.println(dest_sa, HEX);
+    Serial.println(destiny_short_addr, HEX);
     
-    //int index = searchDevice(own_short_addr,sa);
-    //if (index != 0){ measurements[index].active = false;}
 }
 
 void loop(){
 
     DW1000Ranging.loop();
-       
+
 
 }

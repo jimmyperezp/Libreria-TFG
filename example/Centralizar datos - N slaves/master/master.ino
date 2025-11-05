@@ -132,16 +132,16 @@ uint16_t getOwnShortAddress() {
 
 void showData(){
 
-    Serial.println("--------------------------- NUEVA MEDIDA ---------------------------");
+    Serial.println("--------------------------- NEW MEASURE ---------------------------");
     
     for (int i = 0; i < amount_measurements ; i++){ 
         
         if(measurements[i].active == true){
-            Serial.print(" Dispositivos: ");
+            Serial.print(" Devices: ");
             Serial.print(measurements[i].short_addr_origin,HEX);
             Serial.print(" -> ");
             Serial.print(measurements[i].short_addr_dest,HEX);
-            Serial.print("\t Distancia: ");
+            Serial.print("\t Distance: ");
             Serial.print(measurements[i].distance);
             Serial.print(" m \t RX power: ");
             Serial.print(measurements[i].rxPower);
@@ -366,7 +366,7 @@ void transmitUnicast(uint8_t message_type){
         if(target){
 
             if(DEBUG){
-                    Serial.print("Mode switch requested : --> ");
+                    Serial.print("Mode switch requested --> ");
                     Serial.print(Existing_devices[slaves_indexes[active_slave_index]].short_addr,HEX);
                     Serial.print(switch_to_initiator ?  " to initiator" : " to responder");
                     Serial.println(" via unicast");
@@ -386,7 +386,7 @@ void transmitUnicast(uint8_t message_type){
                 Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = false;
             }
             else{
-                // I **need** that there is only 1 initiator. If the message failed, I'll try to send it again.
+                // I need that there is only 1 initiator. If the message failed, I'll try to send it again.
                 state = SWITCH_TO_RESPONDER;
                 if(DEBUG){Serial.println("Back to switching it to responder.");}
             }
@@ -600,9 +600,11 @@ void ModeSwitchAck(bool is_initiator){
 
         if(is_initiator){
             state = SLAVE_RANGING;
+            if(DEBUG){Serial.println("Slave switched to initiator. Now --> Slave ranging");}
         }
         else{
             state = INITIATOR_HANDOFF; //Back to responder. Now, turn for the next slave.
+            if(DEBUG) Serial.println("Slave back to responder. Now, turn for the next slave to range");
         }
     }      
 
@@ -655,12 +657,13 @@ void loop(){
                 stopRanging();
                
                 if(DEBUG){Serial.println("Master ranging ended. Now --> Mode switch");}
-
+                master_is_ranging = false;
                 state = INITIATOR_HANDOFF;
             }
 
             else{                
                 master_ranging_start = current_time;
+                master_is_ranging = false;
                 if(DEBUG){Serial.println("No ranges made. Restarting master ranging");}
             }
             
@@ -734,7 +737,7 @@ void loop(){
         else{
 
             if(current_time-slave_ranging_start >= ranging_period){
-
+                slave_is_ranging = false;
                 state = SWITCH_TO_RESPONDER;
                 if(DEBUG){Serial.println("End of slave ranging period. Switching it back to responder.");}
             }
@@ -745,6 +748,7 @@ void loop(){
 
         Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = true;
         transmitUnicast(MSG_SWITCH_TO_RESPONDER);
+        if(DEBUG) Serial.println("Swithch to responder sent");
         state = WAIT_SWITCH_TO_RESPONDER_ACK;
     }
     
@@ -794,6 +798,7 @@ void loop(){
 
                 data_report_started = false;
                 showData();
+                if(DEBUG) Serial.println("Data shown. Now --> master ranging");
                 state = MASTER_RANGING;
 
             }
@@ -816,7 +821,7 @@ void loop(){
             waiting_data_report_start = current_time;
             if(DEBUG){
                 Serial.print("Waiting data report from ");
-                Serial.println(Existing_devices[slaves_indexes[reporting_slave_index]].short_addr);
+                Serial.println(Existing_devices[slaves_indexes[reporting_slave_index]].short_addr,HEX);
             }
         }
 
