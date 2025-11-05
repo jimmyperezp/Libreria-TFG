@@ -850,7 +850,7 @@ void DW1000RangingClass::resetInactive() {
 	noteActivity();
 }
 
-void DW1000RangingClass::timerTick() {
+/*void DW1000RangingClass::timerTick() {
 
 	if(ranging_enabled && !stop_ranging){
 
@@ -858,31 +858,53 @@ void DW1000RangingClass::timerTick() {
 		if(_type == INITIATOR) {
 			_expectedMsgId = POLL_ACK;
 			//send a prodcast poll
-			
-
 				transmitPoll(nullptr);
-			
-			
 		}
 	}
 	else if(counterForBlink == 0) {
 		if(_type == INITIATOR) {
-			
 				transmitBlink();
-			
-			
 		}
 		//check for inactive devices if we are a INITIATOR or RESPONDER
-		
         checkForInactiveDevices();
-    	
-		
 	}
 	counterForBlink++;
 	if(counterForBlink > 20) {
 		counterForBlink = 0;
 	}
 	}
+}
+*/
+
+void DW1000RangingClass::timerTick() {
+    if (ranging_enabled && !stop_ranging) {
+        if (_type == INITIATOR) { 
+            // Lógica para INITIATORs (Master y Esclavos-activos)
+            if (counterForBlink == 0) {
+                // Cada ~1.6s, envía un BLINK para descubrir nuevos dispositivos
+                transmitBlink();
+                // Y comprueba si los dispositivos conocidos siguen activos
+                checkForInactiveDevices();
+            } else {
+                // En el resto de ciclos, mide con los dispositivos que ya conoce
+                if (_networkDevicesNumber > 0) {
+                    _expectedMsgId = POLL_ACK;
+                    transmitPoll(nullptr);
+                }
+            }
+        } else { 
+            // Lógica para RESPONDERs (Esclavos-inactivos y Tags)
+            if (counterForBlink == 0) {
+                // Solo necesitan comprobar si los INITIATORs que conocen siguen activos
+                checkForInactiveDevices();
+            }
+        }
+
+        counterForBlink++;
+        if (counterForBlink > 20) { // 20 * 80ms (DEFAULT_TIMER_DELAY) = 1.6s
+            counterForBlink = 0;
+        }
+    }
 }
 
 void DW1000RangingClass::copyShortAddress(byte address1[], byte address2[]) {
