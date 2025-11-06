@@ -50,10 +50,10 @@ unsigned long waiting_switch_start = 0;
 unsigned long waiting_data_report_start = 0;
 
 /*2: Time constants*/
-const unsigned long ranging_period = 1500;
+const unsigned long ranging_period = 2000;
 const unsigned long waiting_time = 1000;
 const unsigned long retry_time = 1000;
-const unsigned long timeout = 50;
+
 
 /*Retry messages management*/
 unsigned long last_retry = 0;
@@ -305,30 +305,22 @@ void newRange(){
 
     logMeasure(own_short_addr,dest_sa, dist, rx_pwr);
     
-    /*
-    for (int i = 0; i < amount_devices; i++) {
-        if (Existing_devices[i].short_addr == dest_sa && !Existing_devices[i].active) {
-            Existing_devices[i].active = true;
-            if(DEBUG){
-                Serial.print("Device RE-ACTIVATED: ");
-                Serial.println(dest_sa, HEX);
-            }
-            break; 
-        }
-    }
-    */
 
     if(stop_ranging_requested){
-        
         if(DEBUG){Serial.println("Master ranging ended");}      
-        
     }
     
-    if(!seen_first_range){
-        seen_first_range = true;
-        
-    }
+    if(!seen_first_range){ seen_first_range = true;}
 
+    if(DEBUG){
+        Serial.print("From: ");
+        Serial.print(dest_sa,HEX);
+        Serial.print("\t Distance: ");
+        Serial.print(dist);
+        Serial.print(" m");
+        Serial.print("\t RX power: ");
+        Serial.println(rx_pwr);
+    }
 }
 
 
@@ -472,6 +464,7 @@ void modeSwitchFailed(bool switching_to_initiator){
 
         if(DEBUG){Serial.println("Moving on to the next slave. Back to initiator handoff");}
         Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = false;
+        waiting_initiator_switch_ack = false;
         state = INITIATOR_HANDOFF;
     
     }
@@ -500,19 +493,69 @@ void DataReport(byte* data){
     
     
     uint8_t origin_short_addr = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
-    
-    for (int i = 0; i < amount_devices; i++) {
-        if (Existing_devices[i].short_addr == origin_short_addr && !Existing_devices[i].active) {
-            Existing_devices[i].active = true;
-            if(DEBUG){ Serial.print("Device RE-ACTIVATED via Report: "); Serial.println(origin_short_addr, HEX); }
-            if (Existing_devices[i].is_slave_anchor) {
-                slaves_discovered = true;
-            }
+
+    int8_t slave_index_in_array = -1; 
+    for(int i = 0; i < amount_slaves; i++){
+        // Comparamos el short_addr del esclavo 'i' con el origen del mensaje
+        if(Existing_devices[slaves_indexes[i]].short_addr == origin_short_addr){
+            slave_index_in_array = i;
             break;
         }
     }
 
+    if(slave_index_in_array == -1 || !Existing_devices[slaves_indexes[slave_index_in_array]].data_report_pending){
+        if(DEBUG){
+            Serial.print("Data Report from ");
+            Serial.print(origin_short_addr, HEX);
+            Serial.println(" received but was not pending or not a slave. Discarded.");
+        }
+        return;
+    }
+
+    // ¡ÉXITO! Hemos encontrado al esclavo y su reporte estaba pendiente.
+    // Usamos 'slave_index_in_array' (el índice que hemos encontrado) en lugar de 'reporting_slave_index'
     
+    Existing_devices[slaves_indexes[slave_index_in_array]].data_report_pending = false;
+
+    uint16_t index = SHORT_MAC_LEN+1;
+    uint8_t numMeasures = data[index++];
+
+    // Comprobamos si el tamaño es correcto:
+    if(numMeasures*5 > LEN_DATA-SHORT_MAC_LEN-4){
+        Serial.println("The Data received is too long");
+        return;
+    }
+
+    for (int i = 0; i < numMeasures; i++) {
+        uint8_t destiny_short_addr = data[index++];
+        uint16_t distance_cm;
+        memcpy(&distance_cm, data + index, 2); 
+        index += 2;
+        float distance = (float)distance_cm / 100.0f;
+
+        int16_t _rxPower;
+        memcpy(&_rxPower, data + index, 2);
+        index += 2; 
+        float rxPower = (float)_rxPower / 100.0f;
+        
+        logMeasure(origin_short_addr, destiny_short_addr, distance, rxPower);
+    }
+    
+
+    if(DEBUG){
+        Serial.print("Data Report received and processed from: ");
+        Serial.println(origin_short_addr,HEX);
+    }
+
+    // Si estábamos en el estado WAIT_DATA_REPORT y este es el esclavo que esperábamos,
+    // reseteamos los reintentos y avanzamos la FSM.
+    if(state == WAIT_DATA_REPORT && reporting_slave_index == slave_index_in_array){
+        if(DEBUG) Serial.println("Advancing FSM from WAIT state.");
+        waiting_data_report = false;
+        num_retries = 0;
+        state = DATA_REPORT; // Avanzamos al siguiente esclavo
+    }
+    /*
     if(Existing_devices[slaves_indexes[reporting_slave_index]].short_addr == origin_short_addr && Existing_devices[slaves_indexes[reporting_slave_index]].data_report_pending == true){
 
         Existing_devices[slaves_indexes[reporting_slave_index]].data_report_pending = false;
@@ -557,6 +600,7 @@ void DataReport(byte* data){
         num_retries = 0;
         state = DATA_REPORT;
     }
+        */
     
 }
 
@@ -592,6 +636,7 @@ void ModeSwitchAck(bool is_initiator){
 
         if(is_initiator){
             state = SLAVE_RANGING;
+            waiting_initiator_switch_ack = false;
             if(DEBUG){Serial.println("Slave switched to initiator. Now --> Slave ranging");}
         }
         else{
@@ -671,15 +716,6 @@ void loop(){
         }
         active_slave_index++;
 
-        if(!initiator_handoff_started){
-            initiator_handoff_started = true;
-            active_slave_index = -1; //Se prepara para el primer incremento
-            if(DEBUG) Serial.println("Initiator handoff started.");
-        }
-        
-        active_slave_index++; // Incrementa el índice del esclavo
-
-        
         if(active_slave_index < amount_slaves){
             
             
