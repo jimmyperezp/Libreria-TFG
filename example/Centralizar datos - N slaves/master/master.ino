@@ -825,6 +825,11 @@ void loop(){
             data_report_started = true;
             reporting_slave_index = -1;
 
+            for (int i = 0; i < amount_measurements; i++) {
+                if (measurements[i].short_addr_origin != own_short_addr) {
+                    measurements[i].active = false;
+                }
+            }
             if(DEBUG){Serial.println("Starting Data Reports.");}
         }
 
