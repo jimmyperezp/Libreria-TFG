@@ -50,8 +50,8 @@ unsigned long waiting_switch_start = 0;
 unsigned long waiting_data_report_start = 0;
 
 /*2: Time constants*/
-const unsigned long ranging_period = 1000;
-const unsigned long waiting_time = 500;
+const unsigned long ranging_period = 2000;
+const unsigned long waiting_time = 1000;
 const unsigned long retry_time = 500;
 const unsigned long timeout = 50;
 
@@ -193,7 +193,7 @@ int searchDevice(uint8_t own_sa,uint8_t dest_sa){
     
     for (int i=0 ; i < amount_measurements ; i++){
 
-        if ((measurements[i].short_addr_origin == own_sa)&&(measurements[i].short_addr_dest == dest_sa)) {
+        if ((measurements[i].short_addr_origin == own_sa)&&(measurements[i].short_addr_dest == dest_sa) || (measurements[i].short_addr_origin == dest_sa)&&(measurements[i].short_addr_dest == own_sa)  ) {
             return i; 
             // If found, returns the index
         }
@@ -204,7 +204,7 @@ int searchDevice(uint8_t own_sa,uint8_t dest_sa){
 void newDevice(DW1000Device *device){
 
     Serial.print("New Device: ");
-    Serial.println(device->getShortAddress(), HEX);
+    Serial.println(device->getShortAddressHeader(), HEX);
 
     registerDevice(device);
 }
@@ -553,6 +553,8 @@ void DataReport(byte* data){
             Serial.println(" Now, back to data report to get it from the next slave");
         }
 
+        waiting_data_report = false;
+        num_retries = 0;
         state = DATA_REPORT;
     }
     
@@ -676,7 +678,7 @@ void loop(){
 
                 if(DEBUG){Serial.println("Switching next slave to initiator.");}
 
-                transmitUnicast(MSG_SWITCH_TO_INITIATOR);
+                //transmitUnicast(MSG_SWITCH_TO_INITIATOR);
                 state = WAIT_SWITCH_TO_INITIATOR_ACK;
 
             }
@@ -743,7 +745,7 @@ void loop(){
     else if(state == SWITCH_TO_RESPONDER){
 
         Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = true;
-        transmitUnicast(MSG_SWITCH_TO_RESPONDER);
+        //transmitUnicast(MSG_SWITCH_TO_RESPONDER);
         
         state = WAIT_SWITCH_TO_RESPONDER_ACK;
     }
@@ -755,7 +757,7 @@ void loop(){
             waiting_switch_start = current_time;
             if(DEBUG){
                 Serial.print("Waiting for switch to responder ack from ");
-                Serial.println(Existing_devices[slaves_indexes[active_slave_index]].short_addr);
+                Serial.println(Existing_devices[slaves_indexes[active_slave_index]].short_addr,HEX);
             }
         }
 
@@ -785,7 +787,7 @@ void loop(){
             if(Existing_devices[slaves_indexes[reporting_slave_index]].active){
 
                 Existing_devices[slaves_indexes[reporting_slave_index]].data_report_pending = true;
-                transmitUnicast(MSG_DATA_REQUEST);
+                //transmitUnicast(MSG_DATA_REQUEST);
 
                 state = WAIT_DATA_REPORT;
             }
@@ -800,7 +802,7 @@ void loop(){
 
         else{
             data_report_started = false;
-            if(DEBUG) Serial.println("Received fromm all slaves. Showing data: ");
+            if(DEBUG) Serial.println("Received from all slaves. Showing data: ");
             showData();
             if(DEBUG) Serial.println("Restarting the cycle --> going back to master ranging");
             
