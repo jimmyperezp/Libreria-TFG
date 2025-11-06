@@ -35,12 +35,14 @@ int amountDevices = 0;
 unsigned long current_time = 0; 
 unsigned long last_switch = 0;
 unsigned long last_report = 0;
-
+unsigned long initiator_start = 0;
 unsigned long last_ranging_started  =0;
 
 static bool stop_ranging_requested = false;
 static bool ranging_ended = false;
 static bool seen_first_range = false;
+static bool is_initiator = false;
+
 
 byte* short_addr_master;
 
