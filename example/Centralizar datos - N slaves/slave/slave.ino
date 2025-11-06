@@ -160,8 +160,8 @@ void DataRequested(byte* short_addr_requester){
     else{
 
         if(DEBUG){
-            Serial.println("Requester not found. Sent data report via broadcast.");
-            Serial.print("\tSent ");
+            Serial.print("Requester not found. Sent data report via broadcast.");
+            Serial.print("\t Sent ");
             Serial.print(num_measures);
             Serial.println(" measures");
         } 
@@ -179,13 +179,9 @@ void ModeSwitchRequested(byte* short_addr_requester, bool to_initiator){
     DW1000Device* requester = DW1000Ranging.searchDistantDevice(short_addr_requester);
 
     if(to_initiator == true){
+        
+        switchToInitiator();
 
-        if(DEBUG) {Serial.println("Switching to INITIATOR");}
-        
-        //DW1000.idle();
-        
-        DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
-        
         if(requester){ 
             
             if(DEBUG){
@@ -204,12 +200,8 @@ void ModeSwitchRequested(byte* short_addr_requester, bool to_initiator){
     }
     else{
 
-        if(DEBUG){Serial.println("Switching to RESPONDER");}
-        DW1000.idle();
-        
-        // Preserve board type on role switch
-        DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
-        
+        switchToResponder();
+
         if(requester){ 
             
             if(DEBUG){
@@ -229,6 +221,25 @@ void ModeSwitchRequested(byte* short_addr_requester, bool to_initiator){
     }
 } 
 
+void switchToResponder(){
+
+    if(DEBUG){Serial.println("Switching to RESPONDER");}
+    //DW1000.idle();
+    is_initiator = false;
+    DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
+
+}
+
+void switchToInitiator(){
+
+    if(DEBUG) {Serial.println("Switching to INITIATOR");}
+        
+    //DW1000.idle();
+    is_initiator = true;
+    initiator_start = current_time;
+        
+    DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
+}
 
 void stopRangingRequested(byte* short_addr_requester){
 
@@ -292,5 +303,16 @@ void loop(){
 
     DW1000Ranging.loop();
 
+    if(is_initiator){
+
+        if(current_time - initiator_start >= 5000){
+
+            if(DEBUG){
+                Serial.println("Timeout as a initiator. Going back to responder");
+            }
+            switchToResponder();
+
+        }
+    }
 
 }
