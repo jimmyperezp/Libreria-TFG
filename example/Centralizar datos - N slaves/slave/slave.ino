@@ -182,7 +182,11 @@ void ModeSwitchRequested(byte* short_addr_requester, bool to_initiator){
 
     if(to_initiator == true){
         
-        switchToInitiator();
+        if(!is_initiator){
+            switchToInitiator();
+        }
+        
+        else if(is_initiator) Serial.println("Already initiator. Only needs to send the Ack");
 
         if(requester){ 
             
@@ -202,7 +206,11 @@ void ModeSwitchRequested(byte* short_addr_requester, bool to_initiator){
     }
     else{
 
-        switchToResponder();
+        if(is_initiator){
+            switchToResponder();
+        }
+        
+        else Serial.println("El dispositivo ya es responder. Sólo falta enviar el Ack");
 
         if(requester){ 
             

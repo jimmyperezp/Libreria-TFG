@@ -50,9 +50,9 @@ unsigned long waiting_switch_start = 0;
 unsigned long waiting_data_report_start = 0;
 
 /*2: Time constants*/
-const unsigned long ranging_period = 2000;
+const unsigned long ranging_period = 1500;
 const unsigned long waiting_time = 1000;
-const unsigned long retry_time = 500;
+const unsigned long retry_time = 1000;
 const unsigned long timeout = 50;
 
 /*Retry messages management*/
@@ -671,31 +671,43 @@ void loop(){
         }
         active_slave_index++;
 
-        if(Existing_devices[slaves_indexes[active_slave_index]].active){
-            if(active_slave_index < amount_slaves){
+        if(!initiator_handoff_started){
+            initiator_handoff_started = true;
+            active_slave_index = -1; //Se prepara para el primer incremento
+            if(DEBUG) Serial.println("Initiator handoff started.");
+        }
+        
+        active_slave_index++; // Incrementa el índice del esclavo
+
+        
+        if(active_slave_index < amount_slaves){
+            
+            
+            if(Existing_devices[slaves_indexes[active_slave_index]].active){
 
                 Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = true;
-
                 if(DEBUG){Serial.println("Switching next slave to initiator.");}
 
-                //transmitUnicast(MSG_SWITCH_TO_INITIATOR);
+                transmitUnicast(MSG_SWITCH_TO_INITIATOR);
                 state = WAIT_SWITCH_TO_INITIATOR_ACK;
-
             }
-
             else{
-                initiator_handoff_started = false;
-                state = DATA_REPORT;
-
-                if(DEBUG){Serial.println("All slaves have been initiators and ranged. Now, starting data reports");}
+                
+                if(DEBUG){
+                    Serial.print("Skipped an inactive slave: ");
+                    Serial.println(Existing_devices[slaves_indexes[active_slave_index]].short_addr,HEX);
+                }
             }
         }
         else{
-            if(DEBUG){
-                Serial.print("Skipped an inactive slave: ");
-                Serial.println(Existing_devices[slaves_indexes[active_slave_index]].short_addr,HEX);
-            }
+            
+            initiator_handoff_started = false;
+            state = DATA_REPORT; //
+
+            if(DEBUG){Serial.println("All slaves have been initiators and ranged. Now, starting data reports");}
         }
+
+        
     }
 
     else if(state == WAIT_SWITCH_TO_INITIATOR_ACK){
