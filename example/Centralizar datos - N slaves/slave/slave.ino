@@ -313,6 +313,7 @@ void loop(){
 
     DW1000Ranging.loop();
 
+    current_time = millis();
     if(is_initiator){
 
         if(current_time - initiator_start >= 5000){
