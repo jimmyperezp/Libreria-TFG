@@ -169,6 +169,7 @@ private:
 	//other devices in the network
 	static DW1000Device _networkDevices[MAX_DEVICES];
 	static volatile uint8_t _networkDevicesNumber;
+	static volatile uint8_t _pollAckReceivedCount;
 	static int16_t      _lastDistantDevice;
 	static byte         _currentAddress[8];
 	static byte         _currentShortAddress[2];
