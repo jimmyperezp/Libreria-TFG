@@ -10,7 +10,6 @@ byte         DW1000RangingClass::_currentAddress[8];
 byte         DW1000RangingClass::_currentShortAddress[2];
 byte         DW1000RangingClass::_lastSentToShortAddress[2];
 volatile uint8_t DW1000RangingClass::_networkDevicesNumber = 0; // TODO short, 8bit?
-volatile uint8_t DW1000RangingClass::_pollAckReceivedCount = 0;
 int16_t      DW1000RangingClass::_lastDistantDevice    = 0; // TODO short, 8bit?
 DW1000Mac    DW1000RangingClass::_globalMac;
 
@@ -570,8 +569,7 @@ void DW1000RangingClass::loop() {
 		}
 
 		if(ranging_enabled){
-
-			if(messageType == BLINK && _type == RESPONDER) {
+				if(messageType == BLINK && _type == RESPONDER) {
 				byte address[8];
 				byte shortAddress[2];
 				_globalMac.decodeBlinkFrame(data, address, shortAddress);
@@ -583,21 +581,13 @@ void DW1000RangingClass::loop() {
 						(*_handleBlinkDevice)(&myInitiator);
 					}
 					//we reply by the transmit ranging init message
-
-					uint16_t fullShortAddr = ((uint16_t)_currentShortAddress[1] << 8) | _currentShortAddress[0];
-					uint16_t delay_ms = (fullShortAddr % 79) + 5; 
-                    
-                    delay(delay_ms);
 					transmitRangingInit(&myInitiator);
 					noteActivity();
 				}
-
-
 				_expectedMsgId = POLL;
 				//Serial.println("Blink Recibido");
 			}
-
-			else if(messageType == RANGING_INIT && _type == INITIATOR) {
+				else if(messageType == RANGING_INIT && _type == INITIATOR) {
 
 				byte address[2];
 				_globalMac.decodeLongMACFrame(data, address);
@@ -767,23 +757,12 @@ void DW1000RangingClass::loop() {
 						//we note activity for our device:
 						myDistantDevice->noteActivity();
 
-
-						_pollAckReceivedCount++;
-						if(_pollAckReceivedCount >= _networkDevicesNumber) { 
-							_expectedMsgId = RANGE_REPORT;
-							//and transmit the next message (range) of the ranging 
-							// protocole (in broadcast)
-							transmitRange(nullptr);
-							_pollAckReceivedCount = 0; // Reset counter for next poll
-						}
-						/*
 						//in the case the message come from our last device:
 						if(myDistantDevice->getIndex() == _networkDevicesNumber-1) {
 							_expectedMsgId = RANGE_REPORT;
 							//and transmit the next message (range) of the ranging 	protocole (in broadcast)
 							transmitRange(nullptr);
 						}
-						*/
 					}
 					else if(messageType == RANGE_REPORT) {
 
@@ -871,7 +850,7 @@ void DW1000RangingClass::resetInactive() {
 	noteActivity();
 }
 
-/*void DW1000RangingClass::timerTick() {
+void DW1000RangingClass::timerTick() {
 
 	if(ranging_enabled && !stop_ranging){
 
@@ -879,53 +858,31 @@ void DW1000RangingClass::resetInactive() {
 		if(_type == INITIATOR) {
 			_expectedMsgId = POLL_ACK;
 			//send a prodcast poll
+			
+
 				transmitPoll(nullptr);
+			
+			
 		}
 	}
 	else if(counterForBlink == 0) {
 		if(_type == INITIATOR) {
+			
 				transmitBlink();
+			
+			
 		}
 		//check for inactive devices if we are a INITIATOR or RESPONDER
+		
         checkForInactiveDevices();
+    	
+		
 	}
 	counterForBlink++;
 	if(counterForBlink > 20) {
 		counterForBlink = 0;
 	}
 	}
-}
-*/
-
-void DW1000RangingClass::timerTick() {
-    if (ranging_enabled && !stop_ranging) {
-        if (_type == INITIATOR) { 
-            // Lógica para INITIATORs (Master y Esclavos-activos)
-            if (counterForBlink == 0) {
-                // Cada ~1.6s, envía un BLINK para descubrir nuevos dispositivos
-                transmitBlink();
-                // Y comprueba si los dispositivos conocidos siguen activos
-                checkForInactiveDevices();
-            } else {
-                // En el resto de ciclos, mide con los dispositivos que ya conoce
-                if (_networkDevicesNumber > 0) {
-                    _expectedMsgId = POLL_ACK;
-                    transmitPoll(nullptr);
-                }
-            }
-        } else { 
-            // Lógica para RESPONDERs (Esclavos-inactivos y Tags)
-            if (counterForBlink == 0) {
-                // Solo necesitan comprobar si los INITIATORs que conocen siguen activos
-                checkForInactiveDevices();
-            }
-        }
-
-        counterForBlink++;
-        if (counterForBlink > 6) { // 20 * 80ms (DEFAULT_TIMER_DELAY) = 1.6s
-            counterForBlink = 0;
-        }
-    }
 }
 
 void DW1000RangingClass::copyShortAddress(byte address1[], byte address2[]) {
@@ -977,7 +934,6 @@ void DW1000RangingClass::transmitRangingInit(DW1000Device* myDistantDevice) {
 void DW1000RangingClass::transmitPoll(DW1000Device* myDistantDevice) {
 	
 	transmitInit();
-	_pollAckReceivedCount = 0;
 	
 	if(myDistantDevice == nullptr) { //If the polling is done via broadcast
 		//Right now, it is always sent via broadcast.
