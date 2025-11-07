@@ -124,13 +124,11 @@ void setup(){
     
 }
 
-
 uint8_t getOwnShortAddress() {
     byte* sa = DW1000Ranging.getCurrentShortAddress();
     //return ((uint16_t)sa[0] << 8) | sa[1];
     return (uint8_t)sa[0];
 }
-
 
 void showData(){
 
@@ -153,7 +151,6 @@ void showData(){
     Serial.println("--------------------------------------------------------------------");
     
 }
-
 
 void registerDevice(DW1000Device *device){
 
@@ -187,7 +184,6 @@ void registerDevice(DW1000Device *device){
     
     amount_devices ++;
 }
-
 
 int searchDevice(uint8_t own_sa,uint8_t dest_sa){
     
@@ -262,10 +258,6 @@ void inactiveDevice(DW1000Device *device){
     
 }
 
-    
-    
-
-
 void logMeasure(uint8_t own_sa,uint8_t dest_sa, float dist, float rx_pwr){
 
     // Firstly, checks if that communication has been logged before
@@ -323,9 +315,6 @@ void newRange(){
     }
 }
 
-
-
-
 void stopRanging(){
 
     DW1000Ranging.setStopRanging(true);
@@ -341,7 +330,6 @@ void activateRanging(){
     master_ranging_start = current_time;
    
 }
-
 
 void transmitUnicast(uint8_t message_type){
 
@@ -457,7 +445,6 @@ void retryTransmission(uint8_t message_type){
     }
 }
 
-
 void modeSwitchFailed(bool switching_to_initiator){
 
     if(switching_to_initiator){
@@ -476,7 +463,6 @@ void modeSwitchFailed(bool switching_to_initiator){
         state = SWITCH_TO_RESPONDER;
     }
 }
-
 
 void DataReportFailed(){
 
@@ -511,16 +497,13 @@ void DataReport(byte* data){
         }
         return;
     }
-
-    // ¡ÉXITO! Hemos encontrado al esclavo y su reporte estaba pendiente.
-    // Usamos 'slave_index_in_array' (el índice que hemos encontrado) en lugar de 'reporting_slave_index'
-    
+   
     Existing_devices[slaves_indexes[slave_index_in_array]].data_report_pending = false;
 
     uint16_t index = SHORT_MAC_LEN+1;
     uint8_t numMeasures = data[index++];
 
-    // Comprobamos si el tamaño es correcto:
+    
     if(numMeasures*5 > LEN_DATA-SHORT_MAC_LEN-4){
         Serial.println("The Data received is too long");
         return;
@@ -604,7 +587,6 @@ void DataReport(byte* data){
     
 }
 
-
 void ModeSwitchAck(bool is_initiator){
 
     uint8_t origin_short_addr = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
@@ -646,10 +628,6 @@ void ModeSwitchAck(bool is_initiator){
     }      
 
 }
-
-
-
-
 
 void loop(){
 
@@ -738,7 +716,7 @@ void loop(){
         else{
             
             initiator_handoff_started = false;
-            state = DATA_REPORT; //
+            state = DATA_REPORT; 
 
             if(DEBUG){Serial.println("All slaves have been initiators and ranged. Now, starting data reports");}
         }
@@ -772,6 +750,7 @@ void loop(){
         if(!slave_is_ranging){
             slave_is_ranging = true;
             slave_ranging_start = current_time;
+            
             if(DEBUG){
                 Serial.print("The device ");
                 Serial.print(Existing_devices[slaves_indexes[active_slave_index]].short_addr,HEX);
@@ -783,6 +762,7 @@ void loop(){
         else{
 
             if(current_time-slave_ranging_start >= ranging_period){
+                
                 slave_is_ranging = false;
                 state = SWITCH_TO_RESPONDER;
                 if(DEBUG){Serial.println("End of slave ranging period. Switching it back to responder.");}
@@ -793,7 +773,7 @@ void loop(){
     else if(state == SWITCH_TO_RESPONDER){
 
         Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = true;
-        //transmitUnicast(MSG_SWITCH_TO_RESPONDER);
+        transmitUnicast(MSG_SWITCH_TO_RESPONDER);
         
         state = WAIT_SWITCH_TO_RESPONDER_ACK;
     }
@@ -863,8 +843,6 @@ void loop(){
         }
     }
     
-
-
     else if(state == WAIT_DATA_REPORT){
 
         if(!waiting_data_report){
