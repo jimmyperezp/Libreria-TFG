@@ -58,6 +58,15 @@ void setup(){
     DW1000.setAntennaDelay(Adelay);
 
     // Callbacks "enabled" 
+    attachCallbacks();
+
+    DW1000Ranging.startAsResponder(DEVICE_ADDR,DW1000.MODE_1, false,SLAVE_ANCHOR);
+
+    own_short_addr = getOwnShortAddress();
+    // I save the own_short_addr after the device has been set up propperly
+}
+
+void attachCallbacks(){
     DW1000Ranging.attachNewRange(newRange);
     DW1000Ranging.attachNewDevice(newDevice);
     DW1000Ranging.attachInactiveDevice(inactiveDevice);   
@@ -65,11 +74,6 @@ void setup(){
     DW1000Ranging.attachModeSwitchRequested(ModeSwitchRequested);
     DW1000Ranging.attachDataRequested(DataRequested);
     DW1000Ranging.attachStopRangingRequested(stopRangingRequested);
-
-    DW1000Ranging.startAsResponder(DEVICE_ADDR,DW1000.MODE_1, false,SLAVE_ANCHOR);
-
-    own_short_addr = getOwnShortAddress();
-    // I save the own_short_addr after the device has been set up propperly
 }
 
 uint8_t getOwnShortAddress() {
@@ -238,6 +242,7 @@ void switchToResponder(){
     is_initiator = false;
     DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
 
+    attachCallbacks();
 }
 
 void switchToInitiator(){
@@ -249,6 +254,8 @@ void switchToInitiator(){
     initiator_start = current_time;
         
     DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
+
+    attachCallbacks();
 }
 
 void stopRangingRequested(byte* short_addr_requester){
