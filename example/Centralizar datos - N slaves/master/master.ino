@@ -837,6 +837,13 @@ void loop(){
             data_report_started = false;
             if(DEBUG) Serial.println("Received from all slaves. Showing data: ");
             showData();
+
+            for (int i = 0; i < amount_measurements; i++) {
+                if (measurements[i].active) {
+                    measurements[i].active = false;
+                }
+            }
+            
             if(DEBUG) Serial.println("Restarting the cycle --> going back to master ranging");
             
             state = MASTER_RANGING;
