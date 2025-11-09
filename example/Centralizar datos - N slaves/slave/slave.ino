@@ -240,6 +240,7 @@ void switchToResponder(){
     if(DEBUG){Serial.println("Switching to RESPONDER");}
     //DW1000.idle();
     is_initiator = false;
+    DW1000.idle();
     DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
 
     attachCallbacks();
@@ -249,10 +250,11 @@ void switchToInitiator(){
 
     if(DEBUG) {Serial.println("Switching to INITIATOR");}
         
-    //DW1000.idle();
+    
     is_initiator = true;
     initiator_start = current_time;
         
+    DW1000.idle();
     DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
 
     attachCallbacks();
@@ -305,7 +307,10 @@ void newRange(){
 void newDevice(DW1000Device *device){
 
     Serial.print("New Device: ");
-    Serial.println(device->getShortAddress(), HEX);
+    Serial.print(device->getShortAddressHeader(), HEX);
+    Serial.print("\tType: ");
+    Serial.println(device->getBoardType());
+    
 }
 
 void inactiveDevice(DW1000Device *device){

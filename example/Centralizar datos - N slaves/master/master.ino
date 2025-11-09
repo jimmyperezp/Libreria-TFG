@@ -167,16 +167,9 @@ void registerDevice(DW1000Device *device){
         slaves_discovered = true;
         amount_slaves ++;
         amount_active_slaves++;
+    }
 
-        if(DEBUG){
-            Serial.print("Device ");
-            Serial.print(Existing_devices[amount_devices].short_addr,HEX);
-            Serial.println(" is a slave.");}
-        
-    }
-    else{ 
-        Existing_devices[amount_devices].is_slave_anchor = false;
-    }
+    else{ Existing_devices[amount_devices].is_slave_anchor = false;}
 
     Existing_devices[amount_devices].is_responder = true;
     Existing_devices[amount_devices].active = true;
@@ -199,9 +192,10 @@ int searchDevice(uint8_t own_sa,uint8_t dest_sa){
 
 void newDevice(DW1000Device *device){
 
-    Serial.print("New Device: ");
-    Serial.println(device->getShortAddressHeader(), HEX);
-
+    Serial.print("New Device: 0x");
+    Serial.print(device->getShortAddressHeader(), HEX);
+    Serial.print("\tType --> ");
+    Serial.println(device->getBoardType());
     registerDevice(device);
 }
 

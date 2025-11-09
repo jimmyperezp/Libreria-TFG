@@ -263,7 +263,10 @@ void newRange(){
 void newDevice(DW1000Device *device){
 
     Serial.print("New Device: ");
-    Serial.println(device->getShortAddress(), HEX);
+    Serial.print(device->getShortAddressHeader(), HEX);
+    Serial.print("\tType: ");
+    Serial.println(device->getBoardType());
+    
 }
 
 void inactiveDevice(DW1000Device *device){
