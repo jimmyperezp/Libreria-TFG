@@ -104,6 +104,10 @@ void DW1000Device::noteActivity() {
 
 boolean DW1000Device::isInactive() {
 	//One second of inactivity
+	
+	if(_boardType == MASTER_ANCHOR || _boardType == TAG) {
+		return false;
+	}
 	if(millis()-_activity > INACTIVITY_TIME) {
 		_activity = millis();
 		return true;
