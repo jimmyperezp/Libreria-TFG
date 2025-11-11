@@ -9,8 +9,6 @@ DW1000Device DW1000RangingClass::_networkDevices[MAX_DEVICES];
 byte         DW1000RangingClass::_currentAddress[8];
 byte         DW1000RangingClass::_currentShortAddress[2];
 byte         DW1000RangingClass::_lastSentToShortAddress[2];
-
-volatile uint8_t DW1000RangingClass::_poll_ack_count = 0;
 volatile uint8_t DW1000RangingClass::_networkDevicesNumber = 0; // TODO short, 8bit?
 int16_t      DW1000RangingClass::_lastDistantDevice    = 0; // TODO short, 8bit?
 DW1000Mac    DW1000RangingClass::_globalMac;
@@ -575,7 +573,6 @@ void DW1000RangingClass::loop() {
 				DW1000Device myInitiator(address, shortAddress);
 
 				if(addNetworkDevices(&myInitiator)) {
-					_networkDevices[_networkDevicesNumber-1].noteActivity();
 					if(_handleBlinkDevice != 0) {
 						(*_handleBlinkDevice)(&myInitiator);
 					}
@@ -600,7 +597,6 @@ void DW1000RangingClass::loop() {
                     // Store board type on the persisted network device entry
                     _networkDevices[_networkDevicesNumber-1].setBoardType(responderboardType);
 
-					_networkDevices[_networkDevicesNumber-1].noteActivity();
                     // Notify using the stored device (ensures boardType and state are accurate)
                     if(_handleNewDevice != 0) {
                         (*_handleNewDevice)(&_networkDevices[_networkDevicesNumber-1]);
@@ -753,34 +749,16 @@ void DW1000RangingClass::loop() {
 						return;
 					}
 					if(messageType == POLL_ACK) {
-
 						DW1000.getReceiveTimestamp(myDistantDevice->timePollAckReceived);
+						//we note activity for our device:
 						myDistantDevice->noteActivity();
 
-						_poll_ack_count++;
-						if(DEBUG){
-
-							Serial.print("RANGING_LIB: Received POLL_ACK from 0x");
-							Serial.print(myDistantDevice->getShortAddressHeader(), HEX);
-							Serial.print(" (");
-							Serial.print(_poll_ack_count);
-							Serial.print("/");
-							Serial.print(_networkDevicesNumber);
-							Serial.println(")");
-						}
-
-						if(_poll_ack_count >= _networkDevicesNumber){
-
-							if(DEBUG){
-								Serial.println("LIB: All Poll Acks Received. Transmiting Range");
-							}
+						//in the case the message come from our last device:
+						if(myDistantDevice->getIndex() == _networkDevicesNumber-1) {
 							_expectedMsgId = RANGE_REPORT;
 							//and transmit the next message (range) of the ranging 	protocole (in broadcast)
 							transmitRange(nullptr);
-							_poll_ack_count = 0;
 						}
-						//in the case the message come from our last device:
-						
 					}
 					else if(messageType == RANGE_REPORT) {
 
@@ -957,7 +935,7 @@ void DW1000RangingClass::transmitRangingInit(DW1000Device* myDistantDevice) {
 void DW1000RangingClass::transmitPoll(DW1000Device* myDistantDevice) {
 	
 	transmitInit();
-	_poll_ack_count = 0;
+	
 	if(myDistantDevice == nullptr) { //If the polling is done via broadcast
 		//Right now, it is always sent via broadcast.
 

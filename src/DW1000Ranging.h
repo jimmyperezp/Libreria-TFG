@@ -166,10 +166,6 @@ public:
 
 	
 private:
-
-	
-	static volatile uint8_t _poll_ack_count;
-
 	//other devices in the network
 	static DW1000Device _networkDevices[MAX_DEVICES];
 	static volatile uint8_t _networkDevicesNumber;
