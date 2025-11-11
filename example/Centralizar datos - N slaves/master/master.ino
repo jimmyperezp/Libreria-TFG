@@ -195,7 +195,25 @@ void newDevice(DW1000Device *device){
     Serial.print("New Device: 0x");
     Serial.print(device->getShortAddressHeader(), HEX);
     Serial.print("\tType --> ");
-    Serial.println(device->getBoardType());
+    uint8_t board_type = device->getBoardType();
+    switch(board_type){
+        case 1:
+            Serial.println("Master anchor");
+            break;
+        case 2:
+            Serial.println("Slave Anchor");
+            break;
+        case 3: 
+            Serial.println("Tag");
+            break;
+
+        default:
+            Serial.print(board_type);
+            Serial.println(" Not Known");
+            break;
+
+    }
+    
     registerDevice(device);
 }
 
@@ -474,65 +492,7 @@ void DataReport(byte* data){
     
     uint8_t origin_short_addr = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
 
-    int8_t slave_index_in_array = -1; 
-    for(int i = 0; i < amount_slaves; i++){
-        // Comparamos el short_addr del esclavo 'i' con el origen del mensaje
-        if(Existing_devices[slaves_indexes[i]].short_addr == origin_short_addr){
-            slave_index_in_array = i;
-            break;
-        }
-    }
 
-    if(slave_index_in_array == -1 || !Existing_devices[slaves_indexes[slave_index_in_array]].data_report_pending){
-        if(DEBUG){
-            Serial.print("Data Report from ");
-            Serial.print(origin_short_addr, HEX);
-            Serial.println(" received but was not pending or not a slave. Discarded.");
-        }
-        return;
-    }
-   
-    Existing_devices[slaves_indexes[slave_index_in_array]].data_report_pending = false;
-
-    uint16_t index = SHORT_MAC_LEN+1;
-    uint8_t numMeasures = data[index++];
-
-    
-    if(numMeasures*5 > LEN_DATA-SHORT_MAC_LEN-4){
-        Serial.println("The Data received is too long");
-        return;
-    }
-
-    for (int i = 0; i < numMeasures; i++) {
-        uint8_t destiny_short_addr = data[index++];
-        uint16_t distance_cm;
-        memcpy(&distance_cm, data + index, 2); 
-        index += 2;
-        float distance = (float)distance_cm / 100.0f;
-
-        int16_t _rxPower;
-        memcpy(&_rxPower, data + index, 2);
-        index += 2; 
-        float rxPower = (float)_rxPower / 100.0f;
-        
-        logMeasure(origin_short_addr, destiny_short_addr, distance, rxPower);
-    }
-    
-
-    if(DEBUG){
-        Serial.print("Data Report received and processed from: ");
-        Serial.println(origin_short_addr,HEX);
-    }
-
-    // Si estábamos en el estado WAIT_DATA_REPORT y este es el esclavo que esperábamos,
-    // reseteamos los reintentos y avanzamos la FSM.
-    if(state == WAIT_DATA_REPORT && reporting_slave_index == slave_index_in_array){
-        if(DEBUG) Serial.println("Advancing FSM from WAIT state.");
-        waiting_data_report = false;
-        num_retries = 0;
-        state = DATA_REPORT; // Avanzamos al siguiente esclavo
-    }
-    /*
     if(Existing_devices[slaves_indexes[reporting_slave_index]].short_addr == origin_short_addr && Existing_devices[slaves_indexes[reporting_slave_index]].data_report_pending == true){
 
         Existing_devices[slaves_indexes[reporting_slave_index]].data_report_pending = false;
@@ -577,7 +537,7 @@ void DataReport(byte* data){
         num_retries = 0;
         state = DATA_REPORT;
     }
-        */
+        
     
 }
 
@@ -849,6 +809,7 @@ void loop(){
         if(!waiting_data_report){
             waiting_data_report = true;
             waiting_data_report_start = current_time;
+            
             if(DEBUG){
                 Serial.print("Waiting data report from ");
                 Serial.println(Existing_devices[slaves_indexes[reporting_slave_index]].short_addr,HEX);
@@ -868,8 +829,4 @@ void loop(){
         }
         
     }
-
-
-    
-
 }
