@@ -856,11 +856,16 @@ void DW1000RangingClass::timerTick() {
 
 	if(_networkDevicesNumber > 0 && counterForBlink != 0) {
 		if(_type == INITIATOR) {
+			
+			
+			Serial.print("RANGING (0x");
+            Serial.print(_currentShortAddress[0], HEX);
+            Serial.print("): timerTick() -> transmitPoll(nullptr). Devices in list: ");
+            Serial.println(_networkDevicesNumber);
+
 			_expectedMsgId = POLL_ACK;
 			//send a prodcast poll
-			
-
-				transmitPoll(nullptr);
+			transmitPoll(nullptr);
 			
 			
 		}
