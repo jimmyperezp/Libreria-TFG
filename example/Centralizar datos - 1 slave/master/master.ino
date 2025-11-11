@@ -310,6 +310,15 @@ void newRange(){
         ranging_begin = current_time;
     }
 
+    if(DEBUG){
+        Serial.print("New range from: ");
+        Serial.print(destiny_short_addr,HEX);
+        Serial.print("\t Distance: ");
+        Serial.print(DW1000Ranging.getDistantDevice()->getRange());
+        Serial.print(" m");
+        Serial.print("\t RX power: ");
+        Serial.println(DW1000Ranging.getDistantDevice()->getRXPower());
+    }
 }
 
 
@@ -318,7 +327,24 @@ void newDevice(DW1000Device *device){
     Serial.print("New Device: ");
     Serial.print(device->getShortAddressHeader(), HEX);
     Serial.print("\tType: ");
-    Serial.println(device->getBoardType());
+    uint8_t board_type = device->getBoardType();
+    switch(board_type){
+        case 1:
+            Serial.println("Master anchor");
+            break;
+        case 2:
+            Serial.println("Slave Anchor");
+            break;
+        case 3: 
+            Serial.println("Tag");
+            break;
+
+        default:
+            Serial.print(board_type);
+            Serial.println(" Not Known");
+            break;
+
+    }
     registerDevice(device);
 
     
