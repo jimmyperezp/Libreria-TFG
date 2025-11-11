@@ -319,7 +319,6 @@ DW1000Device* DW1000RangingClass::searchDistantDevice(byte shortAddress[]) {
 }
 
 
-
 DW1000Device* DW1000RangingClass::searchDeviceByShortAddHeader(uint8_t short_addr_header){
 
 
@@ -334,9 +333,6 @@ DW1000Device* DW1000RangingClass::searchDeviceByShortAddHeader(uint8_t short_add
 
 	return nullptr; // Not found.
 }
-
-
-
 
 
 DW1000Device* DW1000RangingClass::getDistantDevice() {
@@ -857,12 +853,12 @@ void DW1000RangingClass::timerTick() {
 	if(_networkDevicesNumber > 0 && counterForBlink != 0) {
 		if(_type == INITIATOR) {
 			
-			
-			Serial.print("RANGING (0x");
-            Serial.print(_currentShortAddress[0], HEX);
-            Serial.print("): timerTick() -> transmitPoll(nullptr). Devices in list: ");
-            Serial.println(_networkDevicesNumber);
-
+			if(DEBUG){
+				Serial.print("RANGING (0x");
+            	Serial.print(_currentShortAddress[0], HEX);
+            	Serial.print("): timerTick() -> transmitPoll(nullptr). Devices in list: ");
+            	Serial.println(_networkDevicesNumber);
+			}
 			_expectedMsgId = POLL_ACK;
 			//send a prodcast poll
 			transmitPoll(nullptr);
