@@ -250,9 +250,9 @@ void newRange(){
     }
 
     if(DEBUG){
-        Serial.print("Desde: ");
+        Serial.print("New Range from: ");
         Serial.print(destiny_short_addr,HEX);
-        Serial.print("\t Distancia: ");
+        Serial.print("\t Distance: ");
         Serial.print(DW1000Ranging.getDistantDevice()->getRange());
         Serial.print(" m");
         Serial.print("\t RX power: ");
