@@ -15,7 +15,7 @@ const uint8_t PIN_RST = 27; // reset pin
 const uint8_t PIN_IRQ = 34; // irq pin
 const uint8_t PIN_SS = 4;   // spi select pin
 
-#define DEBUG true
+#define DEBUG false
 
 #define IS_MASTER true
 #define DEVICE_ADDR "A1:00:5B:D5:A9:9A:E2:9C" 
@@ -110,7 +110,7 @@ int searchDevice(uint8_t own_sa,uint8_t dest_sa){
     
     for (int i=0 ; i < amount_measurements ; i++){
 
-        if ((measurements[i].short_addr_origin == own_sa)&&(measurements[i].short_addr_dest == dest_sa)) {
+        if ((measurements[i].short_addr_origin == own_sa)&&(measurements[i].short_addr_dest == dest_sa) || (measurements[i].short_addr_origin == dest_sa)&&(measurements[i].short_addr_dest == own_sa)  ) {
             return i; 
             // If found, returns the index
         }
@@ -286,6 +286,11 @@ void showData(){
     }
     Serial.println("--------------------------------------------------------------------");
     
+    for (int i = 0; i < amount_measurements; i++) {
+        if (measurements[i].short_addr_origin != own_short_addr) {
+            measurements[i].active = false;
+        }
+    }
 }
 
 
