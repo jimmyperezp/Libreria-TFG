@@ -319,6 +319,7 @@ DW1000Device* DW1000RangingClass::searchDistantDevice(byte shortAddress[]) {
 }
 
 
+
 DW1000Device* DW1000RangingClass::searchDeviceByShortAddHeader(uint8_t short_addr_header){
 
 
@@ -333,6 +334,9 @@ DW1000Device* DW1000RangingClass::searchDeviceByShortAddHeader(uint8_t short_add
 
 	return nullptr; // Not found.
 }
+
+
+
 
 
 DW1000Device* DW1000RangingClass::getDistantDevice() {
@@ -364,7 +368,7 @@ void DW1000RangingClass::checkForInactiveDevices() {
 				(*_handleInactiveDevice)(&_networkDevices[i]);
 			}
 			//we need to delete the device from the array:
-			removeNetworkDevices(i);
+			//removeNetworkDevices(i);
 			
 		}
 	}
@@ -571,6 +575,15 @@ void DW1000RangingClass::loop() {
 				_globalMac.decodeBlinkFrame(data, address, shortAddress);
 				//we create a new device with the initiator
 				DW1000Device myInitiator(address, shortAddress);
+				uint8_t initiator_board_type = data[12];
+				myInitiator.setBoardType(initiator_board_type);
+
+				if(DEBUG) {
+                    Serial.print("Blink received from 0x");
+                    Serial.print(myInitiator.getShortAddressHeader(), HEX);
+                    Serial.print(" - Board Type: ");
+                    Serial.println(initiator_board_type);
+                }
 
 				if(addNetworkDevices(&myInitiator)) {
 					if(_handleBlinkDevice != 0) {
@@ -852,16 +865,11 @@ void DW1000RangingClass::timerTick() {
 
 	if(_networkDevicesNumber > 0 && counterForBlink != 0) {
 		if(_type == INITIATOR) {
-			
-			if(DEBUG){
-				Serial.print("RANGING (0x");
-            	Serial.print(_currentShortAddress[0], HEX);
-            	Serial.print("): timerTick() -> transmitPoll(nullptr). Devices in list: ");
-            	Serial.println(_networkDevicesNumber);
-			}
 			_expectedMsgId = POLL_ACK;
 			//send a prodcast poll
-			transmitPoll(nullptr);
+			
+
+				transmitPoll(nullptr);
 			
 			
 		}
@@ -880,7 +888,7 @@ void DW1000RangingClass::timerTick() {
 		
 	}
 	counterForBlink++;
-	if(counterForBlink > 6) {
+	if(counterForBlink > 20) {
 		counterForBlink = 0;
 	}
 	}
@@ -916,6 +924,7 @@ void DW1000RangingClass::transmit(byte datas[], DW1000Time time) {
 void DW1000RangingClass::transmitBlink() {
 	transmitInit();
 	_globalMac.generateBlinkFrame(data, _currentAddress, _currentShortAddress);
+	data[12] = _myBoardType;
 	transmit(data);
 	
 }
@@ -1138,7 +1147,7 @@ void DW1000RangingClass::transmitModeSwitch(bool toInitiator, DW1000Device* devi
 	//1: Prepare for new transmission:
 	transmitInit(); //Resets ack flag and sets default parameters (power, bit rate, preamble)
 	
-	bool sent_by_broadcast = false;
+	
 
 	byte dest[2]; //Here, I'll code the message's destination. 
 	
@@ -1150,14 +1159,14 @@ void DW1000RangingClass::transmitModeSwitch(bool toInitiator, DW1000Device* devi
 		dest[1] = 0xFF;
 		//According to the IEEE standard used, shortAddress 0xFF 0xFF is reserved as a broadcast, so that all nodes receive the message.
 
-		sent_by_broadcast = true;
+		
 	}
 	else{
 		//If not -> Unicast to the device's address
 		//memcpy function parameters: destiny, origin, number of bytes
 
 		memcpy(dest,device->getByteShortAddress(),2); // This function copies n bytes from the origin to the destiny.
-		sent_by_broadcast = false;
+		
 	}
 
 	//3: Generate shortMacFrame:
@@ -1170,30 +1179,7 @@ void DW1000RangingClass::transmitModeSwitch(bool toInitiator, DW1000Device* devi
 	uint16_t index = SHORT_MAC_LEN;
 	data[index++] = MODE_SWITCH;
 	data[index++] = toInitiator ? 1:0;
-	data[index++] = sent_by_broadcast ? 1:0;
-
-	if(sent_by_broadcast){
-
-		//If sent by broadcast, I set a reply time to avoid colissions.
-		
-		data[index++] = _networkDevicesNumber;
-		for(uint8_t i = 0; i < _networkDevicesNumber; i++) {
-
-			const byte* add = _networkDevices[i].getByteShortAddress();
-			data[index++] = add[0];
-			data[index++] = add[1];
-
-
-			_networkDevices[i].setReplyTime((2*i+1)*DEFAULT_REPLY_DELAY_TIME);
-			uint16_t replyTime = _networkDevices[i].getReplyTime();
-			memcpy(data+index, &replyTime, sizeof(uint16_t));
-			index += sizeof(uint16_t);
-
-			//TODO: 
-			//Right now, if i>5, the uint16_t overflows. I should switch the _replyTime definitions everywhere to uint32_t
-		}
-	}
-
+	
 	if(index>LEN_DATA){
 		//TODO - Clip the exceeding length, instead of not sending it
 		if(DEBUG) Serial.println("Payload del mode_switch demasiado largo. Ha habido truncamiento");
@@ -1294,18 +1280,22 @@ void DW1000RangingClass::transmitDataReport(Measurement* measurements, int numMe
     }
 
 	for (uint8_t i = 0; i < numMeasures; i++) {
-    	//1 byte for the destiny's short Address
-    	data[index++] = (uint8_t)measurements[i].short_addr_dest;
+		if(measurements[i].active == true){ //Only send the active measurements.
+
+			//1 byte for the destiny's short Address
+    		data[index++] = (uint8_t)measurements[i].short_addr_dest;
 		
-    	// Distante measured (sent as cm to reduce message length)
-    	uint16_t distance_cm = (uint16_t)(measurements[i].distance * 100.0f);
-    	memcpy(data + index, &distance_cm, 2); 
-    	index += 2;
-		
-    	// 2 bytes for the rx power. Sent as 2 bytes.
-    	int16_t rxPower_tx = (int16_t)(measurements[i].rxPower * 100.0f); // Using a signed integer (int instead o uint), the negative sign is saved correctly.
-    	memcpy(data + index, &rxPower_tx, 2); 
-    	index += 2;
+    		// Distante measured (sent as cm to reduce message length)
+    		uint16_t distance_cm = (uint16_t)(measurements[i].distance * 100.0f);
+    		memcpy(data + index, &distance_cm, 2); 
+    		index += 2;
+			
+    		// 2 bytes for the rx power. Sent as 2 bytes.
+    		int16_t rxPower_tx = (int16_t)(measurements[i].rxPower * 100.0f); // Using a signed integer (int instead o uint), the negative sign is saved correctly.
+    		memcpy(data + index, &rxPower_tx, 2); 
+    		index += 2;
+		}
+    	
 	}
 	
 
