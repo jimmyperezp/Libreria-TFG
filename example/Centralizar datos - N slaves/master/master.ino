@@ -40,6 +40,7 @@ uint8_t state = 1;
 #define DATA_REPORT 8
 #define WAIT_DATA_REPORT 9
 
+
 /*Time management*/
 /*1: "timers"*/
 unsigned long current_time = 0; 
@@ -309,11 +310,6 @@ void newRange(){
 
     logMeasure(own_short_addr,dest_sa, dist, rx_pwr);
     
-
-    if(stop_ranging_requested){
-        if(DEBUG){Serial.println("Master ranging ended");}      
-    }
-    
     if(!seen_first_range){ seen_first_range = true;}
 
     if(DEBUG){
@@ -325,6 +321,8 @@ void newRange(){
         Serial.print("\t RX power: ");
         Serial.println(rx_pwr);
     }
+
+
 }
 
 void stopRanging(){
@@ -339,7 +337,12 @@ void activateRanging(){
     DW1000Ranging.setStopRanging(false);
     stop_ranging_requested = false;
     seen_first_range = false;
+
+    DW1000Ranging.ranging_enabled = true;
+    
     master_ranging_start = current_time;
+
+
    
 }
 
@@ -626,7 +629,7 @@ void loop(){
                 stopRanging();
                
                 if(DEBUG){Serial.println("Master ranging ended. Now --> initiator handoff");}
-                master_is_ranging = false;
+                master_is_ranging = false;  
                 state = INITIATOR_HANDOFF;
             }
 
@@ -639,6 +642,7 @@ void loop(){
         }
     }
 
+    
     else if(state == INITIATOR_HANDOFF){
 
         if(!initiator_handoff_started){
