@@ -164,6 +164,7 @@ public:
 	// To send the data report. Sent by the slaves to the master.
 	void transmitDataReport(Measurement* measurements, int numMedidas, DW1000Device* device = nullptr);
 
+	static bool ranging_enabled; 
 	
 private:
 	//other devices in the network
@@ -230,7 +231,7 @@ private:
 	
 	
 	static bool stop_ranging;
-	static bool ranging_enabled; 
+	
 	
 	//methods
 	static void handleSent();
