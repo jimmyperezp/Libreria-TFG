@@ -63,7 +63,7 @@ void setup(){
 
     DW1000Ranging.attachModeSwitchRequested(ModeSwitchRequested);
     DW1000Ranging.attachDataRequested(DataRequested);
-    DW1000Ranging.attachStopRangingRequested(stopRangingRequested);
+    
 
     DW1000Ranging.startAsResponder(DEVICE_ADDR,DW1000.MODE_1, false,SLAVE_ANCHOR);
 
@@ -132,14 +132,12 @@ void clearMeasures(){
 
 void DataRequested(byte* short_addr_requester){
     
-    
-    Serial.println("Data report pedido");
     uint8_t numMeasures = amountDevices;
 
     if (DEBUG) {
-        Serial.print("DATA REQUEST recibido de: ");
+        Serial.print("Data request received from: ");
         Serial.print(((uint16_t)short_addr_requester[0] << 8) | short_addr_requester[1], HEX);
-        Serial.print(" | Medidas: ");
+        Serial.print(" | Amount measures to send: ");
         Serial.println(numMeasures);
     }
 
@@ -151,79 +149,89 @@ void DataRequested(byte* short_addr_requester){
 
     if(!requester){
         // Requester not found locally → broadcast the report
-        if (DEBUG) Serial.println("Enviando DATA_REPORT por broadcast (requester no encontrado)");
+        if (DEBUG) Serial.println(" Requester not found --> Sending data report via broadcast");
         DW1000Ranging.transmitDataReport((Measurement*)measurements, numMeasures, nullptr);
         clearMeasures();
         return;
     }
 
     if (DEBUG) {
-        Serial.print("Enviando DATA_REPORT a: ");
+        Serial.print("Sending data report to: ");
         Serial.println(requester->getShortAddress(), HEX);
     }
     
     
     DW1000Ranging.transmitDataReport((Measurement*)measurements, numMeasures, requester);
     clearMeasures();
-    Serial.println("lo envío y rehabilito el ranging");
+    
 
 }
+
 
 void ModeSwitchRequested(byte* short_addr_requester, bool to_initiator){
 
     DW1000Device* requester = DW1000Ranging.searchDistantDevice(short_addr_requester);
 
+    
+
     if(to_initiator == true){
         
-        if(!is_initiator){
-            switchToInitiator();
-        }
-        
-        else if(is_initiator) Serial.println("Already initiator. Only needs to send the Ack");
 
+        if(is_initiator) {
+             if(DEBUG) Serial.println("Already initiator. Only needs to send the Ack");
+        }
+
+        
         if(requester){ 
-            
-            if(DEBUG){
-                Serial.print("Sending switch ACK via Unicast to -->");
-                Serial.println(requester->getShortAddressHeader(),HEX);
-            }
-            DW1000Ranging.transmitModeSwitchAck(requester,to_initiator);
+            if(DEBUG) Serial.print("Sending switch ACK (to Initiator) via Unicast to -->");
+            if(DEBUG) Serial.println(requester->getShortAddressHeader(),HEX);
+            DW1000Ranging.transmitModeSwitchAck(requester, to_initiator);
         }
         else{
+            if(DEBUG) Serial.println("Requester not found. Sending ACK (to Initiator) via broadcast.");
+            DW1000Ranging.transmitModeSwitchAck(nullptr, to_initiator);
+        }
 
-            if(DEBUG){
-                Serial.println("Requester not found. Sending ACK via broadcast."); 
-            }
-            DW1000Ranging.transmitModeSwitchAck(nullptr,to_initiator);
+
+        delay(50); 
+
+        if(!is_initiator) { 
+            switchToInitiator();
         }
     }
     else{
+       
 
-        if(is_initiator){
-            switchToResponder();
+        if(!is_initiator){
+            if(DEBUG) Serial.println("Already responder. Only needs to send the Ack");
         }
-        
-        else Serial.println("El dispositivo ya es responder. Sólo falta enviar el Ack");
 
+        // 1. Enviar el ACK (como INITIATOR o RESPONDER, no importa)
         if(requester){ 
-            
-            if(DEBUG){
-                Serial.print("Sending switch ACK via Unicast to-->");
-                Serial.println(requester->getShortAddressHeader(),HEX);
-            }
-
-            DW1000Ranging.transmitModeSwitchAck(requester,to_initiator);
-
+            if(DEBUG) Serial.print("Sending switch ACK (to Responder) via Unicast to-->");
+            if(DEBUG) Serial.println(requester->getShortAddressHeader(),HEX);
+            DW1000Ranging.transmitModeSwitchAck(requester, to_initiator);
         }
         else{
-            if(DEBUG){
-                Serial.println("Requester not found. Sending ACK via broadcast.");
-                DW1000Ranging.transmitModeSwitchAck(nullptr,to_initiator);
-            }
+            if(DEBUG) Serial.println("Requester not found. Sending ACK (to Responder) via broadcast.");
+            DW1000Ranging.transmitModeSwitchAck(nullptr, to_initiator);
+        }
+
+        
+        delay(50); 
+
+       
+        if(is_initiator) {
+            switchToResponder();
+        } else {
+            
+            if(DEBUG) Serial.println("Already Responder, re-enabling receiver after ACK.");
+            DW1000.idle();
+            DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
+            
         }
     }
-} 
-
+}
 void switchToResponder(){
 
     if(DEBUG){Serial.println("Switching to RESPONDER");}
@@ -250,17 +258,6 @@ void switchToInitiator(){
 }
 
 
-
-void stopRangingRequested(byte* short_addr_requester){
-
-    Serial.println("Stop ranging request recibido");
-    short_addr_master = short_addr_requester;
-    DW1000Device* requester = DW1000Ranging.searchDistantDevice(short_addr_requester);
-    DW1000Ranging.setStopRanging(true);
-    stop_ranging_requested = true;
-    
-    
-}
 
 
 void newRange(){
@@ -297,10 +294,27 @@ void newRange(){
 
 void newDevice(DW1000Device *device){
 
-    Serial.print("New Device: ");
+    Serial.print("New Device: 0x");
     Serial.print(device->getShortAddressHeader(), HEX);
-    Serial.print("\tType: ");
-    Serial.println(device->getBoardType());
+    Serial.print("\tType --> ");
+    uint8_t board_type = device->getBoardType();
+    switch(board_type){
+        case 1:
+            Serial.println("Master anchor");
+            break;
+        case 2:
+            Serial.println("Slave Anchor");
+            break;
+        case 3: 
+            Serial.println("Tag");
+            break;
+
+        default:
+            Serial.print(board_type);
+            Serial.println(" Not Known");
+            break;
+
+    }
     
 }
 
