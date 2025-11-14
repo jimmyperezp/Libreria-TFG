@@ -1288,7 +1288,7 @@ void DW1000Class::setDefaults() {
 		
 		// TODO add channel and code to mode tuples
 	    // TODO add channel and code settings with checks (see DW1000 user manual 10.5 table 61)/
-	    setChannel(CHANNEL_5);
+	    setChannel(CHANNEL_1);
 		if(getPulseFrequency() == TX_PULSE_FREQ_16MHZ) {
 			setPreambleCode(PREAMBLE_CODE_16MHZ_4);
 		} else {
