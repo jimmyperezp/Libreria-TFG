@@ -130,7 +130,7 @@ void registerDevice(DW1000Device *device){
         Existing_devices[amount_devices].is_slave_anchor = true;
         slave_position = amount_devices;
         slave_disconnected = false;
-        if(DEBUG){Serial.println("Este es un slave.");}
+       
         
     }
     else{ 
@@ -184,10 +184,10 @@ void transmitUnicast(uint8_t message_type){
                 slave_position = getSlaveIndex();
 
                 if(DEBUG){
-                    Serial.print("Solicitado el cambio de ");
+                    Serial.print("Mode switch requested: ");
                     Serial.print(Existing_devices[slave_position].short_addr,HEX);
-                    Serial.print(switch_to_initiator ?  " a initiator" : " a responder");
-                    Serial.println(" por unicast");
+                    Serial.print(switch_to_initiator ?  " to initiator" : " to responder");
+                    Serial.println(" via unicast");
                 }
 
                 DW1000Ranging.transmitModeSwitch(switch_to_initiator,target);
@@ -201,7 +201,7 @@ void transmitUnicast(uint8_t message_type){
 
         else if(message_type == MSG_DATA_REQUEST){
 
-            if(DEBUG){Serial.println("Data report solicitado por UNICAST");}    
+            if(DEBUG){Serial.println("Data report requested via UNICAST");}    
             DW1000Ranging.transmitDataRequest(target);
             
             waitForResponse(timeout);
@@ -219,7 +219,7 @@ void transmitUnicast(uint8_t message_type){
 void waitForResponse(uint16_t waiting_time){
 
     uint32_t t0 = millis(); 
-    if(DEBUG){Serial.println("Esperando para el Ack");}
+    if(DEBUG){Serial.println("Waiting for the Ack");}
 
     
     while((uint32_t)(millis()-t0)<waiting_time){
@@ -248,7 +248,7 @@ void retryTransmission(uint8_t message_type){
             
             mode_switch_pending = false;
 
-            if(DEBUG){Serial.println("Cambio fallido. Regreso a ranging");}
+            if(DEBUG){Serial.println("Switch failed. Back to ranging");}
 
         }
         else if(message_type == MSG_DATA_REQUEST){
@@ -256,28 +256,27 @@ void retryTransmission(uint8_t message_type){
             data_report_pending = false;
             
 
-            if(DEBUG){Serial.println("Data Report NO recibido. Regreso a ranging");}
+            if(DEBUG){Serial.println("Data Report NOT received. Back to ranging");}
         }
         
         slave_is_responder = isSlaveResponder();
         state =  MASTER_RANGING;
-
     }
 }
 
 
 void showData(){
 
-    Serial.println("--------------------------- NUEVA MEDIDA ---------------------------");
+    Serial.println("--------------------------- NEW MEASURE ---------------------------");
     
     for (int i = 0; i < amount_measurements ; i++){ 
         
         if(measurements[i].active == true){
-            Serial.print(" Dispositivos: ");
+            Serial.print("Devices: ");
             Serial.print(measurements[i].short_addr_origin,HEX);
             Serial.print(" -> ");
             Serial.print(measurements[i].short_addr_dest,HEX);
-            Serial.print("\t Distancia: ");
+            Serial.print("\t Distance: ");
             Serial.print(measurements[i].distance);
             Serial.print(" m \t RX power: ");
             Serial.print(measurements[i].rxPower);
@@ -306,7 +305,7 @@ void newRange(){
     if(stop_ranging_requested){
 
         
-        if(DEBUG){Serial.println("El ranging ha terminado");}      
+        if(DEBUG){Serial.println("Ranging ended");}      
         
     }
     
@@ -457,9 +456,9 @@ void ModeSwitchAck(bool isInitiator){
 
 
                 if(DEBUG){
-                        Serial.print(" Cambio Realizado: ");
+                        Serial.print(" Switch completed: ");
                         Serial.print(origin_short_addr,HEX);
-                        Serial.print(" es --> ");
+                        Serial.print(" is --> ");
                         Serial.println(slave_is_responder ? "Responder" : "Initiator");
                 }
             }
@@ -502,7 +501,7 @@ void DataReport(byte* data){
         logMeasure(origin_short_addr, destiny_short_addr, distance, rxPower);
     }
     if(DEBUG){
-        Serial.print("Data report recibido de: ");
+        Serial.print("Data report received from: ");
         Serial.println(origin_short_addr,HEX);
     }
     
@@ -515,10 +514,9 @@ void DataReport(byte* data){
 
 
     showData();
-    if(DEBUG){Serial.println("Recibido el data report. Regreso a MASTER RANGING");}
+    if(DEBUG){Serial.println("Data report received. Back to master ranging.");}
     state = MASTER_RANGING;
 }
-
 
 void loop(){
 
@@ -528,7 +526,7 @@ void loop(){
     if(state == MASTER_RANGING){
 
         if(!master_is_ranging){
-            if(DEBUG) {Serial.println("El master comienza a hacer ranging");}
+            if(DEBUG) {Serial.println("Master starts Ranging.");}
             master_is_ranging = true;
             activateRanging();
 
@@ -541,7 +539,7 @@ void loop(){
                 stopRanging();
                 master_is_ranging = false;
                 state = MODE_SWITCH;
-                if(DEBUG){Serial.println("Ranging del maestro finalizado. Paso a mode switch");}
+                if(DEBUG){Serial.println("Master ranging ended. Moving on to mode switch.");}
             }
         }
 
@@ -587,13 +585,11 @@ void loop(){
 
             if(current_time - last_retry >= 500){
 
-                if(DEBUG){Serial.println("reintentando el mode switch...");}
+                if(DEBUG){Serial.println("Retrying mode switch...");}
                 retryTransmission(MSG_MODE_SWITCH);
             }
 
         }
-
-
 
     }
 
@@ -605,15 +601,13 @@ void loop(){
             data_report_request = current_time;
 
             transmitUnicast(MSG_DATA_REQUEST);
-        }
-
-        
+        }   
 
         if(data_report_pending && current_time - data_report_request >= 500){
 
             if(current_time-last_retry >=500){ 
                 
-                    if(DEBUG){Serial.println("Reintentando data report...");}
+                    if(DEBUG){Serial.println("Retrying data report...");}
                     retryTransmission(MSG_DATA_REQUEST);
 
                 }
@@ -625,12 +619,12 @@ void loop(){
         if(!waiting_slaves){
             waiting_slaves = true;
             activateRanging();
-            Serial.println("Esperando a detectar un esclavo para iniciar el ranging");
+            Serial.println("Waiting to detect a slave to start ranging.");
         }
         else{
         
             if(!slave_disconnected){
-                Serial.println("Esclavo detectado. Comienza el ciclo");
+                Serial.println("Slave detected. Program starts.");
                 waiting_slaves = false;
                 slave_is_responder = false;
                 state = MASTER_RANGING;
