@@ -1,11 +1,6 @@
-/* Code runs good when using 1 master, 1 slave and 1 tag.
-Flags and states are not adapted to using more than those devices */
-
-
 #include <SPI.h>
 #include "DW1000Ranging.h"
 #include "DW1000.h"
-
 
 #define SPI_SCK 18
 #define SPI_MISO 19
@@ -65,10 +60,7 @@ uint8_t MSG_DATA_REQUEST = 1;
 uint8_t MSG_MODE_SWITCH = 2;
 uint8_t MSG_MODE_SWITCH_ACK = 3;
 
-
-
 /* CODE */
-
 
 void setup(){
 
@@ -98,13 +90,11 @@ void setup(){
     slave_is_responder = true;
 }
 
-
 uint16_t getOwnShortAddress() {
     byte* sa = DW1000Ranging.getCurrentShortAddress();
     //return ((uint16_t)sa[0] << 8) | sa[1];
     return (uint8_t)sa[0];
 }
-
 
 int searchDevice(uint8_t own_sa,uint8_t dest_sa){
     
@@ -117,7 +107,6 @@ int searchDevice(uint8_t own_sa,uint8_t dest_sa){
     }
     return -1; // if not, returns -1
 }
-
 
 void registerDevice(DW1000Device *device){
 
@@ -144,7 +133,6 @@ void registerDevice(DW1000Device *device){
     amount_devices ++;
 }
 
-
 uint8_t getSlaveIndex(){
 
     for (int i = 0; i < amount_devices; i++){
@@ -157,7 +145,6 @@ uint8_t getSlaveIndex(){
     return -1;
 }
 
-
 bool isSlaveResponder(){
 
     for(int i = 0; i< amount_devices; i++){
@@ -169,7 +156,6 @@ bool isSlaveResponder(){
     }
 
 }
-
 
 void transmitUnicast(uint8_t message_type){
 
@@ -215,7 +201,6 @@ void transmitUnicast(uint8_t message_type){
 
 }
 
-
 void waitForResponse(uint16_t waiting_time){
 
     uint32_t t0 = millis(); 
@@ -232,7 +217,6 @@ void waitForResponse(uint16_t waiting_time){
     return;
 
 }
-
 
 void retryTransmission(uint8_t message_type){
 
@@ -264,7 +248,6 @@ void retryTransmission(uint8_t message_type){
     }
 }
 
-
 void showData(){
 
     Serial.println("--------------------------- NEW MEASURE ---------------------------");
@@ -291,7 +274,6 @@ void showData(){
         }
     }
 }
-
 
 void newRange(){
 
@@ -325,7 +307,6 @@ void newRange(){
     }
 }
 
-
 void newDevice(DW1000Device *device){
 
     Serial.print("New Device: ");
@@ -354,7 +335,6 @@ void newDevice(DW1000Device *device){
     
 }
 
-
 void inactiveDevice(DW1000Device *device){
 
     uint8_t origin_short_addr = device->getShortAddressHeader();
@@ -377,7 +357,6 @@ void inactiveDevice(DW1000Device *device){
     
     
 }
-
 
 void logMeasure(uint8_t own_sa,uint8_t dest_sa, float dist, float rx_pwr){
 
@@ -410,7 +389,6 @@ void logMeasure(uint8_t own_sa,uint8_t dest_sa, float dist, float rx_pwr){
     }
 }
 
-
 void activateRanging(){
 
     
@@ -421,14 +399,12 @@ void activateRanging(){
 
 }
 
-
 void stopRanging(){
 
     DW1000Ranging.setStopRanging(true);
     stop_ranging_requested = true;
     
 }
-
 
 void ModeSwitchAck(bool isInitiator){
 
@@ -466,7 +442,6 @@ void ModeSwitchAck(bool isInitiator){
 
     }
 }          
-
 
 void DataReport(byte* data){
 

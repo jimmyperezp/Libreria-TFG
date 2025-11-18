@@ -318,8 +318,6 @@ DW1000Device* DW1000RangingClass::searchDistantDevice(byte shortAddress[]) {
 	return nullptr;
 }
 
-
-
 DW1000Device* DW1000RangingClass::searchDeviceByShortAddHeader(uint8_t short_addr_header){
 
 
@@ -334,9 +332,6 @@ DW1000Device* DW1000RangingClass::searchDeviceByShortAddHeader(uint8_t short_add
 
 	return nullptr; // Not found.
 }
-
-
-
 
 
 DW1000Device* DW1000RangingClass::getDistantDevice() {
@@ -368,7 +363,7 @@ void DW1000RangingClass::checkForInactiveDevices() {
 				(*_handleInactiveDevice)(&_networkDevices[i]);
 			}
 			//we need to delete the device from the array:
-			//removeNetworkDevices(i);
+			removeNetworkDevices(i);
 			
 		}
 	}
@@ -868,9 +863,7 @@ void DW1000RangingClass::timerTick() {
 			_expectedMsgId = POLL_ACK;
 			//send a prodcast poll
 			
-
 				transmitPoll(nullptr);
-			
 			
 		}
 	}
@@ -878,8 +871,6 @@ void DW1000RangingClass::timerTick() {
 		if(_type == INITIATOR) {
 			
 				transmitBlink();
-			
-			
 		}
 		//check for inactive devices if we are a INITIATOR or RESPONDER
 		
@@ -888,10 +879,16 @@ void DW1000RangingClass::timerTick() {
 		
 	}
 	counterForBlink++;
-	if(counterForBlink > 20) {
+	if(counterForBlink > 6) {
 		counterForBlink = 0;
 	}
 	}
+}
+
+void DW1000RangingClass::discoverDevices(){
+
+	transmitBlink();
+	
 }
 
 void DW1000RangingClass::copyShortAddress(byte address1[], byte address2[]) {
@@ -1302,7 +1299,18 @@ void DW1000RangingClass::transmitDataReport(Measurement* measurements, int numMe
     transmit(data); //Finally, sends the message
 }
 
+void DW1000RangingClass::transmitPollUnicast(uint8_t short_addr_destiny){
 
+	DW1000Device* myDistantDevice = searchDeviceByShortAddHeader(short_addr_destiny);
+
+	if(DEBUG){
+		Serial.print("Sending poll to ");
+		Serial.println(short_addr_destiny,HEX);
+	}
+
+	transmitPoll(myDistantDevice);
+	
+}
 /* ###########################################################################
  * #### Methods for range computation and corrections  #######################
  * ######################################################################### */

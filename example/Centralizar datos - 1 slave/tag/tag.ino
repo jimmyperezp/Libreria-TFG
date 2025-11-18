@@ -1,4 +1,3 @@
-// CENTRALIZE DATA
 // TAG (Will only act as a responder.)
 
 #include <SPI.h>
@@ -19,8 +18,8 @@ const uint8_t PIN_SS = 4;   // spi select pin
 
 #define DEVICE_ADDR "C1:00:22:EA:82:60:3B:9C"
 
-void setup()
-{
+void setup(){
+  
   Serial.begin(115200);
   delay(1000);
 

@@ -1,11 +1,6 @@
-/* CENTRALIZE DATA IN AN ANCHOR */
-
-/* Anchor's code. If used on more than 1 device, user should change the shortAddress. */
-
 #include <SPI.h>
 #include "DW1000Ranging.h"
 #include "DW1000.h"
-
 //Board's pins definitions:
 #define SPI_SCK 18
 #define SPI_MISO 19
@@ -128,8 +123,6 @@ void clearMeasures(){
 
 }
 
-
-
 void DataRequested(byte* short_addr_requester){
     
     uint8_t numMeasures = amountDevices;
@@ -167,12 +160,11 @@ void DataRequested(byte* short_addr_requester){
 
 }
 
-
 void ModeSwitchRequested(byte* short_addr_requester, bool to_initiator){
 
     DW1000Device* requester = DW1000Ranging.searchDistantDevice(short_addr_requester);
 
-    
+    if(requester){requester->noteActivity();}
 
     if(to_initiator == true){
         
@@ -232,6 +224,7 @@ void ModeSwitchRequested(byte* short_addr_requester, bool to_initiator){
         }
     }
 }
+
 void switchToResponder(){
 
     if(DEBUG){Serial.println("Switching to RESPONDER");}
@@ -256,9 +249,6 @@ void switchToInitiator(){
 
     
 }
-
-
-
 
 void newRange(){
 
