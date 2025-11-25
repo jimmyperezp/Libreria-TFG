@@ -2,6 +2,11 @@
 #include "DW1000Ranging.h"
 #include "DW1000.h"
 
+/*BOARD'S PINS DEFINITIONS*/
+#define ESP32_WROOM32 false
+#define NUCLEO_F439ZI true 
+
+#ifdef ESP32_WROOM32
 #define SPI_SCK 18
 #define SPI_MISO 19
 #define SPI_MOSI 23
@@ -9,6 +14,17 @@
 const uint8_t PIN_RST = 27; // reset pin
 const uint8_t PIN_IRQ = 34; // irq pin
 const uint8_t PIN_SS = 4;   // spi select pin
+#endif
+
+#ifdef NUCLEO_F439ZI
+#define SPI_SCK D13
+#define SPI1_MISO D12
+#define SPI1_MOSI D11
+#define SPI1_CS D10 
+#define PIN_IRQ D8
+#define PIN_RST D7
+#endif
+
 
 #define DEBUG false
 
@@ -66,9 +82,15 @@ void setup(){
 
     Serial.begin(115200);
     delay(1000);
-    SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI); 
-    DW1000Ranging.initCommunication(PIN_RST, PIN_SS, PIN_IRQ); // DW1000 Start
+    if(ESP32_WROOM32){
+        SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI); 
+        DW1000Ranging.initCommunication(PIN_RST, PIN_SS, PIN_IRQ); // DW1000 Start
+    }
+    else if(NUCLEO_F439ZI){
 
+        SPI.SetMISO()
+    }
+    
     DW1000.setAntennaDelay(Adelay);
     DW1000Ranging.setResetPeriod(5000);
     // Callbacks "enabled" 
