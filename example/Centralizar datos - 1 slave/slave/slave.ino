@@ -53,6 +53,7 @@ void setup(){
     Serial.begin(115200);
     delay(1000); // 1 sec to launch the serial monitor
 
+    randomSeed(analogRead(0));
     SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI); // SPI bus start
     DW1000Ranging.initCommunication(PIN_RST, PIN_SS, PIN_IRQ); // DW1000 Start
 
@@ -181,6 +182,7 @@ void ModeSwitchRequested(byte* short_addr_requester, bool toInitiator){
         
 
         DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
+        DW1000.setAntennaDelay(Adelay);
         initiator_start = current_time;
         is_initiator = true;
         if(requester){ 
@@ -204,6 +206,7 @@ void ModeSwitchRequested(byte* short_addr_requester, bool toInitiator){
         
         // Preserve board type on role switch
         DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
+        DW1000.setAntennaDelay(Adelay);
         is_initiator = false;
         if(requester){ 
             DW1000Ranging.transmitModeSwitchAck(requester,toInitiator);
@@ -289,6 +292,7 @@ void switchToResponder(){
     is_initiator = false;
     DW1000.idle();
     DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
+    DW1000.setAntennaDelay(Adelay);
 
    
 }
@@ -299,12 +303,20 @@ void loop(){
     current_time = millis();
     if(is_initiator){
 
-        if(current_time - initiator_start >= 5000){
+        if(current_time - initiator_start >= 2000){
 
             if(DEBUG){
                 Serial.println("Timeout as a initiator. Going back to responder");
             }
-            switchToResponder();
+
+            SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI); // SPI bus start
+            DW1000Ranging.initCommunication(PIN_RST, PIN_SS, PIN_IRQ);
+    
+            // 2. Configuración de Red
+            DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
+            is_initiator = false;
+            // 3. Restaurar Calibración
+            DW1000.setAntennaDelay(Adelay);
 
         }
     }

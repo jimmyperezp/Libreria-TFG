@@ -74,6 +74,7 @@ void setup(){
 
     Serial.begin(115200);
     delay(1000);
+    randomSeed(analogRead(0));
     if(ESP32_WROOM32){
         SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI); 
         DW1000Ranging.initCommunication(PIN_RST, PIN_SS, PIN_IRQ); // DW1000 Start
@@ -356,8 +357,24 @@ void inactiveDevice(DW1000Device *device){
     uint8_t origin_short_addr = device->getShortAddressHeader();
     Serial.print("Lost connection with device: ");
     Serial.println(origin_short_addr, HEX);
-    amount_devices--;
     
+    
+    int index_to_remove = -1;
+    for (int i = 0; i< amount_devices; i++){
+        if(Existing_devices[i].short_addr == origin_short_addr){
+            index_to_remove = i;
+            break;
+        }
+    }
+
+    if(index_to_remove != -1){ //If the index has been found
+
+        for (int i=index_to_remove; i<amount_devices -1; i++){
+            Existing_devices[i] = Existing_devices[i+1];
+        }
+        amount_devices --;
+
+    }
     if(origin_short_addr == Existing_devices[getSlaveIndex()].short_addr){
 
         slave_disconnected = true;

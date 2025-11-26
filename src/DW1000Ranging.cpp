@@ -566,23 +566,23 @@ void DW1000RangingClass::loop() {
 
 		if(ranging_enabled){
 				if(messageType == BLINK && _type == RESPONDER) {
-				byte address[8];
-				byte shortAddress[2];
-				_globalMac.decodeBlinkFrame(data, address, shortAddress);
-				//we create a new device with the initiator
-				DW1000Device myInitiator(address, shortAddress);
-
-				if(addNetworkDevices(&myInitiator)) {
-					if(_handleBlinkDevice != 0) {
+					byte address[8];
+					byte shortAddress[2];
+					_globalMac.decodeBlinkFrame(data, address, shortAddress);
+					//we create a new device with the initiator
+					DW1000Device myInitiator(address, shortAddress);
+					boolean isNewDevice = addNetworkDevices(&myInitiator);
+				
+					if(isNewDevice && _handleBlinkDevice != 0) {
 						(*_handleBlinkDevice)(&myInitiator);
 					}
 					//we reply by the transmit ranging init message
 					transmitRangingInit(&myInitiator);
 					noteActivity();
-				}
+				
 				_expectedMsgId = POLL;
 				//Serial.println("Blink Recibido");
-			}
+				}
 				else if(messageType == RANGING_INIT && _type == INITIATOR) {
 
 				byte address[2];
@@ -628,9 +628,17 @@ void DW1000RangingClass::loop() {
 
 				//then we proceed to range protocole
 				if(_type == RESPONDER) {
+
+					if (messageType == POLL_ACK || messageType == RANGE_REPORT || messageType == RANGE_FAILED) {
+                    	//This filter prevents non-initiators to responding and "interacting" with messages that are not directed towards them.
+						return; 
+                	}
 					if(messageType != _expectedMsgId) {
 						// unexpected message, start over again (except if already POLL)
 						_protocolFailed = true;
+						if(DEBUG){
+							Serial.println("PROTOCOL FAILED --> Received a non expected message");
+						}
 					}
 					if(messageType == POLL) {
 
@@ -923,7 +931,7 @@ void DW1000RangingClass::transmitRangingInit(DW1000Device* myDistantDevice) {
 	data[LONG_MAC_LEN] = RANGING_INIT;
 	data[LONG_MAC_LEN + 1] = _myBoardType;
 	copyShortAddress(_lastSentToShortAddress, myDistantDevice->getByteShortAddress());
-	
+	delay(random(5, 25)); //This delay prevents colissions in responding to the blinks from the master. This way, library auto re-enables after master's reset.
 	transmit(data);
 }
 
