@@ -1,6 +1,11 @@
+/* CENTRALIZE DATA IN AN ANCHOR */
+
+/* Anchor's code. If used on more than 1 device, user should change the shortAddress. */
+
 #include <SPI.h>
 #include "DW1000Ranging.h"
 #include "DW1000.h"
+
 //Board's pins definitions:
 #define SPI_SCK 18
 #define SPI_MISO 19
@@ -31,11 +36,13 @@ unsigned long current_time = 0;
 unsigned long last_switch = 0;
 unsigned long last_report = 0;
 unsigned long initiator_start = 0;
+
 unsigned long last_ranging_started  =0;
 
 static bool stop_ranging_requested = false;
 static bool ranging_ended = false;
 static bool seen_first_range = false;
+
 static bool is_initiator = false;
 
 byte* short_addr_master;
@@ -58,7 +65,7 @@ void setup(){
 
     DW1000Ranging.attachModeSwitchRequested(ModeSwitchRequested);
     DW1000Ranging.attachDataRequested(DataRequested);
-    
+    DW1000Ranging.attachStopRangingRequested(stopRangingRequested);
 
     DW1000Ranging.startAsResponder(DEVICE_ADDR,DW1000.MODE_1, false,SLAVE_ANCHOR);
 
@@ -123,14 +130,18 @@ void clearMeasures(){
 
 }
 
+
+
 void DataRequested(byte* short_addr_requester){
     
+    
+    Serial.println("Data report pedido");
     uint8_t numMeasures = amountDevices;
 
     if (DEBUG) {
-        Serial.print("Data request received from: ");
+        Serial.print("DATA REQUEST recibido de: ");
         Serial.print(((uint16_t)short_addr_requester[0] << 8) | short_addr_requester[1], HEX);
-        Serial.print(" | Amount measures to send: ");
+        Serial.print(" | Medidas: ");
         Serial.println(numMeasures);
     }
 
@@ -142,113 +153,86 @@ void DataRequested(byte* short_addr_requester){
 
     if(!requester){
         // Requester not found locally → broadcast the report
-        if (DEBUG) Serial.println(" Requester not found --> Sending data report via broadcast");
+        if (DEBUG) Serial.println("Enviando DATA_REPORT por broadcast (requester no encontrado)");
         DW1000Ranging.transmitDataReport((Measurement*)measurements, numMeasures, nullptr);
-        clearMeasures();
         return;
     }
 
     if (DEBUG) {
-        Serial.print("Sending data report to: ");
+        Serial.print("Enviando DATA_REPORT a: ");
         Serial.println(requester->getShortAddress(), HEX);
     }
     
     
     DW1000Ranging.transmitDataReport((Measurement*)measurements, numMeasures, requester);
     clearMeasures();
-    
+    Serial.println("lo envío y rehabilito el ranging");
 
 }
 
-void ModeSwitchRequested(byte* short_addr_requester, bool to_initiator){
+void ModeSwitchRequested(byte* short_addr_requester, bool toInitiator){
 
     DW1000Device* requester = DW1000Ranging.searchDistantDevice(short_addr_requester);
 
-    if(requester){requester->noteActivity();}
+    if(toInitiator == true){
 
-    if(to_initiator == true){
+        if(DEBUG) {Serial.println("Pasando a INITIATOR");}
+        DW1000.idle();
         
 
-        if(is_initiator) {
-             if(DEBUG) Serial.println("Already initiator. Only needs to send the Ack");
-        }
-
-        
+        DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
+        initiator_start = current_time;
+        is_initiator = true;
         if(requester){ 
-            if(DEBUG) Serial.print("Sending switch ACK (to Initiator) via Unicast to -->");
-            if(DEBUG) Serial.println(requester->getShortAddressHeader(),HEX);
-            DW1000Ranging.transmitModeSwitchAck(requester, to_initiator);
+            DW1000Ranging.transmitModeSwitchAck(requester,toInitiator);
+            if(DEBUG){
+                Serial.print("Enviando el ACK por unicast a -->");
+                Serial.println(requester->getShortAddressHeader(),HEX);
+            }
         }
         else{
-            if(DEBUG) Serial.println("Requester not found. Sending ACK (to Initiator) via broadcast.");
-            DW1000Ranging.transmitModeSwitchAck(nullptr, to_initiator);
-        }
-
-
-        delay(50); 
-
-        if(!is_initiator) { 
-            switchToInitiator();
+            if(DEBUG){
+                Serial.println("Dispositivo no encontrado. Enviando por broadcast");
+                DW1000Ranging.transmitModeSwitchAck(nullptr,toInitiator);
+            }
         }
     }
     else{
-       
 
-        if(!is_initiator){
-            if(DEBUG) Serial.println("Already responder. Only needs to send the Ack");
-        }
-
-        // 1. Enviar el ACK (como INITIATOR o RESPONDER, no importa)
+        if(DEBUG){Serial.println("Pasando a responder");}
+        DW1000.idle();
+        
+        // Preserve board type on role switch
+        DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
+        is_initiator = false;
         if(requester){ 
-            if(DEBUG) Serial.print("Sending switch ACK (to Responder) via Unicast to-->");
-            if(DEBUG) Serial.println(requester->getShortAddressHeader(),HEX);
-            DW1000Ranging.transmitModeSwitchAck(requester, to_initiator);
+            DW1000Ranging.transmitModeSwitchAck(requester,toInitiator);
+            if(DEBUG){
+                Serial.print("Enviando el ACK por unicast a -->");
+                Serial.println(requester->getShortAddressHeader(),HEX);
+            }
         }
         else{
-            if(DEBUG) Serial.println("Requester not found. Sending ACK (to Responder) via broadcast.");
-            DW1000Ranging.transmitModeSwitchAck(nullptr, to_initiator);
-        }
-
-        
-        delay(50); 
-
-       
-        if(is_initiator) {
-            switchToResponder();
-        } else {
-            
-            if(DEBUG) Serial.println("Already Responder, re-enabling receiver after ACK.");
-            DW1000.idle();
-            DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
-            
+            if(DEBUG){
+                Serial.println("Dispositivo no encontrado. Enviando por broadcast");
+                DW1000Ranging.transmitModeSwitchAck(nullptr,toInitiator);
+            }
         }
     }
-}
+} 
 
-void switchToResponder(){
 
-    if(DEBUG){Serial.println("Switching to RESPONDER");}
-    //DW1000.idle();
-    is_initiator = false;
-    DW1000.idle();
-    DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
+void stopRangingRequested(byte* short_addr_requester){
 
-   
-}
-
-void switchToInitiator(){
-
-    if(DEBUG) {Serial.println("Switching to INITIATOR");}
-        
+    Serial.println("Stop ranging request recibido");
+    short_addr_master = short_addr_requester;
+    DW1000Device* requester = DW1000Ranging.searchDistantDevice(short_addr_requester);
+    DW1000Ranging.setStopRanging(true);
+    stop_ranging_requested = true;
     
-    is_initiator = true;
-    initiator_start = current_time;
-        
-    DW1000.idle();
-    DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
-
     
 }
+
 
 void newRange(){
 
@@ -284,27 +268,10 @@ void newRange(){
 
 void newDevice(DW1000Device *device){
 
-    Serial.print("New Device: 0x");
+    Serial.print("New Device: ");
     Serial.print(device->getShortAddressHeader(), HEX);
-    Serial.print("\tType --> ");
-    uint8_t board_type = device->getBoardType();
-    switch(board_type){
-        case 1:
-            Serial.println("Master anchor");
-            break;
-        case 2:
-            Serial.println("Slave Anchor");
-            break;
-        case 3: 
-            Serial.println("Tag");
-            break;
-
-        default:
-            Serial.print(board_type);
-            Serial.println(" Not Known");
-            break;
-
-    }
+    Serial.print("\tType: ");
+    Serial.println(device->getBoardType());
     
 }
 
@@ -315,11 +282,20 @@ void inactiveDevice(DW1000Device *device){
     Serial.println(destiny_short_addr, HEX);
     
 }
+void switchToResponder(){
+
+    if(DEBUG){Serial.println("Switching to RESPONDER");}
+    //DW1000.idle();
+    is_initiator = false;
+    DW1000.idle();
+    DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
+
+   
+}
 
 void loop(){
 
     DW1000Ranging.loop();
-
     current_time = millis();
     if(is_initiator){
 
@@ -332,5 +308,6 @@ void loop(){
 
         }
     }
+
 
 }

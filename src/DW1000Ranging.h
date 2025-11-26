@@ -74,7 +74,6 @@ struct ExistingDevice{
 	bool is_slave_anchor;
 	bool is_responder;
 	bool active;
-	bool ranging_pending;
 	bool mode_switch_pending;
 	bool data_report_pending;
 	
@@ -97,7 +96,6 @@ public:
 	static boolean addNetworkDevices(DW1000Device* device, boolean shortAddress);
 	static boolean addNetworkDevices(DW1000Device* device);
 	static void    removeNetworkDevices(int16_t index);
-	static void    discoverDevices();
 	
 	//setters
 	static void setReplyTime(uint16_t replyDelayTimeUs);
@@ -105,7 +103,9 @@ public:
 	static void setStopRanging(bool stop_ranging_input);
 	//getters
 	static byte* getCurrentAddress() { return _currentAddress; };
+	
 	static byte* getCurrentShortAddress() { return _currentShortAddress; };
+	
 	static uint8_t getNetworkDevicesNumber() { return _networkDevicesNumber; };
 	
 
@@ -164,8 +164,6 @@ public:
 	// To send the data report. Sent by the slaves to the master.
 	void transmitDataReport(Measurement* measurements, int numMedidas, DW1000Device* device = nullptr);
 
-	void transmitPollUnicast(uint8_t short_addr_destiny);
-	static bool ranging_enabled; 
 	
 private:
 	//other devices in the network
@@ -232,7 +230,7 @@ private:
 	
 	
 	static bool stop_ranging;
-	
+	static bool ranging_enabled; 
 	
 	//methods
 	static void handleSent();

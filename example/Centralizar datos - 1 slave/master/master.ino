@@ -3,8 +3,8 @@
 #include "DW1000.h"
 
 /*BOARD'S PINS DEFINITIONS*/
-#define ESP32_WROOM32 false
-#define NUCLEO_F439ZI true 
+#define ESP32_WROOM32 true
+
 
 #ifdef ESP32_WROOM32
 #define SPI_SCK 18
@@ -16,17 +16,9 @@ const uint8_t PIN_IRQ = 34; // irq pin
 const uint8_t PIN_SS = 4;   // spi select pin
 #endif
 
-#ifdef NUCLEO_F439ZI
-#define SPI_SCK D13
-#define SPI1_MISO D12
-#define SPI1_MOSI D11
-#define SPI1_CS D10 
-#define PIN_IRQ D8
-#define PIN_RST D7
-#endif
 
 
-#define DEBUG false
+#define DEBUG true
 
 #define IS_MASTER true
 #define DEVICE_ADDR "A1:00:5B:D5:A9:9A:E2:9C" 
@@ -86,10 +78,7 @@ void setup(){
         SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI); 
         DW1000Ranging.initCommunication(PIN_RST, PIN_SS, PIN_IRQ); // DW1000 Start
     }
-    else if(NUCLEO_F439ZI){
-
-        SPI.SetMISO()
-    }
+    
     
     DW1000.setAntennaDelay(Adelay);
     DW1000Ranging.setResetPeriod(5000);
@@ -183,7 +172,7 @@ void transmitUnicast(uint8_t message_type){
 
 
     DW1000Device* target = DW1000Ranging.searchDeviceByShortAddHeader(Existing_devices[getSlaveIndex()].short_addr);
-
+    
     if(target){
 
         if(message_type == MSG_MODE_SWITCH){
@@ -207,15 +196,20 @@ void transmitUnicast(uint8_t message_type){
 
         }
 
-        else if(message_type == MSG_DATA_REQUEST){
+        if(message_type == MSG_DATA_REQUEST){
 
-            if(DEBUG){Serial.println("Data report requested via UNICAST");}    
+            if(DEBUG){
+
+                Serial.println("Data report requested via UNICAST");
+            }   
+
             DW1000Ranging.transmitDataRequest(target);
             
             waitForResponse(timeout);
 
         }
     }
+
 
     else{
         if(DEBUG){Serial.println("No encontrado el dispositivo destino. Transmisión no enviada.");}
@@ -434,7 +428,7 @@ void ModeSwitchAck(bool isInitiator){
         
         uint8_t origin_short_addr = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
 
-        if(getSlaveIndex()>0){
+        if(getSlaveIndex()>=0){
             if(Existing_devices[getSlaveIndex()].short_addr == origin_short_addr){
 
 
