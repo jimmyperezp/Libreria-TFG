@@ -169,7 +169,7 @@ public:
 	static void setDeviceAddress(uint16_t val);
 	// TODO MAC and filters
 	
-	static void setEUI(char eui[]);
+	static void setEUI(const char eui[]);
 	static void setEUI(byte eui[]);
 	
 	/* ##### General device configuration ######################################## */
@@ -182,7 +182,7 @@ public:
 
 	@param[in] val `true` to enable, `false` to disable receiver auto-reenable.
 	*/
-	static void setReceiverAutoReenable(boolean val);
+	static void setReceiverAutoReenable(bool val);
 	
 	/** 
 	Specifies the interrupt polarity of the DW1000 chip. 
@@ -192,7 +192,7 @@ public:
 
 	@param[in] val `true` for active high interrupts, `false` for active low interrupts.
 	*/
-	static void setInterruptPolarity(boolean val);
+	static void setInterruptPolarity(bool val);
 	
 	/** 
 	Specifies whether to suppress any frame check measures while sending or receiving messages.
@@ -205,7 +205,7 @@ public:
 
 	@param[in] val `true` to suppress frame check on sender and receiver side, `false` otherwise.
 	*/
-	static void suppressFrameCheck(boolean val);
+	static void suppressFrameCheck(bool val);
 	
 	/** 
 	Specifies the data transmission rate of the DW1000 chip. One of the values
@@ -239,11 +239,11 @@ public:
 	static void setPreambleLength(byte prealen);
 	static void setChannel(byte channel);
 	static void setPreambleCode(byte preacode);
-	static void useSmartPower(boolean smartPower);
+	static void useSmartPower(bool smartPower);
 	
 	/* transmit and receive configuration. */
 	static DW1000Time   setDelay(const DW1000Time& delay);
-	static void         receivePermanently(boolean val);
+	static void         receivePermanently(bool val);
 	static void         setData(byte data[], uint16_t n);
 	static void         setData(const String& data);
 	static void         getData(byte data[], uint16_t n);
@@ -262,12 +262,12 @@ public:
 	static float getReceiveQuality();
 	
 	/* interrupt management. */
-	static void interruptOnSent(boolean val);
-	static void interruptOnReceived(boolean val);
-	static void interruptOnReceiveFailed(boolean val);
-	static void interruptOnReceiveTimeout(boolean val);
-	static void interruptOnReceiveTimestampAvailable(boolean val);
-	static void interruptOnAutomaticAcknowledgeTrigger(boolean val);
+	static void interruptOnSent(bool val);
+	static void interruptOnReceived(bool val);
+	static void interruptOnReceiveFailed(bool val);
+	static void interruptOnReceiveTimeout(bool val);
+	static void interruptOnReceiveTimestampAvailable(bool val);
+	static void interruptOnAutomaticAcknowledgeTrigger(bool val);
 
 	/* Antenna delay calibration */
 	static void setAntennaDelay(const uint16_t value);
@@ -326,7 +326,7 @@ public:
 	
 	//convert from char to 4 bits (hexadecimal)
 	static uint8_t nibbleFromChar(char c);
-	static void convertToByte(char string[], byte* eui_byte);
+	static void convertToByte(const char string[], byte* eui_byte);
 	
 	// host-initiated reading of temperature and battery voltage
 	static void getTempAndVbat(float& temp, float& vbat);
@@ -443,7 +443,7 @@ public:
 	static byte _networkAndAddress[LEN_PANADR];
 	
 	/* internal helper that guide tuning the chip. */
-	static boolean    _smartPower;
+	static bool    _smartPower;
 	static byte       _extendedFrameLength;
 	static byte       _preambleCode;
 	static byte       _channel;
@@ -452,53 +452,53 @@ public:
 	static byte       _dataRate;
 	static byte       _pacSize;
 	static DW1000Time _antennaDelay;
-	static boolean    _antennaCalibrated;
+	static bool    _antennaCalibrated;
 	
 	/* internal helper to remember how to properly act. */
-	static boolean _permanentReceive;
-	static boolean _frameCheck;
+	static bool _permanentReceive;
+	static bool _frameCheck;
 	
 	// whether RX or TX is active
 	static uint8_t _deviceMode;
 
 	// whether debounce clock is active
-	static boolean _debounceClockEnabled;
+	static bool _debounceClockEnabled;
 
 	/* Arduino interrupt handler */
 	static void handleInterrupt();
 	
 	/* Allow MAC frame filtering . */
 	// TODO auto-acknowledge
-	static void setFrameFilter(boolean val);
-	static void setFrameFilterBehaveCoordinator(boolean val);
-	static void setFrameFilterAllowBeacon(boolean val);
+	static void setFrameFilter(bool val);
+	static void setFrameFilterBehaveCoordinator(bool val);
+	static void setFrameFilterAllowBeacon(bool val);
 	//data type is used in the FC_1 0x41
-	static void setFrameFilterAllowData(boolean val);
-	static void setFrameFilterAllowAcknowledgement(boolean val);
-	static void setFrameFilterAllowMAC(boolean val);
+	static void setFrameFilterAllowData(bool val);
+	static void setFrameFilterAllowAcknowledgement(bool val);
+	static void setFrameFilterAllowMAC(bool val);
 
 	//Reserved is used for the Blink message
-	static void setFrameFilterAllowReserved(boolean val);
+	static void setFrameFilterAllowReserved(bool val);
 	
 	// note: not sure if going to be implemented for now
-	static void setDoubleBuffering(boolean val);
+	static void setDoubleBuffering(bool val);
 	
 	
-	static void setStandardFrameLength(boolean val);
+	static void setStandardFrameLength(bool val);
 	
 	
-	static void waitForResponse(boolean val);
+	static void waitForResponse(bool val);
 	
 	/* tuning according to mode. */
 	static void tune();
 	
 	/* device status flags */
-	static boolean isReceiveTimestampAvailable();
-	static boolean isTransmitDone();
-	static boolean isReceiveDone();
-	static boolean isReceiveFailed();
-	static boolean isReceiveTimeout();
-	static boolean isClockProblem();
+	static bool isReceiveTimestampAvailable();
+	static bool isTransmitDone();
+	static bool isReceiveDone();
+	static bool isReceiveFailed();
+	static bool isReceiveTimeout();
+	static bool isClockProblem();
 	
 	/* interrupt state handling */
 	static void clearInterrupts();
@@ -539,8 +539,8 @@ public:
 	static void writeValueToBytes(byte data[], int32_t val, uint16_t n);
 	
 	/* internal helper for bit operations on multi-bytes. */
-	static boolean getBit(byte data[], uint16_t n, uint16_t bit);
-	static void    setBit(byte data[], uint16_t n, uint16_t bit, boolean val);
+	static bool getBit(byte data[], uint16_t n, uint16_t bit);
+	static void    setBit(byte data[], uint16_t n, uint16_t bit, bool val);
 	
 	/* Register is 6 bit, 7 = write, 6 = sub-adressing, 5-0 = register value
 	 * Total header with sub-adressing can be 15 bit. */

@@ -270,11 +270,11 @@ DW1000Time DW1000Time::operator/(const DW1000Time& factor) const {
 }
 
 // compare
-boolean DW1000Time::operator==(const DW1000Time& cmp) const {
+bool DW1000Time::operator==(const DW1000Time& cmp) const {
 	return _timestamp == cmp.getTimestamp();
 }
 
-boolean DW1000Time::operator!=(const DW1000Time& cmp) const {
+bool DW1000Time::operator!=(const DW1000Time& cmp) const {
 	//return !(*this == cmp); // seems not as intended
 	return _timestamp != cmp.getTimestamp();
 }

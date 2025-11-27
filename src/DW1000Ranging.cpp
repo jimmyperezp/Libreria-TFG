@@ -27,15 +27,15 @@ bool DW1000RangingClass:: stop_ranging = false;
 volatile byte    DW1000RangingClass::_expectedMsgId;
 
 // range filter
-volatile boolean DW1000RangingClass::_useRangeFilter = false;
+volatile bool DW1000RangingClass::_useRangeFilter = false;
 uint16_t DW1000RangingClass::_rangeFilterValue = 15;
 
 // message sent/received state
-volatile boolean DW1000RangingClass::_sentAck     = false;
-volatile boolean DW1000RangingClass::_receivedAck = false;
+volatile bool DW1000RangingClass::_sentAck     = false;
+volatile bool DW1000RangingClass::_receivedAck = false;
 
 // protocol error state
-boolean          DW1000RangingClass::_protocolFailed = false;
+bool          DW1000RangingClass::_protocolFailed = false;
 
 // Check if last frame was long: 
 bool DW1000RangingClass::_lastFrameWasLong = false;
@@ -144,7 +144,7 @@ void DW1000RangingClass::generalStart() {
 	_rangingCountPeriod = millis();
 }
 
-void DW1000RangingClass::startAsResponder(char address[], const byte mode[], const bool randomShortAddress, const uint8_t boardType) {
+void DW1000RangingClass::startAsResponder(const char address[], const byte mode[], const bool randomShortAddress, const uint8_t boardType) {
 	//save the address
 	DW1000.convertToByte(address, _currentAddress);
 	//write the address on the DW1000 chip
@@ -177,7 +177,7 @@ void DW1000RangingClass::startAsResponder(char address[], const byte mode[], con
 	
 }
 
-void DW1000RangingClass::startAsInitiator(char address[], const byte mode[], const bool randomShortAddress, const uint8_t boardType) {
+void DW1000RangingClass::startAsInitiator(const char address[], const byte mode[], const bool randomShortAddress, const uint8_t boardType) {
 	
 	//save the address
 	DW1000.convertToByte(address, _currentAddress);
@@ -209,8 +209,8 @@ void DW1000RangingClass::startAsInitiator(char address[], const byte mode[], con
 	
 }
 
-boolean DW1000RangingClass::addNetworkDevices(DW1000Device* device, boolean shortAddress) {
-	boolean   addDevice = true;
+bool DW1000RangingClass::addNetworkDevices(DW1000Device* device, bool shortAddress) {
+	bool   addDevice = true;
 
 	//we test our network devices array to check
 	//we don't already have it
@@ -240,8 +240,8 @@ boolean DW1000RangingClass::addNetworkDevices(DW1000Device* device, boolean shor
 	return false;
 }
 
-boolean DW1000RangingClass::addNetworkDevices(DW1000Device* device) {
-	boolean addDevice = true;
+bool DW1000RangingClass::addNetworkDevices(DW1000Device* device) {
+	bool addDevice = true;
 	//we test our network devices array to check
 	//we don't already have it
 	for(uint8_t i = 0; i < _networkDevicesNumber; i++) {
@@ -571,7 +571,7 @@ void DW1000RangingClass::loop() {
 					_globalMac.decodeBlinkFrame(data, address, shortAddress);
 					//we create a new device with the initiator
 					DW1000Device myInitiator(address, shortAddress);
-					boolean isNewDevice = addNetworkDevices(&myInitiator);
+					bool isNewDevice = addNetworkDevices(&myInitiator);
 				
 					if(isNewDevice && _handleBlinkDevice != 0) {
 						(*_handleBlinkDevice)(&myInitiator);
@@ -814,7 +814,7 @@ void DW1000RangingClass::loop() {
 	}
 }
 
-void DW1000RangingClass::useRangeFilter(boolean enabled) {
+void DW1000RangingClass::useRangeFilter(bool enabled) {
 	_useRangeFilter = enabled;
 }
 

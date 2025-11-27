@@ -91,10 +91,10 @@ public:
 	static void    initCommunication(uint8_t myRST = DEFAULT_RST_PIN, uint8_t mySS = DEFAULT_SPI_SS_PIN, uint8_t myIRQ = 2);
 	static void    configureNetwork(uint16_t deviceAddress, uint16_t networkId, const byte mode[]);
 	static void    generalStart();
-	static void    startAsResponder(char address[], const byte mode[], const bool randomShortAddress = true,const uint8_t boardType = 0);
-	static void    startAsInitiator(char address[], const byte mode[], const bool randomShortAddress = true, const uint8_t boardType = 0);
-	static boolean addNetworkDevices(DW1000Device* device, boolean shortAddress);
-	static boolean addNetworkDevices(DW1000Device* device);
+	static void    startAsResponder(const char address[], const byte mode[], const bool randomShortAddress = true,const uint8_t boardType = 0);
+	static void    startAsInitiator(const char address[], const byte mode[], const bool randomShortAddress = true, const uint8_t boardType = 0);
+	static bool addNetworkDevices(DW1000Device* device, bool shortAddress);
+	static bool addNetworkDevices(DW1000Device* device);
 	static void    removeNetworkDevices(int16_t index);
 	
 	//setters
@@ -112,7 +112,7 @@ public:
 	//ranging functions
 	static int16_t detectMessageType(byte datas[]); // TODO check return type
 	static void loop();
-	static void useRangeFilter(boolean enabled);
+	static void useRangeFilter(bool enabled);
 	// Used for the smoothing algorithm (Exponential Moving Average). newValue must be >= 2. Default 15.
 	static void setRangeFilterValue(uint16_t newValue);
 	
@@ -199,10 +199,10 @@ private:
 	// message flow state
 	static volatile byte    _expectedMsgId;
 	// message sent/received state
-	static volatile boolean _sentAck;
-	static volatile boolean _receivedAck;
+	static volatile bool _sentAck;
+	static volatile bool _receivedAck;
 	// protocol error state
-	static boolean          _protocolFailed;
+	static bool          _protocolFailed;
 	// reset line to the chip
 	static uint8_t     _RST;
 	static uint8_t     _SS;
@@ -217,7 +217,7 @@ private:
 	static uint16_t     _successRangingCount;
 	static uint32_t    _rangingCountPeriod;
 	//ranging filter
-	static volatile boolean _useRangeFilter;
+	static volatile bool _useRangeFilter;
 	static uint16_t         _rangeFilterValue;
 	
 	static uint8_t  _myBoardType;

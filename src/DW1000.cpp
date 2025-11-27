@@ -43,14 +43,14 @@ byte       DW1000Class::_preambleLength      = TX_PREAMBLE_LEN_128;
 byte       DW1000Class::_preambleCode        = PREAMBLE_CODE_16MHZ_4;
 byte       DW1000Class::_channel             = CHANNEL_5;
 DW1000Time DW1000Class::_antennaDelay;
-boolean	   DW1000Class::_antennaCalibrated	 = false;
-boolean    DW1000Class::_smartPower          = false;
+bool	   DW1000Class::_antennaCalibrated	 = false;
+bool    DW1000Class::_smartPower          = false;
 
-boolean    DW1000Class::_frameCheck          = true;
-boolean    DW1000Class::_permanentReceive    = false;
+bool    DW1000Class::_frameCheck          = true;
+bool    DW1000Class::_permanentReceive    = false;
 uint8_t    DW1000Class::_deviceMode          = IDLE_MODE; // TODO replace by enum
 
-boolean    DW1000Class::_debounceClockEnabled = false;
+bool    DW1000Class::_debounceClockEnabled = false;
 
 // modes of operation
 // TODO use enum external, not config array
@@ -226,13 +226,13 @@ void DW1000Class::enableLedBlinking() {
 }
 
 void DW1000Class::setGPIOMode(uint8_t msgp, uint8_t mode) {
-	byte gpiomode[LEN_GPIO_MODE];
-	memset(gpiomode, 0, LEN_GPIO_MODE);
-	readBytes(GPIO_CTRL, GPIO_MODE_SUB, gpiomode, LEN_GPIO_MODE);
+	byte gpiomode[DW_LEN_GPIO_MODE];
+	memset(gpiomode, 0, DW_LEN_GPIO_MODE);
+	readBytes(DW_GPIO_CTRL, DW_GPIO_MODE_SUB, gpiomode, DW_LEN_GPIO_MODE);
 	for (char i = 0; i < 2; i++){
-		setBit(gpiomode, LEN_GPIO_MODE, msgp + i, (mode >> i) & 1);
+		setBit(gpiomode, DW_LEN_GPIO_MODE, msgp + i, (mode >> i) & 1);
 	}
-	writeBytes(GPIO_CTRL, GPIO_MODE_SUB, gpiomode, LEN_GPIO_MODE);
+	writeBytes(DW_GPIO_CTRL, DW_GPIO_MODE_SUB, gpiomode, DW_LEN_GPIO_MODE);
 }
 
 void DW1000Class::deepSleep() {
@@ -877,7 +877,7 @@ uint8_t DW1000Class::nibbleFromChar(char c) {
 	return 255;
 }
 
-void DW1000Class::convertToByte(char string[], byte* bytes) {
+void DW1000Class::convertToByte(const char string[], byte* bytes) {
 	byte    eui_byte[LEN_EUI];
 	// we fill it with the char array under the form of "AA:FF:1C:...."
 	for(uint16_t i = 0; i < LEN_EUI; i++) {
@@ -901,7 +901,7 @@ void DW1000Class::getTempAndVbat(float& temp, float& vbat) {
 	temp = (sar_ltemp - _tmeas23C) * 1.14f + 23.0f;
 }
 
-void DW1000Class::setEUI(char eui[]) {
+void DW1000Class::setEUI(const char eui[]) {
 	byte eui_byte[LEN_EUI];
 	convertToByte(eui, eui_byte);
 	setEUI(eui_byte);
@@ -919,74 +919,74 @@ void DW1000Class::setEUI(byte eui[]) {
 
 
 //Frame Filtering BIT in the SYS_CFG register
-void DW1000Class::setFrameFilter(boolean val) {
+void DW1000Class::setFrameFilter(bool val) {
 	setBit(_syscfg, LEN_SYS_CFG, FFEN_BIT, val);
 }
 
-void DW1000Class::setFrameFilterBehaveCoordinator(boolean val) {
+void DW1000Class::setFrameFilterBehaveCoordinator(bool val) {
 	setBit(_syscfg, LEN_SYS_CFG, FFBC_BIT, val);
 }
 
-void DW1000Class::setFrameFilterAllowBeacon(boolean val) {
+void DW1000Class::setFrameFilterAllowBeacon(bool val) {
 	setBit(_syscfg, LEN_SYS_CFG, FFAB_BIT, val);
 }
 
-void DW1000Class::setFrameFilterAllowData(boolean val) {
+void DW1000Class::setFrameFilterAllowData(bool val) {
 	setBit(_syscfg, LEN_SYS_CFG, FFAD_BIT, val);
 }
 
-void DW1000Class::setFrameFilterAllowAcknowledgement(boolean val) {
+void DW1000Class::setFrameFilterAllowAcknowledgement(bool val) {
 	setBit(_syscfg, LEN_SYS_CFG, FFAA_BIT, val);
 }
 
-void DW1000Class::setFrameFilterAllowMAC(boolean val) {
+void DW1000Class::setFrameFilterAllowMAC(bool val) {
 	setBit(_syscfg, LEN_SYS_CFG, FFAM_BIT, val);
 }
 
-void DW1000Class::setFrameFilterAllowReserved(boolean val) {
+void DW1000Class::setFrameFilterAllowReserved(bool val) {
 	setBit(_syscfg, LEN_SYS_CFG, FFAR_BIT, val);
 }
 
 
-void DW1000Class::setDoubleBuffering(boolean val) {
+void DW1000Class::setDoubleBuffering(bool val) {
 	setBit(_syscfg, LEN_SYS_CFG, DIS_DRXB_BIT, !val);
 }
 
-void DW1000Class::setInterruptPolarity(boolean val) {
+void DW1000Class::setInterruptPolarity(bool val) {
 	setBit(_syscfg, LEN_SYS_CFG, HIRQ_POL_BIT, val);
 }
 
-void DW1000Class::setReceiverAutoReenable(boolean val) {
+void DW1000Class::setReceiverAutoReenable(bool val) {
 	setBit(_syscfg, LEN_SYS_CFG, RXAUTR_BIT, val);
 }
 
-void DW1000Class::interruptOnSent(boolean val) {
+void DW1000Class::interruptOnSent(bool val) {
 	setBit(_sysmask, LEN_SYS_MASK, TXFRS_BIT, val);
 }
 
 
 
-void DW1000Class::interruptOnReceived(boolean val) {
+void DW1000Class::interruptOnReceived(bool val) {
 	setBit(_sysmask, LEN_SYS_MASK, RXDFR_BIT, val);
 	setBit(_sysmask, LEN_SYS_MASK, RXFCG_BIT, val);
 }
 
-void DW1000Class::interruptOnReceiveFailed(boolean val) {
+void DW1000Class::interruptOnReceiveFailed(bool val) {
 	setBit(_sysmask, LEN_SYS_STATUS, LDEERR_BIT, val);
 	setBit(_sysmask, LEN_SYS_STATUS, RXFCE_BIT, val);
 	setBit(_sysmask, LEN_SYS_STATUS, RXPHE_BIT, val);
 	setBit(_sysmask, LEN_SYS_STATUS, RXRFSL_BIT, val);
 }
 
-void DW1000Class::interruptOnReceiveTimeout(boolean val) {
+void DW1000Class::interruptOnReceiveTimeout(bool val) {
 	setBit(_sysmask, LEN_SYS_MASK, RXRFTO_BIT, val);
 }
 
-void DW1000Class::interruptOnReceiveTimestampAvailable(boolean val) {
+void DW1000Class::interruptOnReceiveTimestampAvailable(bool val) {
 	setBit(_sysmask, LEN_SYS_MASK, LDEDONE_BIT, val);
 }
 
-void DW1000Class::interruptOnAutomaticAcknowledgeTrigger(boolean val) {
+void DW1000Class::interruptOnAutomaticAcknowledgeTrigger(bool val) {
 	setBit(_sysmask, LEN_SYS_MASK, AAT_BIT, val);
 }
 
@@ -1081,15 +1081,15 @@ void DW1000Class::commitConfiguration() {
 	writeBytes(LDE_IF, LDE_RXANTD_SUB, antennaDelayBytes, LEN_LDE_RXANTD);
 }
 
-void DW1000Class::waitForResponse(boolean val) {
+void DW1000Class::waitForResponse(bool val) {
 	setBit(_sysctrl, LEN_SYS_CTRL, WAIT4RESP_BIT, val);
 }
 
-void DW1000Class::suppressFrameCheck(boolean val) {
+void DW1000Class::suppressFrameCheck(bool val) {
 	_frameCheck = !val;
 }
 
-void DW1000Class::useSmartPower(boolean smartPower) {
+void DW1000Class::useSmartPower(bool smartPower) {
 	
 	_smartPower = smartPower;
 
@@ -1187,7 +1187,7 @@ void DW1000Class::setPreambleLength(byte prealen) {
 	_preambleLength = prealen;
 }
 
-void DW1000Class::setStandardFrameLength(boolean val) {
+void DW1000Class::setStandardFrameLength(bool val) {
 	_extendedFrameLength = (val ? FRAME_LENGTH_NORMAL : FRAME_LENGTH_EXTENDED);
 	
 	/* The Frame length is determined by the PHR_MODE. This is set in the 16th and 17th bits of the sys_cfg register. These bits belong to the second byte. */
@@ -1200,7 +1200,7 @@ void DW1000Class::setStandardFrameLength(boolean val) {
 	_syscfg[2] |= _extendedFrameLength; 
 }
 
-void DW1000Class::receivePermanently(boolean val) {
+void DW1000Class::receivePermanently(bool val) {
 	_permanentReceive = val;
 	if(val) {
 		// in case permanent, also reenable receiver once failed
@@ -1451,23 +1451,23 @@ void DW1000Class::getSystemTimestamp(byte data[]) {
 	readBytes(SYS_TIME, NO_SUB, data, LEN_SYS_TIME);
 }
 
-boolean DW1000Class::isTransmitDone() {
+bool DW1000Class::isTransmitDone() {
 	return getBit(_sysstatus, LEN_SYS_STATUS, TXFRS_BIT);
 }
 
-boolean DW1000Class::isReceiveTimestampAvailable() {
+bool DW1000Class::isReceiveTimestampAvailable() {
 	return getBit(_sysstatus, LEN_SYS_STATUS, LDEDONE_BIT);
 }
 
-boolean DW1000Class::isReceiveDone() {
+bool DW1000Class::isReceiveDone() {
 	if(_frameCheck) {
 		return getBit(_sysstatus, LEN_SYS_STATUS, RXFCG_BIT);
 	}
 	return getBit(_sysstatus, LEN_SYS_STATUS, RXDFR_BIT);
 }
 
-boolean DW1000Class::isReceiveFailed() {
-	boolean ldeErr, rxCRCErr, rxHeaderErr, rxDecodeErr;
+bool DW1000Class::isReceiveFailed() {
+	bool ldeErr, rxCRCErr, rxHeaderErr, rxDecodeErr;
 	ldeErr      = getBit(_sysstatus, LEN_SYS_STATUS, LDEERR_BIT);
 	rxCRCErr    = getBit(_sysstatus, LEN_SYS_STATUS, RXFCE_BIT);
 	rxHeaderErr = getBit(_sysstatus, LEN_SYS_STATUS, RXPHE_BIT);
@@ -1479,12 +1479,12 @@ boolean DW1000Class::isReceiveFailed() {
 }
 
 //Checks to see any of the three timeout bits in sysstatus are high (RXRFTO (Frame Wait timeout), RXPTO (Preamble timeout), RXSFDTO (Start frame delimiter(?) timeout).
-boolean DW1000Class::isReceiveTimeout() {
+bool DW1000Class::isReceiveTimeout() {
 	return (getBit(_sysstatus, LEN_SYS_STATUS, RXRFTO_BIT) | getBit(_sysstatus, LEN_SYS_STATUS, RXPTO_BIT) | getBit(_sysstatus, LEN_SYS_STATUS, RXSFDTO_BIT));
 }
 
-boolean DW1000Class::isClockProblem() {
-	boolean clkllErr, rfllErr;
+bool DW1000Class::isClockProblem() {
+	bool clkllErr, rfllErr;
 	clkllErr = getBit(_sysstatus, LEN_SYS_STATUS, CLKPLL_LL_BIT);
 	rfllErr  = getBit(_sysstatus, LEN_SYS_STATUS, RFPLL_LL_BIT);
 	if(clkllErr || rfllErr) {
@@ -1609,9 +1609,9 @@ float DW1000Class::getReceivePower() {
  * @param bit
  * 		The position of the bit to be set.
  * @param val
- *		The boolean value to be set to the given bit position.
+ *		The bool value to be set to the given bit position.
  */
-void DW1000Class::setBit(byte data[], uint16_t n, uint16_t bit, boolean val) {
+void DW1000Class::setBit(byte data[], uint16_t n, uint16_t bit, bool val) {
 	uint16_t idx;
 	uint8_t shift;
 	
@@ -1638,7 +1638,7 @@ void DW1000Class::setBit(byte data[], uint16_t n, uint16_t bit, boolean val) {
  * @param bit
  * 		The position of the bit to be checked.
  */
-boolean DW1000Class::getBit(byte data[], uint16_t n, uint16_t bit) {
+bool DW1000Class::getBit(byte data[], uint16_t n, uint16_t bit) {
 	uint16_t idx;
 	uint8_t  shift;
 	
@@ -1649,7 +1649,7 @@ boolean DW1000Class::getBit(byte data[], uint16_t n, uint16_t bit) {
 	byte targetByte = data[idx];
 	shift = bit%8;
 	
-	return bitRead(targetByte, shift); // TODO wrong type returned byte instead of boolean
+	return bitRead(targetByte, shift); // TODO wrong type returned byte instead of bool
 }
 
 void DW1000Class::writeValueToBytes(byte data[], int32_t val, uint16_t n) {

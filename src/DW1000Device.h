@@ -44,7 +44,7 @@ public:
 	//Constructor and destructor
 	DW1000Device();
 	DW1000Device(byte address[], byte shortAddress[]);
-	DW1000Device(byte address[], boolean shortOne = false);
+	DW1000Device(byte address[], bool shortOne = false);
 	~DW1000Device();
 	
 	//setters:
@@ -84,8 +84,8 @@ public:
 	float getFPPower();
 	float getQuality();
 	
-	boolean isAddressEqual(DW1000Device* device);
-	boolean isShortAddressEqual(DW1000Device* device);
+	bool isAddressEqual(DW1000Device* device);
+	bool isShortAddressEqual(DW1000Device* device);
 	
 	//functions which contains the date: (easier to put as public)
 	// timestamps to remember
@@ -97,7 +97,7 @@ public:
 	DW1000Time timeRangeReceived;
 	
 	void    noteActivity();
-	boolean isInactive();
+	bool isInactive();
 
 
 private:

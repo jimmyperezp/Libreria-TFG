@@ -276,9 +276,9 @@
 #define LEN_TX_ANTD 2
 
 // GPIO
-#define GPIO_CTRL 0x26
-#define GPIO_MODE_SUB 0x00
-#define LEN_GPIO_MODE 4
+#define DW_GPIO_CTRL 0x26
+#define DW_GPIO_MODE_SUB 0x00
+#define DW_LEN_GPIO_MODE 4
 
 #define MSGP0 6
 #define MSGP1 8
@@ -290,7 +290,7 @@
 #define MSGP7 20
 #define MSGP8 22
 
-#define GPIO_MODE 0
+#define DW_GPIO_MODE 0
 #define LED_MODE 1
 
 #endif

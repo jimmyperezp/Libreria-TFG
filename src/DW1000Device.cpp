@@ -9,7 +9,7 @@ DW1000Device::DW1000Device() {
 	randomShortAddress();
 }
 
-DW1000Device::DW1000Device(byte deviceAddress[], boolean shortOne) {
+DW1000Device::DW1000Device(byte deviceAddress[], bool shortOne) {
 	if(!shortOne) {
 		//we have a 8 bytes address
 		setAddress(deviceAddress);
@@ -74,11 +74,11 @@ uint8_t DW1000Device::getShortAddressHeader(){
 	return _shortAddress[0];
 }
 
-boolean DW1000Device::isAddressEqual(DW1000Device* device) {
+bool DW1000Device::isAddressEqual(DW1000Device* device) {
 	return memcmp(this->getByteAddress(), device->getByteAddress(), 8) == 0;
 }
 
-boolean DW1000Device::isShortAddressEqual(DW1000Device* device) {
+bool DW1000Device::isShortAddressEqual(DW1000Device* device) {
 	return memcmp(this->getByteShortAddress(), device->getByteShortAddress(), 2) == 0;
 }
 
@@ -101,7 +101,7 @@ void DW1000Device::noteActivity() {
 	_activity = millis();
 }
 
-boolean DW1000Device::isInactive() {
+bool DW1000Device::isInactive() {
 	
 	
 	if(_boardType == MASTER_ANCHOR || _boardType == TAG) {

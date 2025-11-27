@@ -124,8 +124,8 @@ public:
 	DW1000Time& operator/=(const DW1000Time& factor);
 	DW1000Time operator/(const DW1000Time& factor) const;
 	// compare
-	boolean operator==(const DW1000Time& cmp) const;
-	boolean operator!=(const DW1000Time& cmp) const;
+	bool operator==(const DW1000Time& cmp) const;
+	bool operator!=(const DW1000Time& cmp) const;
 
 #ifdef DW1000TIME_H_PRINTABLE
 	// print to serial for debug
