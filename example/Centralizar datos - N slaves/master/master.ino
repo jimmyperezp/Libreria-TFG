@@ -10,7 +10,7 @@ const uint8_t PIN_RST = 27; // reset pin
 const uint8_t PIN_IRQ = 34; // irq pin
 const uint8_t PIN_SS = 4;   // spi select pin
 
-#define DEBUG true
+#define DEBUG false
 
 #define IS_MASTER true
 #define DEVICE_ADDR "A1:00:5B:D5:A9:9A:E2:9C" 
@@ -49,11 +49,13 @@ unsigned long master_ranging_start = 0;
 unsigned long slave_ranging_start = 0;
 unsigned long waiting_switch_start = 0;
 unsigned long waiting_data_report_start = 0;
+unsigned long last_shown_data_timestamp = 0;
+
 
 /*2: Time constants*/
-const unsigned long ranging_period = 2000;
-const unsigned long waiting_time = 1000;
-const unsigned long retry_time = 1000;
+const unsigned long ranging_period = 150;
+const unsigned long waiting_time = 50;
+const unsigned long retry_time = 50;
 
 
 /*Retry messages management*/
@@ -135,6 +137,12 @@ void showData(){
 
     Serial.println("--------------------------- NEW MEASURE ---------------------------");
     
+    unsigned long time_between_prints = current_time - last_shown_data_timestamp;
+    last_shown_data_timestamp = current_time;
+    Serial.print("                   Time since last print --> ");
+    Serial.print(time_between_prints);
+    Serial.println(" ms\n");
+
     for (int i = 0; i < amount_measurements ; i++){ 
         
         if(measurements[i].active == true){
@@ -338,12 +346,8 @@ void activateRanging(){
     stop_ranging_requested = false;
     seen_first_range = false;
 
-    DW1000Ranging.ranging_enabled = true;
-    
     master_ranging_start = current_time;
 
-
-   
 }
 
 void transmitUnicast(uint8_t message_type){
@@ -475,6 +479,7 @@ void modeSwitchFailed(bool switching_to_initiator){
 
         if(DEBUG){Serial.println("I need to switch it back to responder. restarting the switch to responder cycle");}
 
+        waiting_responder_switch_ack = false;
         state = SWITCH_TO_RESPONDER;
     }
 }
@@ -580,6 +585,7 @@ void ModeSwitchAck(bool is_initiator){
         }
         else{
             state = INITIATOR_HANDOFF; //Back to responder. Now, turn for the next slave.
+            waiting_responder_switch_ack = false;
             if(DEBUG) Serial.println("Slave back to responder. Now, turn for the next slave to range");
         }
     }      
@@ -642,7 +648,6 @@ void loop(){
         }
     }
 
-    
     else if(state == INITIATOR_HANDOFF){
 
         if(!initiator_handoff_started){

@@ -251,7 +251,7 @@ void switchToResponder(){
     is_initiator = false;
     DW1000.idle();
     DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
-
+    
     attachCallbacks();
 }
 
@@ -265,7 +265,7 @@ void switchToInitiator(){
         
     DW1000.idle();
     DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
-
+    DW1000.setAntennaDelay(Adelay);
     attachCallbacks();
 }
 

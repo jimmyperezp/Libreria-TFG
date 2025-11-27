@@ -883,7 +883,7 @@ void DW1000RangingClass::timerTick() {
 		
 	}
 	counterForBlink++;
-	if(counterForBlink > 20) {
+	if(counterForBlink > 6) {
 		counterForBlink = 0;
 	}
 	}
