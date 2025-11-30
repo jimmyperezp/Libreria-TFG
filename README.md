@@ -70,7 +70,10 @@ To do so, I renamed some of the existing methods, cleaned and organized some seg
     This was seen in erratic behaviors and messages not getting through. The reason behind this problem was that the slaves didn't filter the messages that weren's sent to them. Therefore, their ranging sequence failed in every single cycle.
 
 - What? 
-    - Simple. Inside the function that handles the received messages, a new "filter" was established inside the "responder" section: (in dw1000Ranging.cpp)
+    - Simple. Inside the function that handles the received messages, a new "filter" was established inside the "responder" section: (in dw1000Ranging.cpp). 
+    Located inside the loop >> received messages >> board type = responder.
+    The actual code is:
+
     ```c++
     if(ranging_enabled){
         if(_type == RESPONDER) {
@@ -106,8 +109,7 @@ To do so, I renamed some of the existing methods, cleaned and organized some seg
 
     
 - What? 
-    - I added a filter to avoid this problem. It is located inside DW1000Ranging.cpp. Located inside the loop >> received messages >> board type = responder.
-    The actual code is:
+    - I added a filter to avoid this problem. It is located inside DW1000Device.cpp >> method "isInactive". The actual code is:
 
     ```c++
 
