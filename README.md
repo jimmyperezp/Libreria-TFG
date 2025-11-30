@@ -1,6 +1,6 @@
 # Library "TFG Jaime Pérez"
 
-<img src="https://github.com/jimmyperezp/jimmyperezp/blob/main/cpp.svg" alt="c++" width="40" height="40"/> <img src="https://cdn.worldvectorlogo.com/logos/arduino-1.svg" alt="arduino" width="40" height="40"/> <img src="https://upload.wikimedia.org/wikipedia/commons/c/cd/PlatformIO_logo.svg" alt="platformIO" width="40" height="40"/><img src="https://github.com/jimmyperezp/TFG_UWB/blob/main/logo%20UWB.png" alt="UWB Logo" width="40" height="40"/><img src="https://github.com/jimmyperezp/Programacion_de_sistemas/blob/main/logo%20escuela.png" alt="logo industriales" width="40" height="40"/>  
+<img src="https://github.com/jimmyperezp/jimmyperezp/blob/main/cpp.svg" alt="c++" width="40" height="40"/> <img src="https://cdn.worldvectorlogo.com/logos/arduino-1.svg" alt="arduino" width="40" height="40"/> <img src="https://upload.wikimedia.org/wikipedia/commons/c/cd/PlatformIO_logo.svg" alt="platformIO" width="40" height="40"/><img src="https://github.com/jimmyperezp/TFG_UWB/blob/main/logo%20UWB.png" alt="UWB Logo" width="40" height="40"/><img src="https://github.com/jimmyperezp/Programacion_de_sistemas/blob/main/logo%20escuela.png" alt="logo industriales" width="300" height="80"/>  
 
 This library is a personal modification of the DW1000 chips library, used for UWB communication.   
 <br><br>
