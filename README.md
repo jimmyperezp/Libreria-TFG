@@ -36,7 +36,7 @@ To do so, I renamed some of the existing methods, cleaned and organized some seg
 
 
 
-2: New methods:
+2: New methods (in DW1000Ranging.cpp):
 - Why?
     - To centralize the data, firstly the master had to change the mode of operation of the slave anchors from responders to initiators. This way, All of the measurements betweeen all of the system's devices could be known.  
     Not only from the master to the rest of the modules, but also from the rest of the slave anchors to the tags. 
@@ -54,12 +54,6 @@ To do so, I renamed some of the existing methods, cleaned and organized some seg
     
     - The master needs to know if the slaves have done the mode switch correctly. To do so, the slave sends back an acknowledgement message.
         - transmitModeSwitchAck
-
-    - To handle when these messages are received, I declared the neccessary callbacks, which are linked to functions in the library's examples. These are explained each examples' readme.
-        - [Example #1 -> Measure Distances](https://github.com/jimmyperezp/Libreria-TFG/tree/main/example/Medir%20distancias) 
-        - [Example #2 --> Plot live position in 2D](https://github.com/jimmyperezp/Libreria-TFG/tree/main/example/Posicionamiento%202D)
-        - [Example #3 --> Centralize data (1 slave)](https://github.com/jimmyperezp/Libreria-TFG/tree/main/example/Centralizar%20datos%20-%201%20slave)
-        - [Example #4 --> Centralize data (N slaves)](https://github.com/jimmyperezp/Libreria-TFG/tree/main/example/Centralizar%20datos%20-%20N%20slaves)
 
     - In case there's ever the need to turn the ranging off of a device, the library now uses this new method, which has it's own *ack* message as well.
     
@@ -88,6 +82,65 @@ To do so, I renamed some of the existing methods, cleaned and organized some seg
     }
     
     ```
+
+4: Reducing *dataReport* Payload. (ShortAddresses, distance and RX power lengths).
+- Why?
+    - These variables took up way too much space to be sent across multiple devices. Every one of them needed mutiple bytes. Short Addresses took up 2 bytes, and distance & RX Power needed 4 bytes.
+    Sending such a big amount of bytes could mean missing some communications, or making others weaker. This translates to having problems in the maximum distance measured between connected devices.
+
+- What?
+    - Firstly, I reduced the shortAddress from 2 bytes to a uint8_t (1 byte). This is seen mainly in the code uploaded to the boards.
+    When receiving a communication from another device, the new method:
+        - searchDeviceByShortAddHeader  
+    Allows to save only 1 byte to identify the distant device. This unique byte is then used to build up the *dataReport*, to log measures, etc.
+
+    - The distance sent was a float, occupying 4 bytes. I switched it to a uint16:t (2 Bytes). Currently, it sends the distance in cm and unsigned. The receiver then "decodifies" the message, switching it back to meters if needed.
+
+    - Same thing happened with the RX Power. I switched it to only 2 bytes. The receiver has to decodify and make transformation back.
+
+
+5. Slaves don't "forget" the master or the tags.
+- Why?
+    - To guarantee the system keeps working, appart from reducing the blinking time, the slaves don't eliminate the master or the tags from their known list.
+    This way, no matter the slave's state (responder/initiator), I guarantee that it keeps all the device's in its list.
+
+    
+- What? 
+    - I added a filter to avoid this problem. It is located inside DW1000Ranging.cpp. Located inside the loop >> received messages >> board type = responder.
+    The actual code is:
+
+    ```c++
+
+        if(_boardType == MASTER_ANCHOR || _boardType == TAG) {
+    		return false;
+    	}
+    ```
+
+6. Board types control. 
+
+- Why?
+    - In order to work the FSM code correctly, it is key that the master (and all the devices) know what board type is each of the know devices. 
+    To do so, I added a uint8_t that registers the board type:
+- What? 
+
+    ```c++
+    //Definitions in: "DW1000Device.h"
+    #define MASTER_ANCHOR 1
+    #define SLAVE_ANCHOR 2
+    #define TAG 3
+    ```
+
+    - During the blinking period, the message *transmitRangingInit* includes the board's type in the following way:
+
+    ```c++
+    
+    data[LONG_MAC_LEN + 1] = _myBoardType;
+    ```
+
+    - This way, the master knows what devices to include in its FSM and ranging protocol.
+
+7. Minor changes have been made in order to debug and optimize the library's functionality. They are not as relevant as the previous ones. 
+
 <br><br>
 
 
@@ -95,11 +148,13 @@ To do so, I renamed some of the existing methods, cleaned and organized some seg
 
 The examples found in the library are: 
 
-1. Medir distancias (measure distance between anchor and tag (Initiator-Responder))
+1. *Medir distancias* (measures distance between anchor and tag (Initiator-Responder))
 
-2. Posicionamiento 2D: launches an app to plot the position of 2 anchors and 1 tag in real time
+2. *Posicionamiento 2D*: launches an app to plot the position of 2 anchors and 1 tag in real time
 
-3. Centralizar datos: Centralizes all of the system's measures between its devices.
+3. *Centralizar datos*: Centralizes all of the system's measures between its devices. This example is divided into two different sub-examples:
+    - 3.1: *Centralizar datos - 1 Slave*: Basically, works on 1 master, 1 slave and multiple tags.
+    - 3.2: *Centralizar datos - N slaves*: Scalates the previous system to detect as many slaves as possible, and works with all of them.
 
 
 <br><br>
