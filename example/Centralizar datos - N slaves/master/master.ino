@@ -10,16 +10,17 @@ const uint8_t PIN_RST = 27; // reset pin
 const uint8_t PIN_IRQ = 34; // irq pin
 const uint8_t PIN_SS = 4;   // spi select pin
 
-#define DEBUG false
+#define DEBUG true
 
 #define IS_MASTER true
 #define DEVICE_ADDR "A1:00:5B:D5:A9:9A:E2:9C" 
 uint8_t own_short_addr = 0; 
 uint16_t Adelay = 16580;
 
-#define MAX_DEVICES 5
-Measurement measurements[MAX_DEVICES];
+#define MAX_MEASURES 200
+Measurement measurements[MAX_MEASURES];
 uint8_t amount_measurements = 0;
+
 
 ExistingDevice Existing_devices[MAX_DEVICES];
 uint8_t amount_devices = 0;
@@ -53,9 +54,9 @@ unsigned long last_shown_data_timestamp = 0;
 
 
 /*2: Time constants*/
-const unsigned long ranging_period = 150;
-const unsigned long waiting_time = 50;
-const unsigned long retry_time = 50;
+const unsigned long ranging_period = 500;
+const unsigned long waiting_time = 200;
+const unsigned long retry_time = 200;
 
 
 /*Retry messages management*/
@@ -163,6 +164,15 @@ void showData(){
 
 void registerDevice(DW1000Device *device){
 
+
+    if (amount_devices >= MAX_DEVICES) {
+        if (DEBUG) {
+            Serial.println("-------------------------------------------------------------"); 
+            Serial.println("     ERROR: Exceeded MAX_DEVICES limit. Device not added.    "); 
+            Serial.println("-------------------------------------------------------------");
+        }
+        return; 
+    }
 
     Existing_devices[amount_devices].short_addr = device->getShortAddressHeader();
     memcpy(Existing_devices[amount_devices].byte_short_addr, device->getByteShortAddress(), 2);
@@ -294,7 +304,7 @@ void logMeasure(uint8_t own_sa,uint8_t dest_sa, float dist, float rx_pwr){
         measurements[index].active = true;
 
     }
-    else if (amount_measurements < MAX_DEVICES){
+    else if (amount_measurements < MAX_MEASURES){
 
         // If not found, i need to make a new entry to the struct.
         measurements[amount_measurements].short_addr_origin = own_sa;
@@ -306,7 +316,10 @@ void logMeasure(uint8_t own_sa,uint8_t dest_sa, float dist, float rx_pwr){
         
     }
     else{
-        Serial.println("Devices list is full");
+        Serial.println("-------------------------------------------------------------");
+        Serial.println("                   Devices list is full                      ");
+        Serial.println("-------------------------------------------------------------");
+        
     }
 }
 
