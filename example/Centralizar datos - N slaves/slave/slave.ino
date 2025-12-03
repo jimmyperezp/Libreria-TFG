@@ -10,7 +10,6 @@
 #define SPI_SCK 18
 #define SPI_MISO 19
 #define SPI_MOSI 23
-#define DW_CS 4
 
 const uint8_t PIN_RST = 27; // reset pin
 const uint8_t PIN_IRQ = 34; // irq pin
@@ -43,6 +42,8 @@ static bool ranging_ended = false;
 static bool seen_first_range = false;
 static bool is_initiator = false;
 
+volatile bool pending_switch_to_initiator = false;
+volatile bool pending_switch_to_responder = false;
 
 byte* short_addr_master;
 
@@ -184,8 +185,6 @@ void ModeSwitchRequested(byte* short_addr_requester, bool to_initiator){
 
     DW1000Device* requester = DW1000Ranging.searchDistantDevice(short_addr_requester);
 
-    
-
     if(to_initiator == true){
         
 
@@ -193,57 +192,51 @@ void ModeSwitchRequested(byte* short_addr_requester, bool to_initiator){
              if(DEBUG) Serial.println("Already initiator. Only needs to send the Ack");
         }
 
+        else pending_switch_to_initiator = true;
         
         if(requester){ 
-            if(DEBUG) Serial.print("Sending switch ACK (to Initiator) via Unicast to -->");
-            if(DEBUG) Serial.println(requester->getShortAddressHeader(),HEX);
-            DW1000Ranging.transmitModeSwitchAck(requester, to_initiator);
+            if(DEBUG){
+
+                Serial.print("Sending switch ACK (to Initiator) via Unicast to -->");
+                Serial.println(requester->getShortAddressHeader(),HEX);
+
+            }
+            DW1000Ranging.transmitModeSwitchAck(requester, true);
         }
         else{
             if(DEBUG) Serial.println("Requester not found. Sending ACK (to Initiator) via broadcast.");
-            DW1000Ranging.transmitModeSwitchAck(nullptr, to_initiator);
+            DW1000Ranging.transmitModeSwitchAck(nullptr, true);
         }
-
-
-        delay(50); 
-
-        if(!is_initiator) { 
-            switchToInitiator();
-        }
+ 
     }
+
     else{
-       
+       //If requested mode switch to responder.
 
         if(!is_initiator){
             if(DEBUG) Serial.println("Already responder. Only needs to send the Ack");
         }
 
-        // 1. Enviar el ACK (como INITIATOR o RESPONDER, no importa)
-        if(requester){ 
-            if(DEBUG) Serial.print("Sending switch ACK (to Responder) via Unicast to-->");
-            if(DEBUG) Serial.println(requester->getShortAddressHeader(),HEX);
-            DW1000Ranging.transmitModeSwitchAck(requester, to_initiator);
+        else pending_switch_to_responder = true;
+
+
+        if(requester){
+            if(DEBUG){
+                Serial.print("Sending switch ACK (to responder) via Unicast to -->");
+                Serial.println(requester->getShortAddressHeader(),HEX);
+            }
+            DW1000Ranging.transmitModeSwitchAck(requester, false);
         }
+        
         else{
             if(DEBUG) Serial.println("Requester not found. Sending ACK (to Responder) via broadcast.");
-            DW1000Ranging.transmitModeSwitchAck(nullptr, to_initiator);
+            DW1000Ranging.transmitModeSwitchAck(nullptr, false);
         }
 
-        
-        delay(50); 
 
-       
-        if(is_initiator) {
-            switchToResponder();
-        } else {
-            
-            if(DEBUG) Serial.println("Already Responder, re-enabling receiver after ACK.");
-            DW1000.idle();
-            DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
-            attachCallbacks();
-        }
     }
 }
+
 void switchToResponder(){
 
     if(DEBUG){Serial.println("Switching to RESPONDER");}
@@ -345,6 +338,18 @@ void loop(){
             switchToResponder();
 
         }
+    }
+
+    if(pending_switch_to_responder){
+        delay(30); //Gives time for the ack to be sent correctly.
+        pending_switch_to_responder = false;
+        switchToResponder();
+    }
+
+    if(pending_switch_to_initiator){
+        delay(30); //Gives time for the ack to be sent correctly.
+        pending_switch_to_initiator = false;
+        switchToInitiator();
     }
 
 }
