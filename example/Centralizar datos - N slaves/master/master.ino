@@ -383,8 +383,6 @@ void transmitUnicast(uint8_t message_type){
 
             DW1000Ranging.transmitModeSwitch(switch_to_initiator,target);
             
-            
-
         }
 
         else{
@@ -417,8 +415,6 @@ void transmitUnicast(uint8_t message_type){
                 }
 
             DW1000Ranging.transmitDataRequest(target);
-            
-          
 
         }
 
@@ -429,14 +425,8 @@ void transmitUnicast(uint8_t message_type){
                 Existing_devices[slaves_indexes[reporting_slave_index]].data_report_pending = false;
                 state = DATA_REPORT;
             }
-            
-            
         }
-
     }
-    
-
-    
 }
 
 void retryTransmission(uint8_t message_type){
@@ -509,10 +499,8 @@ void DataReportFailed(){
 
 void DataReport(byte* data){
 
-    
-    
+   
     uint8_t origin_short_addr = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
-
 
     if(Existing_devices[slaves_indexes[reporting_slave_index]].short_addr == origin_short_addr && Existing_devices[slaves_indexes[reporting_slave_index]].data_report_pending == true){
 
@@ -550,7 +538,7 @@ void DataReport(byte* data){
 
         if(DEBUG){
             Serial.print("Data Report received from: ");
-            Serial.print(Existing_devices[slaves_indexes[reporting_slave_index]].short_addr,HEX);
+            Serial.print(origin_short_addr,HEX);
             Serial.println(" Now, back to data report to get it from the next slave");
         }
 
@@ -558,8 +546,7 @@ void DataReport(byte* data){
         num_retries = 0;
         state = DATA_REPORT;
     }
-        
-    
+            
 }
 
 void ModeSwitchAck(bool is_initiator){
@@ -666,7 +653,7 @@ void loop(){
         if(!initiator_handoff_started){
             initiator_handoff_started = true;
             active_slave_index = -1; //Set at -1 so that when doing active_slave_index++, the first index is 0.
-            if(DEBUG) Serial.println("Initiator handoff started.");
+            if(DEBUG) Serial.print("Initiator handoff started. ");
         }
         active_slave_index++;
 
@@ -796,7 +783,7 @@ void loop(){
             if(Existing_devices[slaves_indexes[reporting_slave_index]].active){
 
                 Existing_devices[slaves_indexes[reporting_slave_index]].data_report_pending = true;
-                //transmitUnicast(MSG_DATA_REQUEST);
+                transmitUnicast(MSG_DATA_REQUEST);
 
                 state = WAIT_DATA_REPORT;
             }
