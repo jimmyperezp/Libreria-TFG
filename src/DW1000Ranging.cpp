@@ -401,6 +401,11 @@ void DW1000RangingClass::loop() {
 		// TODO cc
 		int messageType = detectMessageType(data);
 		
+		if(messageType == MODE_SWITCH || messageType == REQUEST_DATA || messageType == STOP_RANGING) {
+             if(_type == RESPONDER || _type == INITIATOR){
+                 receiver(); //To wait for the ack just after sending a message.
+             }
+        }
 		if(messageType != POLL_ACK && messageType != POLL && messageType != RANGE)
 			return;
 		
@@ -469,11 +474,41 @@ void DW1000RangingClass::loop() {
 		
 		int messageType = detectMessageType(data);
 		
-		//we have just received a BLINK message from initiator
+		if (messageType == MODE_SWITCH || messageType == REQUEST_DATA ||messageType == DATA_REPORT || messageType == STOP_RANGING) {
+
+			bool is_broadcast = (data[5] == 0xFF && data[6] == 0xFF);
+            bool is_for_me = (data[6] == _currentShortAddress[0] && data[5] == _currentShortAddress[1]);
+
+			if (!is_broadcast && !is_for_me) {
+				
+				if(DEBUG){
+					Serial.print("Slaves Filter: -> ");
+					Serial.print("Requested to: [");
+					Serial.print(data[5],HEX);Serial.print(":");Serial.print(data[6],HEX);
+					Serial.print("] And I am: [");
+					Serial.print(_currentShortAddress[0], HEX); Serial.print(":"); Serial.print(_currentShortAddress[1], HEX);
+					Serial.println("]");
+
+					if(is_for_me) Serial.println("Message is for me --> I continue the loop");
+					else Serial.println("Message isn't for me --> I quit the loop.");
+
+				}
+				
+				//If not broadcast (unicast) and not for me -> ignore the message
+				return;
+			}
+		}
+		
 		if(messageType == MODE_SWITCH){
 
 			byte shortAddress[2]; //Creates 2 bytes to save 'shortAddress' from the requester.
 			_globalMac.decodeShortMACFrame(data, shortAddress); //To extract the shortAddress from the frame data[]
+
+			DW1000Device* requester = searchDistantDevice(shortAddress);
+            if (requester) {
+                requester->noteActivity();
+                _lastDistantDevice = requester->getIndex();
+            }
 
 			int headerLen = _lastFrameWasLong ? LONG_MAC_LEN : SHORT_MAC_LEN;
 			bool toInitiator = (data[headerLen + 1] == 1);
@@ -541,7 +576,7 @@ void DW1000RangingClass::loop() {
 			byte shortAddress[2]; //Creates 2 bytes to save 'shortAddress'
 			_globalMac.decodeShortMACFrame(data, shortAddress); //To extract the shortAddress from the frame data[]
 			DW1000Device* req = searchDistantDevice(shortAddress);
-    		if (req){ req->noteActivity(); }
+    		if (req){ req->noteActivity(); _lastDistantDevice = req->getIndex();}
 
 			if(_handleDataRequest){
 				(* _handleDataRequest)(shortAddress);
@@ -554,7 +589,7 @@ void DW1000RangingClass::loop() {
 			byte shortAddress[2]; //Creates 2 bytes to save 'shortAddress'
 			_globalMac.decodeShortMACFrame(data, shortAddress); //To extract the shortAddress from the frame data[]
 			DW1000Device* req = searchDistantDevice(shortAddress);
-    		if (req){ req->noteActivity(); }
+    		if (req){ req->noteActivity(); _lastDistantDevice = req->getIndex();}
 			// The master anchor requests the slaves for a data report.
 			// Slaves will have to send their measurements struct
 			
