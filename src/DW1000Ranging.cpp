@@ -1290,6 +1290,7 @@ void DW1000RangingClass::transmitDataRequest(DW1000Device* device){
 
 void DW1000RangingClass::transmitDataReport(Measurement* measurements, int numMeasures, DW1000Device* device) {
 
+	uint8_t active_measures = 0;
     byte dest[2];
 
     // Destiny selection: broadcast or unicast
@@ -1316,12 +1317,21 @@ void DW1000RangingClass::transmitDataReport(Measurement* measurements, int numMe
     // Variable "index" is used to fill up the data buffer.
     uint8_t index = SHORT_MAC_LEN + 1;
 
-    // 1 byte for number of measurements that are going to be sent.
-    data[index++] = numMeasures;
+	
+    // 1 byte for number of measurements that are going to be sent:
+	// I only send the active ones.
+
+	for (int i = 0; i<numMeasures;i++){
+		//From all the measures known to the device, only sends the active ones
+		if(measurements[i].active == true){
+			active_measures++;
+		}
+	}
+    data[index++] = active_measures;
 
     // Before sending, I check if there's enough space for the full message:
 
-    size_t totalPayloadSize = 1 + numMeasures * 5;  // 3 "constant" bytes + 10 for each measure sent.
+    size_t totalPayloadSize = 1 + active_measures * 5;  // 3 "constant" bytes + 10 for each measure sent.
     size_t totalMessageSize = SHORT_MAC_LEN + 1 + totalPayloadSize; //+1 because of the message type.
 
     if (totalMessageSize > LEN_DATA) {
@@ -1332,18 +1342,22 @@ void DW1000RangingClass::transmitDataReport(Measurement* measurements, int numMe
     }
 
 	for (uint8_t i = 0; i < numMeasures; i++) {
-    	//1 byte for the destiny's short Address
-    	data[index++] = (uint8_t)measurements[i].short_addr_dest;
+    	if(measurements[i].active == true){
+
+			//1 byte for the destiny's short Address
+    		data[index++] = (uint8_t)measurements[i].short_addr_dest;
+			
+    		// Distante measured (sent as cm to reduce message length)
+    		uint16_t distance_cm = (uint16_t)(measurements[i].distance * 100.0f);
+    		memcpy(data + index, &distance_cm, 2); 
+    		index += 2;
+			
+    		// 2 bytes for the rx power. Sent as 2 bytes.
+    		int16_t rxPower_tx = (int16_t)(measurements[i].rxPower * 100.0f); // Using a signed integer (int instead o uint), the negative sign is saved correctly.
+    		memcpy(data + index, &rxPower_tx, 2); 
+    		index += 2;
+		}
 		
-    	// Distante measured (sent as cm to reduce message length)
-    	uint16_t distance_cm = (uint16_t)(measurements[i].distance * 100.0f);
-    	memcpy(data + index, &distance_cm, 2); 
-    	index += 2;
-		
-    	// 2 bytes for the rx power. Sent as 2 bytes.
-    	int16_t rxPower_tx = (int16_t)(measurements[i].rxPower * 100.0f); // Using a signed integer (int instead o uint), the negative sign is saved correctly.
-    	memcpy(data + index, &rxPower_tx, 2); 
-    	index += 2;
 	}
 	
 
