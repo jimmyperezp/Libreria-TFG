@@ -11,8 +11,8 @@ const uint8_t PIN_IRQ = 34; // irq pin
 const uint8_t PIN_SS = 4;   // spi select pin
 
 #define DEBUG_MASTER true
-
 #define IS_MASTER true
+
 #define DEVICE_ADDR "A1:00:5B:D5:A9:9A:E2:9C" 
 uint8_t own_short_addr = 0; 
 uint16_t Adelay = 16580;

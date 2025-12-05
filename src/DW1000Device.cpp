@@ -28,7 +28,6 @@ DW1000Device::DW1000Device(byte deviceAddress[], byte shortAddress[]) {
 	setShortAddress(shortAddress);
 }
 
-
 DW1000Device::~DW1000Device() {
 }
 

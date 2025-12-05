@@ -134,8 +134,6 @@ void clearMeasures(){
 
 }
 
-
-
 void DataRequested(byte* short_addr_requester){
     
     

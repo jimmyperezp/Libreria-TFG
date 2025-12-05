@@ -1330,7 +1330,6 @@ void DW1000RangingClass::transmitDataReport(Measurement* measurements, int numMe
     data[index++] = active_measures;
 
     // Before sending, I check if there's enough space for the full message:
-
     size_t totalPayloadSize = 1 + active_measures * 5;  // 3 "constant" bytes + 10 for each measure sent.
     size_t totalMessageSize = SHORT_MAC_LEN + 1 + totalPayloadSize; //+1 because of the message type.
 
