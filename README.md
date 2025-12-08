@@ -30,7 +30,7 @@ This updated version:  [Changes made](#changes-made)
     - [ESP32 Wroom32](#esp32-wroom32)
     - [STM32 Nucleo F429ZI](#stm32-nucleo-f429zi)
     - [DW1000 module](#dw1000----uwb-chip)
-
+    - [DWS1000](#dws1000)
 7. 🖥️ [Programming the boards](#programming-the-boards)
     - [Arduino IDE](#arduino-ide)
     - [PlatformIO](#platformio)
@@ -244,7 +244,7 @@ These boards run using an ESP32 microcontroller.
 
 #### STM32: Nucleo F429ZI
 
-<img src="https://github.com/jimmyperezp/TFG_UWB/blob/main/images/STM32%20Nucleo-F429ZI.png" alt="NUCLEO F429ZI" width="400" height="200" align ="right"/>
+<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/images/STM32%20Nucleo-F429ZI.png" alt="NUCLEO F429ZI" width="400" height="200" align ="right"/>
 
 The other boards used have been some STM32 Nucleo-F429ZI.
 
@@ -257,7 +257,7 @@ The other boards used have been some STM32 Nucleo-F429ZI.
 <br><br>
 
 #### DW1000 --> UWB Chip
-<img src="https://github.com/jimmyperezp/TFG_UWB/blob/main/images/Chip%20DW1000.jpeg" alt="DW1000" width="300" height="200" align ="right"/>
+<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/images/Chip%20DW1000.jpeg" alt="DW1000" width="300" height="200" align ="right"/>
 
 Both devices (esp32 wroom32 & stm32 nucleo f429ZI) use the DW1000 chip to make the UWB communications possible.
 
@@ -272,7 +272,7 @@ In order to use this chip, and perform the UWB communications, the DWS1000 "shie
 
 #### DWS1000
 
-<img src="https://github.com/jimmyperezp/TFG_UWB/blob/main/images/DWS1000.png" alt="DWS1000" width="200" height="300" align ="right"/>
+<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/images/DWS1000.png" alt="DWS1000" width="200" height="300" align ="right"/>
 
 This is an Arduino form-factor shileld that can be connected into the Nucleo boards using their 'Zio' connectors, which are Arduino prepared
 
@@ -328,7 +328,7 @@ PlatformIO's setup is made via the *platformio.ini* file created inside the proj
 
 <div align="center">
 
-| Parameters to include|in the *.ini* file |
+| Parameters to include in the *ini* file| |
 |---|---|
 | • Environments              | • Library dependencies |
 | • Boards| • Monitor speed |
