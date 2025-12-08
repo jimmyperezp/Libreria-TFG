@@ -21,12 +21,12 @@ This updated version:  [Changes made](#changes-made)
 4. 📝 [Changes made](#changes-made)
     - [Renaming](#1-renaming)
     - [New Methods](#2-new-methods-in-dw1000rangingcpp)
-    - [Slaves ignore masters' messages](#3-slaves-ignore-message-types-that-are-directed-towards-the-master)
-    - [dataReport Payload](#4-reducing-datareport-payload-shortaddresses-distance-and-rx-power-lengths)
+    - [Slaves ignore messages directed to the master](#3-slaves-ignore-message-types-that-are-directed-towards-the-master)
+    - [Reducing dataReport Payload](#4-reducing-datareport-payload-shortaddresses-distance-and-rx-power-lengths)
     - [Eliminating devices from own list](#5-slaves-dont-forget-the-master-or-the-tags)
     - [Board types control](#6-board-types-control)
-5. 📚 [Library's examples](#examples)
-6. 🔧 [Hardware](#Hardware)
+5. 📚 [Library's examples](#librarys-examples)
+6. 🔧 [Hardware](#hardware-used)
     - [ESP32 Wroom32](#esp32-wroom32)
     - [STM32 Nucleo F429ZI](#stm32-nucleo-f429zi)
     - [DW1000 module](#dw1000----uwb-chip)
@@ -223,6 +223,10 @@ The examples found in the library are:
 3. *Centralizar datos*: Centralizes all of the system's measures between its devices. This example is divided into two different sub-examples:
     - 3.1: *Centralizar datos - 1 Slave*: Basically, works on 1 master, 1 slave and multiple tags.
     - 3.2: *Centralizar datos - N slaves*: Scalates the previous system to detect as many slaves as possible, and works with all of them.
+
+
+🚧 **PENDING** --> Add a readme file inside each example's folder explaining more on detail.
+<br><br>
 
 ### Hardware used
 To develop the project, two different boards have been used. The reason behind using multiple different boards was to maximize the system's ability to work cross-platform, as well as to check the code ran in different "ecosystems", all while using the same UWB chip (DW1000).  
