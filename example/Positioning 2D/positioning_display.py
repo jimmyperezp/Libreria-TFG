@@ -105,7 +105,7 @@ def clean(t=turtle):
 def draw_ui(t):
     write_txt(-120, 220, "UWB Positioning", "orange",  t, f=('Arial', 28, 'normal'))
     fill_rect(-400, 150, 800, 50, "black", t)
-    write_txt(-250, 155, "Posicionamiento 2D - Jaime Pérez", "yellow",  t, f=('Arial', 24, 'normal'))
+    write_txt(-250, 155, "2D Positioning - Jaime Pérez", "yellow",  t, f=('Arial', 24, 'normal'))
 
 
 def draw_uwb_anchor(x, y, txt, range, t):

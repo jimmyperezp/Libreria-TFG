@@ -2,10 +2,12 @@
 <img src="https://cdn.worldvectorlogo.com/logos/arduino-1.svg" alt="arduino" width="40" height="40"/><img src="https://raw.githubusercontent.com/devicons/devicon/master/icons/python/python-original.svg" alt="python" width="40" height="40"/> 
 
 
-### Objetivo:  
- Con este ejemplo, se pretende graficar en tiempo real la posición relativa entre el tag y los dos anchors. 
-Para hacerlo, se lanza un programa en python que recibe las distancias entre el tag y los anchors.  
-Dicho programa de python es el obtenido de la [Demo de makerFabs](https://www.instructables.com/ESP32-UWB-Indoor-Positioning-Test/)
+### Goal:
+
+This example plots in real time the relative position between 1 tag and 2 anchors.  
+To do it, the code launches a program in Python that receives the measured distances between tag & anchors.   
+
+Said Python program can be found here: [MakerFabs 2D Positioning demo](https://www.instructables.com/ESP32-UWB-Indoor-Positioning-Test/)
 
 
 ### Hardware utilizado: 
