@@ -75,6 +75,7 @@ uint8_t amount_active_slaves = 0;
 
 /*Flags used in state = master_ranging*/
 static bool master_is_ranging = false;
+#define AMOUNT_VALID_RANGINGS 3
 
 /*Flags used in state = initiator_handoff*/
 static bool initiator_handoff_started = false;
@@ -113,8 +114,7 @@ void setup(){
     DW1000Ranging.attachNewRange(newRange);
     DW1000Ranging.attachNewDevice(newDevice);
     DW1000Ranging.attachInactiveDevice(inactiveDevice);   
-
-    
+    DW1000Ranging.attachRangingFinished(slaveFinishedRanging);
 
     DW1000Ranging.attachDataReport(DataReport);
     DW1000Ranging.attachModeSwitchAck(ModeSwitchAck);
@@ -155,7 +155,7 @@ void showData(){
             Serial.print("\t Distance: ");
             Serial.print(measurements[i].distance);
             Serial.print(" m \t RX power: ");
-            Serial.print(measurements[i].rxPower);
+            Serial.print(measurements[i].rx_power);
             Serial.println(" dBm");
         }
     }
@@ -304,7 +304,7 @@ void inactiveDevice(DW1000Device *device){
         }
 
         if(amount_active_slaves == 0){
-            .println("All slaves disconnected. Going back to discovery");
+            Serial.println("All slaves disconnected. Going back to discovery");
             slaves_discovered = false;
             state = DISCOVERY; 
             return;
@@ -317,32 +317,78 @@ void inactiveDevice(DW1000Device *device){
     
 }
 
+void setCompleteRanging(uint8_t dest_sa, bool is_ranging_done){
+
+    DW1000Device* dev = DW1000Ranging.searchDeviceByShortAddHeader(dest_sa);
+    
+    if(dev){
+        
+        dev->setRangingComplete(is_ranging_done);
+    }
+}
+
+void resetCompleteRanging(){
+
+    for(int i = 0; i<amount_devices;i++){
+        uint8_t dest_sa;
+        measurements[amount_devices].completed_rangings = 0;
+        dest_sa = measurements[amount_devices].short_addr_dest;
+        DW1000Device* dev = DW1000Ranging.searchDeviceByShortAddHeader(dest_sa);
+        
+        if(dev){
+            dev->setRangingComplete(false);
+        }
+        
+    }
+}
+
+void slaveFinishedRanging(uint8_t origin_short_addr){
+
+    if(Existing_devices[slaves_indexes[active_slave_index]].short_addr == origin_short_addr){
+
+        state = INITIATOR_HANDOFF;
+        Existing_devices[slaves_indexes[active_slave_index]].is_responder = true;
+
+        if(DEBUG_MASTER){
+
+            Serial.print("[");Serial.print(origin_short_addr,HEX);Serial.println("] Finished Ranging. Now, turn for the next slave to range");
+        }
+    }
+}
+
 void logMeasure(uint8_t own_sa,uint8_t dest_sa, float dist, float rx_pwr){
 
-    // Firstly, checks if that communication has been logged before
+        // Firstly, checks if that communication has been logged before
     int index = searchDevice(own_sa,dest_sa);
     
     if(dist < 0){ dist = -dist;} //If the distance is <0, makes it >0
 
     if (index != -1){ // This means: it was found.
 
-        // Only updates distance and rxPower.
+        // Only updates distance and rx_power.
         measurements[index].distance = dist; 
-        measurements[index].rxPower = rx_pwr; 
+        measurements[index].rx_power = rx_pwr; 
         measurements[index].active = true;
+        measurements[index].completed_rangings++;
+        if(measurements[index].completed_rangings >= AMOUNT_VALID_RANGINGS){
+            setCompleteRanging(dest_sa, true);
+        }
 
     }
-    else if (amount_measurements < MAX_MEASURES){
+    else if (amount_devices < MAX_MEASURES){
 
         // If not found, i need to make a new entry to the struct.
-        measurements[amount_measurements].short_addr_origin = own_sa;
-        measurements[amount_measurements].short_addr_dest = dest_sa;
-        measurements[amount_measurements].distance = dist;
-        measurements[amount_measurements].rxPower = rx_pwr;
-        measurements[amount_measurements].active = true;
-        amount_measurements ++; // And increase the devices number in 1.
+        measurements[amount_devices].short_addr_origin = own_sa;
+        measurements[amount_devices].short_addr_dest = dest_sa;
+        measurements[amount_devices].distance = dist;
+        measurements[amount_devices].rx_power = rx_pwr;
+        measurements[amount_devices].active = true;
+        measurements[index].completed_rangings = 1;
+        amount_devices ++; // And increase the devices number in 1.
         
     }
+
+    
     else{
         Serial.println("-------------------------------------------------------------");
         Serial.println("                   Devices list is full                      ");
@@ -354,6 +400,9 @@ void logMeasure(uint8_t own_sa,uint8_t dest_sa, float dist, float rx_pwr){
 void newRange(){
 
     if(master_is_ranging == false) return;
+
+    else if(DW1000Ranging.getDistantDevice()->getRangingComplete() == true) return;
+
     uint8_t dest_sa = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
     float dist = DW1000Ranging.getDistantDevice()->getRange();
     float rx_pwr = DW1000Ranging.getDistantDevice()->getRXPower();

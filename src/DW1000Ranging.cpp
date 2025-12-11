@@ -70,6 +70,7 @@ void (* DW1000RangingClass::_handleDataRequest)(byte*) = 0;
 void (* DW1000RangingClass::_handleDataReport)(byte*) = 0;
 void (* DW1000RangingClass::_handleStopRanging)(byte*) = 0;
 void (* DW1000RangingClass::_handleStopRangingAck)(void) = 0;
+void (* DW1000RangingClass::_handleRangingFinished)(uint8_t origin_short_address) = 0;
 
 
 /* ###########################################################################
@@ -474,7 +475,7 @@ void DW1000RangingClass::loop() {
 		
 		int messageType = detectMessageType(data);
 		
-		if (messageType == MODE_SWITCH || messageType == REQUEST_DATA ||messageType == DATA_REPORT || messageType == STOP_RANGING) {
+		if (messageType == MODE_SWITCH || messageType == REQUEST_DATA ||messageType == DATA_REPORT || messageType == STOP_RANGING || messageType == RANGING_FINISHED) {
 
 			bool is_broadcast = (data[5] == 0xFF && data[6] == 0xFF);
             bool is_for_me = (data[6] == _currentShortAddress[0] && data[5] == _currentShortAddress[1]);
@@ -570,6 +571,7 @@ void DW1000RangingClass::loop() {
             if(_handleStopRangingAck){
                 (*_handleStopRangingAck)();
             }
+			return;
 		}
 		else if(messageType == REQUEST_DATA){
 
@@ -587,18 +589,31 @@ void DW1000RangingClass::loop() {
 		else if(messageType == DATA_REPORT){
 			
 			byte shortAddress[2]; //Creates 2 bytes to save 'shortAddress'
+			
 			_globalMac.decodeShortMACFrame(data, shortAddress); //To extract the shortAddress from the frame data[]
 			DW1000Device* req = searchDistantDevice(shortAddress);
     		if (req){ req->noteActivity(); _lastDistantDevice = req->getIndex();}
 			// The master anchor requests the slaves for a data report.
 			// Slaves will have to send their measurements struct
-			
 			if(_handleDataReport){
 				(* _handleDataReport)(data);
 			}
 			return;
 		}
 
+		else if(messageType == RANGING_FINISHED){
+			byte shortAddress[2]; 
+			_globalMac.decodeShortMACFrame(data, shortAddress);
+			DW1000Device* req = searchDistantDevice(shortAddress);
+			uint8_t origin_short_addr = req->getShortAddressHeader();
+    		if (req){ req->noteActivity(); _lastDistantDevice = req->getIndex();}
+
+			if(_handleRangingFinished){
+                (*_handleRangingFinished)(origin_short_addr);
+            }
+			return;
+		}
+		
 		if(ranging_enabled){
 				if(messageType == BLINK && _type == RESPONDER) {
 					byte address[8];
@@ -974,38 +989,48 @@ void DW1000RangingClass::transmitPoll(DW1000Device* myDistantDevice) {
 	
 	transmitInit();
 	
-	if(myDistantDevice == nullptr) { //If the polling is done via broadcast
-		//Right now, it is always sent via broadcast.
+	if(myDistantDevice == nullptr) { 
 
-		//we need to set our timerDelay:
-		_timerDelay = DEFAULT_TIMER_DELAY+(uint16_t)(_networkDevicesNumber*3*DEFAULT_REPLY_DELAY_TIME/1000);
+		//Polls sent by broadcast (right now, polls are always broadcast)
+
+		// The poll message is: 
+		// ShortMACFrame (9 bytes) || POLL (1 Byte) || number of devices expected to poll (1 byte) || packet for each device: 
+		// destination's short Address (2 bytes) || reply delay time (to avoid crashing) (1 byte).
+		
+		// This way, messages are: MAC-POLL-NUMBER OF DEVICES - [short address][reply time] (...)
+
+		Serial.print("Ranging from: ["); Serial.print(_currentShortAddress[0],HEX); Serial.print(_currentShortAddress[1],HEX); Serial.print("] to --> ");
 		
 		byte shortBroadcast[2] = {0xFF, 0xFF};
 		_globalMac.generateShortMACFrame(data, _currentShortAddress, shortBroadcast);
-		data[SHORT_MAC_LEN]   = POLL;
-		//we enter the number of devices
-		data[SHORT_MAC_LEN+1] = _networkDevicesNumber;
-		
-		for(uint8_t i = 0; i < _networkDevicesNumber; i++) {
+		data[SHORT_MAC_LEN]  = POLL;
 
-			/*In this "for", we set up a different reply delay time for each targeted device. 
-			We do so by multiplying the default reply_delay_time by a different numer each time, 
-			giving it enough time to send the messages in each slot.*/
+		uint8_t polling_device_index = 0;
 
-			
-			_networkDevices[i].setReplyTime((2*i+1)*DEFAULT_REPLY_DELAY_TIME);
-			
-			//we write the short address of our device:
-			memcpy(data+SHORT_MAC_LEN+2+4*i, _networkDevices[i].getByteShortAddress(), 2);
-			//Clears 4 bytes per device. The first 2 are for the shortAddress
-			
-			//we add the replyTime
-			uint16_t replyTime = _networkDevices[i].getReplyTime();
-			memcpy(data+SHORT_MAC_LEN+2+2+4*i, &replyTime, 2);
-			//These go in the pending freed up 2 bytes from before
+		for (uint8_t i = 0; i < _networkDevicesNumber; i++){
+
+			if(_networkDevices[i].getRangingComplete() == false){
+				
+
+				_networkDevices[i].setReplyTime((2*polling_device_index+1)*DEFAULT_REPLY_DELAY_TIME);
+				// Clearly, each device has a bigger reply time than the previous one
+				memcpy(data+SHORT_MAC_LEN+2+4*polling_device_index, _networkDevices[i].getByteShortAddress(), 2); 
+
+				Serial.print("[");Serial.print(_networkDevices[i].getShortAddressHeader(),HEX); Serial.print("] , ");
+				uint16_t replyTime = _networkDevices[i].getReplyTime();
+				memcpy(data+SHORT_MAC_LEN+2+2+4*polling_device_index, &replyTime, 2);
+
+				polling_device_index++;
+
+			}
 			
 		}
-		data[SHORT_MAC_LEN+2+4*_networkDevicesNumber] = _myBoardType;
+		Serial.println(" ");
+		_timerDelay = DEFAULT_TIMER_DELAY+(uint16_t)(polling_device_index*3*DEFAULT_REPLY_DELAY_TIME/1000);
+
+		data[SHORT_MAC_LEN+1] = polling_device_index;
+
+		data[SHORT_MAC_LEN+2+4*polling_device_index] = _myBoardType;
 		copyShortAddress(_lastSentToShortAddress, shortBroadcast);
 		
 	}
@@ -1170,7 +1195,6 @@ void DW1000RangingClass::transmitStopRangingAck(DW1000Device* device){
 	transmit(data);
 }
 
-
 void DW1000RangingClass::transmitModeSwitch(bool toInitiator, DW1000Device* device){
 
 	//1: Prepare for new transmission:
@@ -1263,7 +1287,6 @@ void DW1000RangingClass::transmitModeSwitchAck(DW1000Device* device,bool isIniti
 	transmit(data);
 }
 
-
 void DW1000RangingClass::transmitDataRequest(DW1000Device* device){
 
 	//This method works just as the "transmitModeSwitch". See explanations and commentaries there.
@@ -1286,7 +1309,6 @@ void DW1000RangingClass::transmitDataRequest(DW1000Device* device){
 	
 	transmit(data); //the data is sent via UWB
 }
-
 
 void DW1000RangingClass::transmitDataReport(Measurement* measurements, int numMeasures, DW1000Device* device) {
 
@@ -1352,7 +1374,7 @@ void DW1000RangingClass::transmitDataReport(Measurement* measurements, int numMe
     		index += 2;
 			
     		// 2 bytes for the rx power. Sent as 2 bytes.
-    		int16_t rxPower_tx = (int16_t)(measurements[i].rxPower * 100.0f); // Using a signed integer (int instead o uint), the negative sign is saved correctly.
+    		int16_t rxPower_tx = (int16_t)(measurements[i].rx_power * 100.0f); // Using a signed integer (int instead o uint), the negative sign is saved correctly.
     		memcpy(data + index, &rxPower_tx, 2); 
     		index += 2;
 		}
@@ -1363,6 +1385,25 @@ void DW1000RangingClass::transmitDataReport(Measurement* measurements, int numMe
     transmit(data); //Finally, sends the message
 }
 
+void DW1000RangingClass::transmitRangingFinished(DW1000Device* device){
+	
+	byte dest[2];
+
+	if (device == nullptr) {
+
+        dest[0] = 0xFF;
+        dest[1] = 0xFF;
+    } 
+	else {
+        memcpy(dest, device->getByteShortAddress(), 2);
+    }
+
+    transmitInit(); 
+
+    _globalMac.generateShortMACFrame(data, _currentShortAddress, dest);
+
+    data[SHORT_MAC_LEN] = RANGING_FINISHED;
+}
 
 /* ###########################################################################
  * #### Methods for range computation and corrections  #######################

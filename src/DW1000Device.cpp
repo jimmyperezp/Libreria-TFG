@@ -3,10 +3,10 @@
 #include "DW1000Device.h"
 #include "DW1000.h"
 
-
 //Constructor and destructor
 DW1000Device::DW1000Device() {
 	randomShortAddress();
+	_ranging_complete = false;
 }
 
 DW1000Device::DW1000Device(byte deviceAddress[], bool shortOne) {
@@ -19,6 +19,7 @@ DW1000Device::DW1000Device(byte deviceAddress[], bool shortOne) {
 		//we have a short address (2 bytes)
 		setShortAddress(deviceAddress);
 	}
+	_ranging_complete = false;
 }
 
 DW1000Device::DW1000Device(byte deviceAddress[], byte shortAddress[]) {
@@ -26,6 +27,7 @@ DW1000Device::DW1000Device(byte deviceAddress[], byte shortAddress[]) {
 	setAddress(deviceAddress);
 	//we set the 2 bytes address
 	setShortAddress(shortAddress);
+	_ranging_complete = false;
 }
 
 DW1000Device::~DW1000Device() {

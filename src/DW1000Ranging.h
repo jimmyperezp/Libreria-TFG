@@ -9,7 +9,7 @@
 #include "DW1000Device.h" 
 #include "DW1000Mac.h"
 
-// messages used in the ranging protocol
+// Ranging messages
 #define POLL 0
 #define POLL_ACK 1
 #define RANGE 2
@@ -18,16 +18,17 @@
 #define BLINK 4
 #define RANGING_INIT 5
 
-//Messages used to control the data flow: 
-#define MODE_SWITCH 6 // To request a switch in mode. From initiator to responder (or viceversa)
-#define MODE_SWITCH_ACK 7
+// Data Flow messages
+#define MODE_SWITCH 6     // To request a switch in mode. From initiator to responder (or viceversa)
+#define MODE_SWITCH_ACK 7 // Slave responds this to inform the change is made.
 
-#define REQUEST_DATA 8 // The master anchor sends this message to request the slave anchors the data they've collected (this data includes the measurements from the slave to the rest of devices)
-#define DATA_REPORT 9 // The slave anchors respond with this message. In it, the requested data is codified.
+#define REQUEST_DATA 8	  // Sent by master. Requests measurements from slaves.
+#define DATA_REPORT 9     // Slave sends the data (made measurements) with this message
 
 #define STOP_RANGING 10
 #define STOP_RANGING_ACK 11
 
+#define RANGING_FINISHED 12
 
 //Length of tha payload in the sent messages.
 #define LEN_DATA 90
@@ -62,8 +63,9 @@ struct Measurement {
     uint8_t short_addr_origin;   
     uint8_t short_addr_dest;
     float distance;     // Last measured distance (in meters)
-    float rxPower;      // Last RX power measured with the destiny (in dBm)
+    float rx_power;      // Last RX power measured with the destiny (in dBm)
     bool active;        // Checks if the destiny device is active. 
+	uint8_t completed_rangings;
 };
 
 // Struct to know the existing devices of the system. Used to send messages via unicast.
@@ -93,8 +95,8 @@ public:
 	static void    generalStart();
 	static void    startAsResponder(const char address[], const byte mode[], const bool randomShortAddress = true,const uint8_t boardType = 0);
 	static void    startAsInitiator(const char address[], const byte mode[], const bool randomShortAddress = true, const uint8_t boardType = 0);
-	static bool addNetworkDevices(DW1000Device* device, bool shortAddress);
-	static bool addNetworkDevices(DW1000Device* device);
+	static bool    addNetworkDevices(DW1000Device* device, bool shortAddress);
+	static bool    addNetworkDevices(DW1000Device* device);
 	static void    removeNetworkDevices(int16_t index);
 	
 	//setters
@@ -141,6 +143,8 @@ public:
 
 	static void attachStopRangingAck(void(*handleStopRangingAck)(void)){_handleStopRangingAck = handleStopRangingAck;}
 
+	static void attachRangingFinished(void(*handleRangingFinished)(uint8_t )){_handleRangingFinished = handleRangingFinished;}
+
 	static DW1000Device* getDistantDevice();
 	static DW1000Device* searchDistantDevice(byte shortAddress[]);
 	static DW1000Device* searchDeviceByShortAddHeader(uint8_t short_addr_header);
@@ -164,7 +168,7 @@ public:
 	// To send the data report. Sent by the slaves to the master.
 	void transmitDataReport(Measurement* measurements, int numMedidas, DW1000Device* device = nullptr);
 
-	
+	void transmitRangingFinished(DW1000Device* device = nullptr);
 private:
 	//other devices in the network
 	static DW1000Device _networkDevices[MAX_DEVICES];
@@ -191,6 +195,8 @@ private:
 
 	static void (* _handleStopRanging)(byte* shortAddress);
 	static void (* _handleStopRangingAck)(void);
+
+	static void (* _handleRangingFinished)(uint8_t origin_short_address);
 	
 	
 	//sketch type (Initiator or responder)
