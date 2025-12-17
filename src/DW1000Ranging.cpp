@@ -402,7 +402,7 @@ void DW1000RangingClass::loop() {
 		// TODO cc
 		int messageType = detectMessageType(data);
 		
-		if(messageType == MODE_SWITCH || messageType == REQUEST_DATA || messageType == STOP_RANGING) {
+		if(messageType == MODE_SWITCH || messageType == REQUEST_DATA || messageType == STOP_RANGING|| messageType == RANGING_FINISHED) {
              if(_type == RESPONDER || _type == INITIATOR){
                  receiver(); //To wait for the ack just after sending a message.
              }
@@ -540,7 +540,6 @@ void DW1000RangingClass::loop() {
 			return;
 
         }
-		
 		else if(messageType == STOP_RANGING){
 
 			byte shortAddress[2]; //Creates 2 bytes to save 'shortAddress' from the requester.
@@ -600,7 +599,6 @@ void DW1000RangingClass::loop() {
 			}
 			return;
 		}
-
 		else if(messageType == RANGING_FINISHED){
 			byte shortAddress[2]; 
 			_globalMac.decodeShortMACFrame(data, shortAddress);
@@ -660,11 +658,8 @@ void DW1000RangingClass::loop() {
 				byte address[2];
 				_globalMac.decodeShortMACFrame(data, address);
 
-
-
 				//we get the device which correspond to the message which was sent (need 	to be filtered by MAC address)
 				DW1000Device* myDistantDevice = searchDistantDevice(address);
-
 
 				if((_networkDevicesNumber == 0) || (myDistantDevice == nullptr)) {
 					//we don't have the short address of the device in memory
@@ -674,7 +669,6 @@ void DW1000RangingClass::loop() {
 					}
 					return;
 				}
-
 
 				//then we proceed to range protocole
 				if(_type == RESPONDER) {
@@ -704,7 +698,7 @@ void DW1000RangingClass::loop() {
 							memcpy(shortAddress, data+SHORT_MAC_LEN+2+i*4, 2);
 
 							//we test if the short address is our address
-							if(shortAddress[0] == _currentShortAddress[0] && shortAddress	[1] == _currentShortAddress[1]) {
+							if(shortAddress[0] == _currentShortAddress[0] && shortAddress[1] == _currentShortAddress[1]) {
 								//we grab the replytime wich is for us
 								uint16_t replyTime;
 								memcpy(&replyTime, data+SHORT_MAC_LEN+2+i*4+2, 2);
@@ -811,12 +805,18 @@ void DW1000RangingClass::loop() {
 						//we note activity for our device:
 						myDistantDevice->noteActivity();
 
-						//in the case the message come from our last device:
-						if(myDistantDevice->getIndex() == _networkDevicesNumber-1) {
-							_expectedMsgId = RANGE_REPORT;
-							//and transmit the next message (range) of the ranging 	protocole (in broadcast)
-							transmitRange(nullptr);
+						int lastActiveIndex = -1;
+						for (int i = _networkDevicesNumber - 1; i >= 0; i--) {
+							if (!_networkDevices[i].getRangingComplete()) { //Seach "backwards" the last device that is still ranging
+								lastActiveIndex = i;
+								break;
+							}
 						}
+						if (myDistantDevice->getIndex() == lastActiveIndex) {
+   							_expectedMsgId = RANGE_REPORT;
+    						transmitRange(nullptr);
+						}	
+
 					}
 					else if(messageType == RANGE_REPORT) {
 
@@ -999,7 +999,7 @@ void DW1000RangingClass::transmitPoll(DW1000Device* myDistantDevice) {
 		
 		// This way, messages are: MAC-POLL-NUMBER OF DEVICES - [short address][reply time] (...)
 
-		Serial.print("Ranging from: ["); Serial.print(_currentShortAddress[0],HEX); Serial.print(_currentShortAddress[1],HEX); Serial.print("] to --> ");
+		Serial.print("Ranging from: ["); Serial.print(_currentShortAddress[0],HEX); Serial.print("] to --> ");
 		
 		byte shortBroadcast[2] = {0xFF, 0xFF};
 		_globalMac.generateShortMACFrame(data, _currentShortAddress, shortBroadcast);
@@ -1403,6 +1403,7 @@ void DW1000RangingClass::transmitRangingFinished(DW1000Device* device){
     _globalMac.generateShortMACFrame(data, _currentShortAddress, dest);
 
     data[SHORT_MAC_LEN] = RANGING_FINISHED;
+	transmit(data);
 }
 
 /* ###########################################################################

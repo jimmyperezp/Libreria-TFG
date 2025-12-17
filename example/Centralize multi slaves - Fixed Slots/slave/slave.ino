@@ -11,6 +11,7 @@
 #define SPI_MISO 19
 #define SPI_MOSI 23
 
+
 const uint8_t PIN_RST = 27; // reset pin
 const uint8_t PIN_IRQ = 34; // irq pin
 const uint8_t PIN_SS = 4;   // spi select pin
@@ -47,7 +48,7 @@ volatile bool pending_switch_to_responder = false;
 
 uint8_t amount_completed_devices = 0;
 #define AMOUNT_VALID_RANGINGS 3
-byte* short_addr_master;
+byte short_addr_master[2];
 
 // CODE:
 void setup(){
@@ -78,6 +79,7 @@ void attachCallbacks(){
     DW1000Ranging.attachDataRequested(DataRequested);
     
 }
+
 
 uint8_t getOwnShortAddress() {
     byte* sa = DW1000Ranging.getCurrentShortAddress();
@@ -111,8 +113,8 @@ void resetCompleteRanging(){
 
     for(int i = 0; i<amount_devices;i++){
         uint8_t dest_sa;
-        measurements[amount_devices].completed_rangings = 0;
-        dest_sa = measurements[amount_devices].short_addr_dest;
+        measurements[i].completed_rangings = 0;
+        dest_sa = measurements[i].short_addr_dest;
         DW1000Device* dev = DW1000Ranging.searchDeviceByShortAddHeader(dest_sa);
         
         if(dev){
@@ -122,7 +124,7 @@ void resetCompleteRanging(){
     }
 }
 
-void rangingFinished(){
+void slaveRangingFinished(){
 
     switchToResponder();
     DW1000Device* master = DW1000Ranging.searchDistantDevice(short_addr_master);
@@ -139,6 +141,7 @@ void rangingFinished(){
 
 void logMeasure(uint8_t own_sa,uint8_t dest_sa, float dist, float rx_pwr){
 
+    if (dest_sa == 0 || dest_sa == 0xFF) return;
     // Firstly, checks if that communication has been logged before
     int index = searchDevice(own_sa,dest_sa);
     
@@ -155,7 +158,7 @@ void logMeasure(uint8_t own_sa,uint8_t dest_sa, float dist, float rx_pwr){
             setCompleteRanging(dest_sa, true);
             amount_completed_devices++;
             if(amount_completed_devices >= amount_devices){
-                rangingFinished();
+                slaveRangingFinished();
             }
         }
 
@@ -229,7 +232,7 @@ void DataRequested(byte* short_addr_requester){
         DW1000Ranging.transmitDataReport((Measurement*)measurements, num_measures, nullptr);
     }
 
-        
+    resetCompleteRanging();
     clearMeasures();
 
 }
@@ -237,7 +240,7 @@ void DataRequested(byte* short_addr_requester){
 void ModeSwitchRequested(byte* short_addr_requester, bool to_initiator){
 
     DW1000Device* requester = DW1000Ranging.searchDistantDevice(short_addr_requester);
-    short_addr_master = short_addr_requester; // I save the shortAddress from the master that requested me to range. 
+    memcpy(short_addr_master,short_addr_requester,2); // I save the shortAddress from the master that requested me to range. 
 
     if(to_initiator == true){
         
@@ -306,7 +309,9 @@ void switchToInitiator(){
 
     if(DEBUG_SLAVE) {Serial.println("Switching to INITIATOR");}
         
-    
+    resetCompleteRanging();
+    setCompleteRanging(short_addr_master[0],true);
+
     is_initiator = true;
     initiator_start = current_time;
         
@@ -397,3 +402,5 @@ void loop(){
     }
 
 }
+
+

@@ -54,9 +54,9 @@ unsigned long last_shown_data_timestamp = 0;
 
 
 /*2: Time constants*/
-const unsigned long ranging_period = 500;
-const unsigned long waiting_time = 200;
-const unsigned long retry_time = 200;
+const unsigned long ranging_period = 250;
+const unsigned long waiting_time = 100;
+const unsigned long retry_time = 100;
 
 
 /*Retry messages management*/
@@ -75,6 +75,7 @@ uint8_t amount_active_slaves = 0;
 
 /*Flags used in state = master_ranging*/
 static bool master_is_ranging = false;
+uint8_t amount_completed_devices = 0;
 #define AMOUNT_VALID_RANGINGS 3
 
 /*Flags used in state = initiator_handoff*/
@@ -331,8 +332,8 @@ void resetCompleteRanging(){
 
     for(int i = 0; i<amount_devices;i++){
         uint8_t dest_sa;
-        measurements[amount_devices].completed_rangings = 0;
-        dest_sa = measurements[amount_devices].short_addr_dest;
+        measurements[i].completed_rangings = 0;
+        dest_sa = measurements[i].short_addr_dest;
         DW1000Device* dev = DW1000Ranging.searchDeviceByShortAddHeader(dest_sa);
         
         if(dev){
@@ -342,10 +343,19 @@ void resetCompleteRanging(){
     }
 }
 
+void masterFinishedRanging(){
+    master_is_ranging = false;
+    stopRanging();
+    state = INITIATOR_HANDOFF;
+
+    if(DEBUG_MASTER){Serial.println("Master ended Ranging early --> Advancing to initiator handoff");}
+
+}
 void slaveFinishedRanging(uint8_t origin_short_addr){
 
     if(Existing_devices[slaves_indexes[active_slave_index]].short_addr == origin_short_addr){
 
+        slave_is_ranging = false;
         state = INITIATOR_HANDOFF;
         Existing_devices[slaves_indexes[active_slave_index]].is_responder = true;
 
@@ -354,6 +364,13 @@ void slaveFinishedRanging(uint8_t origin_short_addr){
             Serial.print("[");Serial.print(origin_short_addr,HEX);Serial.println("] Finished Ranging. Now, turn for the next slave to range");
         }
     }
+}
+
+void clearMeasures(){
+    for (int i = 0; i < amount_measurements; i++) {               
+        measurements[i].active = false;
+    }
+    resetCompleteRanging();
 }
 
 void logMeasure(uint8_t own_sa,uint8_t dest_sa, float dist, float rx_pwr){
@@ -372,19 +389,23 @@ void logMeasure(uint8_t own_sa,uint8_t dest_sa, float dist, float rx_pwr){
         measurements[index].completed_rangings++;
         if(measurements[index].completed_rangings >= AMOUNT_VALID_RANGINGS){
             setCompleteRanging(dest_sa, true);
+            amount_completed_devices++;
+            if(amount_completed_devices >= amount_devices){
+                masterFinishedRanging();
+            }
         }
 
     }
-    else if (amount_devices < MAX_MEASURES){
+    else if (amount_measurements < MAX_MEASURES){
 
         // If not found, i need to make a new entry to the struct.
-        measurements[amount_devices].short_addr_origin = own_sa;
-        measurements[amount_devices].short_addr_dest = dest_sa;
-        measurements[amount_devices].distance = dist;
-        measurements[amount_devices].rx_power = rx_pwr;
-        measurements[amount_devices].active = true;
-        measurements[index].completed_rangings = 1;
-        amount_devices ++; // And increase the devices number in 1.
+        measurements[amount_measurements].short_addr_origin = own_sa;
+        measurements[amount_measurements].short_addr_dest = dest_sa;
+        measurements[amount_measurements].distance = dist;
+        measurements[amount_measurements].rx_power = rx_pwr;
+        measurements[amount_measurements].active = true;
+        measurements[amount_measurements].completed_rangings = 1;
+        amount_measurements ++; // And increase the devices number in 1.
         
     }
 
@@ -874,15 +895,9 @@ void loop(){
             if(DEBUG_MASTER) Serial.println("Received from all slaves. Showing data: ");
             showData();
             //After showing the data, I clear the measures for the next cycle.
-            for (int i = 0; i < amount_measurements; i++) {               
-                measurements[i].active = false;
-            }
+            
 
-            for (int i = 0; i < amount_measurements; i++) {
-                if (measurements[i].active) {
-                    measurements[i].active = false;
-                }
-            }
+            clearMeasures();
             
             if(DEBUG_MASTER) Serial.println("Restarting the cycle --> going back to master ranging");
             
