@@ -49,12 +49,12 @@ void setup(){
   // dirección - modo de funcionamiento - ¿Tomar dirección aleatoria? 
   // La dirección aleatoria sirve para pruebas "rapidas". Así evito tener que estar cambiando todas las direcciones.
   
-  DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false,MASTER_ANCHOR);
-  // DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_2,false,MASTER_ANCHOR);
-  // DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_3,false,MASTER_ANCHOR);
-  // DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_4,false,MASTER_ANCHOR);
-  // DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_5,false,MASTER_ANCHOR);
-  // DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_6,false,MASTER_ANCHOR);
+  DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_1, false,MASTER_ANCHOR);
+  // DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_2,false,MASTER_ANCHOR);
+  // DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_3,false,MASTER_ANCHOR);
+  // DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_4,false,MASTER_ANCHOR);
+  // DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_5,false,MASTER_ANCHOR);
+  // DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_6,false,MASTER_ANCHOR);
 }
 
 void loop()
