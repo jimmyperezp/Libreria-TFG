@@ -36,7 +36,7 @@ void setup()
 
 // start as tag, do not assign random short address
 
-  DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_LONGDATA_RANGE_LOWPOWER, false,TAG);
+  DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false,TAG);
 }
 
 void loop()

@@ -58,7 +58,7 @@ void setup()
   //DW1000Ranging.useRangeFilter(true);
 
   //start the module as anchor, don't assign random short address
-  DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_LONGDATA_RANGE_LOWPOWER, false,MASTER_ANCHOR);
+  DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_1, false,MASTER_ANCHOR);
 
 }
 
