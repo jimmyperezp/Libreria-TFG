@@ -1,42 +1,50 @@
-# Distancia entre 1 Tag y 1 Anchor
+# Anchor-Tag Distance
 
 
-Primera prueba en el desarrollo del TFG. Con estos códigos verificamos el funcionamiento de las placas y los fundamentos de la comunicación Anchor-Tag
+> <img src="https://cdn.worldvectorlogo.com/logos/arduino-1.svg" alt="arduino" align = "right" width="60" height="60"/>First test in the development of this project. This code allows the user to check the boards are working correctly, as well as the fundamentals begind the UWB communication between Anchor & Tag.
 
- <img src="https://cdn.worldvectorlogo.com/logos/arduino-1.svg" alt="arduino" width="40" height="40"/> 
 
-## Procedimiento: 
 
-El primer paso es la **Calibración**. El objetivo es establecer un *Antenna Delay* correcto en cada anchor. De esta manera, se consiguen medidas mucho más fiables. 
+
+
+## Procedure: 
+
+The first step is **calibrating** the boards. The goal is to establish a correct *Antenna Delay* in every anchor. This way, the measurements made are more accurate.
 
 - [DW1000 Antenna Delay Calibration](https://www.decawave.com/wp-content/uploads/2018/10/APS014_Antennna-Delay-Calibration_V1.2.pdf)
 
-Una vez conocido el valor del *Antenna Delay* en cada Anchor, ya se puede realizar la medida de la distancia entre ambas placas. 
+ To do so, these are the instructions to follow, step by step:
+ 
 
+ 
+1. Place Anchor & Tag at a known distance (after doing this process quite a few times, my personal recommendation is to place them at distances greater than 1m) 
 
-Este procedimiento, **paso a paso**, es el siguiente: 
-1. Situar el Anchor y el Tag a una distancia conocida (Tras realizar varias pruebas, es recomendable situarlas a distancias superiores a 1m)
+2. Upload the code *Tag.ino* onto the tag
 
-2. Subirle al Tag el código MD_Tag.ino
-
-3. Subirle al Anchor el código Anchor_autocalibrate.ino
-    - Dentro de este código hay indicar la distancia a la que hemos situado las placas: Hay que cambiar la variable *this_anchor_target_distance* 
+3. Upload the *Anchor_autocalibrate.ino* to the Anchor. 
+    - Inside this code, the user must indicate the distance at which the calibration is being made. (the distance at which the boards are placed).  
+    This value goes into the following variable: 
     ```C
-    float this_anchor_target_distance = (distancia en metros);
+    float this_anchor_target_distance = (distance in m);
     ```
 
-4. Una vez ambas placas tengan el código subido, pulsar el boton de reset para establecer la comunicación. 
 
-5. En el monitor serie del anchor, me devolverá el *Antenna Delay* que ha medido el programa. Este es el parámetro buscado. 
-6. Una vez conocido el *Antenna Delay*, le subo al anchor el código MD_Anchor.ino. 
-    - Dentro de este, debo modificar el valor recién medido: Hay que cambiar la variable *Adelay*, situada al comienzo del código. Basta con ponerle el valor medido en la calibración anterior. 
+4. Once both boards have their corresponding codes running on them, hit the reset button on both. 
+
+5. The Anchor's serial monitor will desplay the *Antenna Delay* measured at the given distance. This is the parameter needed to calibrate the boards. 
+
+6. Finally, this value is taken to the *MD_anchor.ino* code. 
+    - The measurement is stored at the variable *Adelay*:
     ```C
-    uint16_t Adelay = (Valor medido en calibracion);
+    uint16_t Adelay = (Value measured during calibration);
     ```
+
+
+Once the *Antenna Delay* is known for each anchor, the system is ready to measure the distances betwueen both boards.
 
 <br></br>
 
 
 -------------
-Autor: Jaime Pérez Pérez  
-Última modificación: 29/08/2025
+Author: Jaime Pérez Pérez  
+Modified last: 22/12/2025
