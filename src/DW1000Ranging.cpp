@@ -1011,8 +1011,7 @@ void DW1000RangingClass::transmitPoll(DW1000Device* myDistantDevice) {
 
 			if(_networkDevices[i].getRangingComplete() == false){
 				
-
-				_networkDevices[i].setReplyTime((2*polling_device_index+1)*DEFAULT_REPLY_DELAY_TIME);
+				_networkDevices[i].setReplyTime((polling_device_index+1)*DEFAULT_REPLY_DELAY_TIME);
 				// Clearly, each device has a bigger reply time than the previous one
 				memcpy(data+SHORT_MAC_LEN+2+4*polling_device_index, _networkDevices[i].getByteShortAddress(), 2); 
 
@@ -1062,39 +1061,54 @@ void DW1000RangingClass::transmitPollAck(DW1000Device* myDistantDevice) {
 }
 
 void DW1000RangingClass::transmitRange(DW1000Device* myDistantDevice) {
-	//transmit range need to accept broadcast for multiple responder
+	
 	transmitInit();
 	
 	
 	if(myDistantDevice == nullptr) {
+		//Range sent by broadcast
+
+		uint8_t activeDevices = 0;
+		for (uint8_t i = 0; i < _networkDevicesNumber; i++){
+			if(_networkDevices[i].getRangingComplete() == false){
+				activeDevices++;
+			}
+		}
+
 		//we need to set our timerDelay:
-		_timerDelay = DEFAULT_TIMER_DELAY+(uint16_t)(_networkDevicesNumber*3*DEFAULT_REPLY_DELAY_TIME/1000);
+		_timerDelay = DEFAULT_TIMER_DELAY+(uint16_t)(activeDevices*3*DEFAULT_REPLY_DELAY_TIME/1000);
 		
 		byte shortBroadcast[2] = {0xFF, 0xFF};
 		_globalMac.generateShortMACFrame(data, _currentShortAddress, shortBroadcast);
-		data[SHORT_MAC_LEN]   = RANGE;
-		//we enter the number of devices
-		data[SHORT_MAC_LEN+1] = _networkDevicesNumber;
+		data[SHORT_MAC_LEN] = RANGE;
+		
+		data[SHORT_MAC_LEN+1] = activeDevices; //number of devices ranging in this message (only active devices)
 		
 		// delay sending the message and remember expected future sent timestamp
-		DW1000Time deltaTime     = DW1000Time(DEFAULT_REPLY_DELAY_TIME, DW1000Time::MICROSECONDS);
+		DW1000Time deltaTime = DW1000Time(DEFAULT_REPLY_DELAY_TIME, DW1000Time::MICROSECONDS);
 		DW1000Time timeRangeSent = DW1000.setDelay(deltaTime);
-		
+	
+		uint8_t range_index = 0;
 		for(uint8_t i = 0; i < _networkDevicesNumber; i++) {
-			//we write the short address of our device:
-			memcpy(data+SHORT_MAC_LEN+2+17*i, _networkDevices[i].getByteShortAddress(), 2);
-			
-			
-			//we get the device which correspond to the message which was sent (need to be filtered by MAC address)
-			_networkDevices[i].timeRangeSent = timeRangeSent;
-			_networkDevices[i].timePollSent.getTimestamp(data+SHORT_MAC_LEN+4+17*i);
-			_networkDevices[i].timePollAckReceived.getTimestamp(data+SHORT_MAC_LEN+9+17*i);
-			_networkDevices[i].timeRangeSent.getTimestamp(data+SHORT_MAC_LEN+14+17*i);
-			
+
+			//Variable "i" to go through all devices
+			//Variable "range_index" to go through only active devices
+
+			if(_networkDevices[i].getRangingComplete() == false){
+				
+
+				memcpy(data + SHORT_MAC_LEN + 2 + 17*range_index, _networkDevices[i].getByteShortAddress(), 2);
+				
+				//Updated timestamps:
+				_networkDevices[i].timeRangeSent = timeRangeSent;
+				_networkDevices[i].timePollSent.getTimestamp(data + SHORT_MAC_LEN + 4 + 17*range_index);
+                _networkDevices[i].timePollAckReceived.getTimestamp(data + SHORT_MAC_LEN + 9 + 17*range_index);
+                _networkDevices[i].timeRangeSent.getTimestamp(data + SHORT_MAC_LEN + 14 + 17*range_index);
+
+				range_index++;
+			}
 		}
-		
 		copyShortAddress(_lastSentToShortAddress, shortBroadcast);
-		
 	}
 	else {
 		_globalMac.generateShortMACFrame(data, _currentShortAddress, myDistantDevice->getByteShortAddress());
