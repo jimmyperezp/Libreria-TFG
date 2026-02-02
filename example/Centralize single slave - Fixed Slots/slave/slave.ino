@@ -103,7 +103,7 @@ void logMeasure(uint8_t own_sa,uint8_t dest_sa, float dist, float rx_pwr){
 
         // Only updates distance and rxPower.
         measurements[index].distance = dist; 
-        measurements[index].rxPower = rx_pwr; 
+        measurements[index].rx_power = rx_pwr; 
         measurements[index].active = true;
 
     }
@@ -113,7 +113,7 @@ void logMeasure(uint8_t own_sa,uint8_t dest_sa, float dist, float rx_pwr){
         measurements[amountDevices].short_addr_origin = own_sa;
         measurements[amountDevices].short_addr_dest = dest_sa;
         measurements[amountDevices].distance = dist;
-        measurements[amountDevices].rxPower = rx_pwr;
+        measurements[amountDevices].rx_power = rx_pwr;
         measurements[amountDevices].active = true;
         amountDevices ++; // And increase the devices number in 1.
         
