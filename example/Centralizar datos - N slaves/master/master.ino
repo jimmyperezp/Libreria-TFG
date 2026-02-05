@@ -544,7 +544,7 @@ void retryTransmission(uint8_t message_type){
             modeSwitchFailed(switching_to_initiator);          
 
         }
-        else if(message_type == MSG_SWITCH_TO_INITIATOR){
+        else if(message_type == MSG_SWITCH_TO_RESPONDER){
 
             if(DEBUG_MASTER){Serial.print("Switch to responder failed. ");}
 
@@ -966,7 +966,7 @@ void loop(){
     else if(state == SWITCH_TO_RESPONDER){
 
         Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = true;
-        transmitUnicast(MSG_SWITCH_TO_INITIATOR);
+        transmitUnicast(MSG_SWITCH_TO_RESPONDER);
         
         state = WAIT_SWITCH_TO_RESPONDER_ACK;
     }
@@ -986,7 +986,7 @@ void loop(){
 
             if(current_time - waiting_switch_start >= waiting_time){
                 waiting_switch_start = current_time;
-                retryTransmission(MSG_SWITCH_TO_INITIATOR);
+                retryTransmission(MSG_SWITCH_TO_RESPONDER);
                 if(DEBUG_MASTER){Serial.println("Retrying switch to responder.");}
             }
         }
