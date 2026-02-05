@@ -36,6 +36,8 @@ uint8_t amount_devices = 0;
 // Time, mode switch and data report management: 
 const unsigned long waiting_time = 200;
 const unsigned long discovery_period = 500;
+const unsigned long ranging_timeout = 2000; 
+
 
 unsigned long current_time = 0; 
 unsigned long last_switch = 0;
@@ -427,11 +429,51 @@ void newRange(){
 
 void newDevice(DW1000Device *device){
 
-    Serial.print("New Device: ");
+    Serial.print("New Device: 0x");
     Serial.print(device->getShortAddressHeader(), HEX);
-    Serial.print("\tType: ");
-    Serial.println(device->getBoardType());
+    Serial.print("\tType --> ");
+    uint8_t board_type = device->getBoardType();
+    switch(board_type){
+        case 1:
+            Serial.println("Master anchor");
+            break;
+        case 2:
+            Serial.println("Slave Anchor");
+            break;
+        case 3: 
+            Serial.println("Tag");
+            break;
+
+        default:
+            Serial.print(board_type);
+            Serial.println(" Not Known");
+            break;
+
+    }
     
+    registerDevice(device);
+}
+
+
+void registerDevice(DW1000Device *device){
+
+
+    if (amount_devices >= MAX_DEVICES) {
+        if (DEBUG_SLAVE) {
+            Serial.println("-------------------------------------------------------------"); 
+            Serial.println("     ERROR: Exceeded MAX_DEVICES limit. Device not added.    "); 
+            Serial.println("-------------------------------------------------------------");
+        }
+        return; 
+    }
+
+    Existing_devices[amount_devices].short_addr = device->getShortAddressHeader();
+    memcpy(Existing_devices[amount_devices].byte_short_addr, device->getByteShortAddress(), 2);
+    uint8_t board_type = device->getBoardType();
+    Existing_devices[amount_devices].active = true;
+    
+    
+    amount_devices ++;
 }
 
 void inactiveDevice(DW1000Device *device){
