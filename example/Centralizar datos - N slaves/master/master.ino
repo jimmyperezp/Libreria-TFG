@@ -50,10 +50,10 @@ enum State{
     DATA_REPORT_STATE,
     WAIT_DATA_REPORT
 };
-State state = DISCOVERY; // Initial state is discovery, as the master needs to discover the slaves before ranging with them.
-
+State state = DISCOVERY;
 
 /*Time management*/
+
 /*1: "timers"*/
 unsigned long current_time = 0; 
 unsigned long discovery_start = 0;
@@ -64,8 +64,6 @@ unsigned long waiting_data_report_start = 0;
 unsigned long last_shown_data_timestamp = 0;
 unsigned long waiting_unicast_range_start = 0;
 
-
-
 /*2: Time constants*/
 const unsigned long ranging_period = 500;
 const unsigned long waiting_time = 200;
@@ -75,7 +73,6 @@ const unsigned long retry_time = 200;
 /*Retry messages management*/
 unsigned long last_retry = 0;
 uint8_t num_retries = 0;
-
 
 /*Flags used in activating and stop ranging*/
 static bool stop_ranging_requested = false;
@@ -124,6 +121,12 @@ enum UnicastMessageType{
 
 UnicastMessageType message_type;
 
+
+
+/*CODE*/
+
+/*SETUP & INITIALIZATIONS*/
+
 void setup(){
 
     Serial.begin(115200);
@@ -155,61 +158,36 @@ uint8_t getOwnShortAddress() {
     return (uint8_t)sa[0];
 }
 
-void showData(){
 
-    bool inactive_measures_exist = false;
 
-    Serial.println("--------------------------- DATA REPORT ---------------------------");
-    
-    unsigned long time_between_prints = current_time - last_shown_data_timestamp;
-    last_shown_data_timestamp = current_time;
-    Serial.print("                   Time since last print --> ");
-    Serial.print(time_between_prints);
-    Serial.println(" ms\n");
 
-    for (int i = 0; i < amount_measurements ; i++){ 
-        
-        if(measurements[i].active == true){
-            Serial.print(" Devices: ");
-            Serial.print(measurements[i].short_addr_origin,HEX);
-            Serial.print(" -> ");
-            Serial.print(measurements[i].short_addr_dest,HEX);
-            Serial.print("\t Distance: ");
-            Serial.print(measurements[i].distance);
-            Serial.print(" m \t RX power: ");
-            Serial.print(measurements[i].rxPower);
-            Serial.println(" dBm");
-        }
-    }
+/*DEVICE DISCOVERY*/
 
-    for (int i = 0; i < amount_measurements ; i++){ 
-        
-        if(measurements[i].active == false){
-            inactive_measures_exist = true;
+void newDevice(DW1000Device *device){
+
+    Serial.print("New Device: [");
+    Serial.print(device->getShortAddressHeader(), HEX);
+    Serial.print("]\tType --> ");
+    uint8_t board_type = device->getBoardType();
+    switch(board_type){
+        case 1:
+            Serial.println("Master anchor");
             break;
-        }
-    }
+        case 2:
+            Serial.println("Slave Anchor");
+            break;
+        case 3: 
+            Serial.println("Tag");
+            break;
 
-    if(inactive_measures_exist == true){
-        Serial.println("\n\t    ############ INACTIVE MEASURES ############");
-    
-        for (int i = 0; i < amount_measurements ; i++){ 
-        
-            if(measurements[i].active == false){
-                inactive_measures_exist = true;
-                
-                Serial.print("\t\tDevice: ["); Serial.print(measurements[i].short_addr_origin,HEX); Serial.print("] didn't range with: [");
-                Serial.print(measurements[i].short_addr_dest,HEX); Serial.println("]");
-                
-            }
-        }
+        default:
+            Serial.print(board_type);
+            Serial.println(" Not Known");
+            break;
 
-        Serial.println("\t    ###########################################");
-    
     }
     
-    Serial.println("--------------------------------------------------------------------");
-    
+    registerDevice(device);
 }
 
 void registerDevice(DW1000Device *device){
@@ -243,47 +221,7 @@ void registerDevice(DW1000Device *device){
     Existing_devices[amount_devices].is_responder = true;
     Existing_devices[amount_devices].active = true;
     
-    
     amount_devices ++;
-}
-
-int searchDevice(uint8_t own_sa,uint8_t dest_sa){
-    
-    for (int i=0 ; i < amount_measurements ; i++){
-
-        if ((measurements[i].short_addr_origin == own_sa)&&(measurements[i].short_addr_dest == dest_sa) || (measurements[i].short_addr_origin == dest_sa)&&(measurements[i].short_addr_dest == own_sa)  ) {
-            return i; 
-            // If found, returns the index
-        }
-    }
-    return -1; // if not, returns -1
-}
-
-void newDevice(DW1000Device *device){
-
-    Serial.print("New Device: 0x");
-    Serial.print(device->getShortAddressHeader(), HEX);
-    Serial.print("\tType --> ");
-    uint8_t board_type = device->getBoardType();
-    switch(board_type){
-        case 1:
-            Serial.println("Master anchor");
-            break;
-        case 2:
-            Serial.println("Slave Anchor");
-            break;
-        case 3: 
-            Serial.println("Tag");
-            break;
-
-        default:
-            Serial.print(board_type);
-            Serial.println(" Not Known");
-            break;
-
-    }
-    
-    registerDevice(device);
 }
 
 void inactiveDevice(DW1000Device *device){
@@ -336,42 +274,12 @@ void inactiveDevice(DW1000Device *device){
         
     }
     
-    
 }
 
-void logMeasure(uint8_t own_sa,uint8_t dest_sa, float dist, float rx_pwr){
 
-    // Firstly, checks if that communication has been logged before
-    int index = searchDevice(own_sa,dest_sa);
-    
-    if(dist < 0){ dist = -dist;} //If the distance is <0, makes it >0
 
-    if (index != -1){ // This means: it was found.
 
-        // Only updates distance and rxPower.
-        measurements[index].distance = dist; 
-        measurements[index].rxPower = rx_pwr; 
-        measurements[index].active = true;
-
-    }
-    else if (amount_measurements < MAX_MEASURES){
-
-        // If not found, i need to make a new entry to the struct.
-        measurements[amount_measurements].short_addr_origin = own_sa;
-        measurements[amount_measurements].short_addr_dest = dest_sa;
-        measurements[amount_measurements].distance = dist;
-        measurements[amount_measurements].rxPower = rx_pwr;
-        measurements[amount_measurements].active = true;
-        amount_measurements ++; // And increase the devices number in 1.
-        
-    }
-    else{
-        Serial.println("-------------------------------------------------------------");
-        Serial.println("                   Devices list is full                      ");
-        Serial.println("-------------------------------------------------------------");
-        
-    }
-}
+/*RANGES & LOGGING*/
 
 void newRange(){
 
@@ -410,15 +318,52 @@ void newRange(){
             Serial.println("Unicast Range Completed. Back to unicast master ranging.");
         }
     }
-
-
 }
 
-void stopRanging(){
+void logMeasure(uint8_t own_sa,uint8_t dest_sa, float dist, float rx_pwr){
 
-    DW1000Ranging.setStopRanging(true);
-    stop_ranging_requested = true;
+    // Firstly, checks if that communication has been logged before
+    int index = searchDevice(own_sa,dest_sa);
     
+    if(dist < 0){ dist = -dist;} //If the distance is <0, makes it >0
+
+    if (index != -1){ // This means: it was found.
+
+        // Only updates distance and rxPower.
+        measurements[index].distance = dist; 
+        measurements[index].rxPower = rx_pwr; 
+        measurements[index].active = true;
+
+    }
+    else if (amount_measurements < MAX_MEASURES){
+
+        // If not found, i need to make a new entry to the struct.
+        measurements[amount_measurements].short_addr_origin = own_sa;
+        measurements[amount_measurements].short_addr_dest = dest_sa;
+        measurements[amount_measurements].distance = dist;
+        measurements[amount_measurements].rxPower = rx_pwr;
+        measurements[amount_measurements].active = true;
+        amount_measurements ++; // And increase the devices number in 1.
+        
+    }
+    else{
+        Serial.println("-------------------------------------------------------------");
+        Serial.println("                   Devices list is full                      ");
+        Serial.println("-------------------------------------------------------------");
+        
+    }
+}
+
+int searchDevice(uint8_t own_sa,uint8_t dest_sa){
+    
+    for (int i=0 ; i < amount_measurements ; i++){
+
+        if ((measurements[i].short_addr_origin == own_sa)&&(measurements[i].short_addr_dest == dest_sa) || (measurements[i].short_addr_origin == dest_sa)&&(measurements[i].short_addr_dest == own_sa)  ) {
+            return i; 
+            // If found, returns the index
+        }
+    }
+    return -1; // if not, returns -1
 }
 
 void activateRanging(){
@@ -430,6 +375,107 @@ void activateRanging(){
     master_ranging_start = current_time;
 
 }
+
+void stopRanging(){
+
+    DW1000Ranging.setStopRanging(true);
+    stop_ranging_requested = true;
+    
+}
+
+
+
+/*MODE SWITCHING*/
+
+void ModeSwitchAck(bool is_initiator){
+
+    uint8_t origin_short_addr = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
+
+    for (int i = 0; i < amount_devices; i++) {
+        if (Existing_devices[i].short_addr == origin_short_addr && !Existing_devices[i].active) {
+            Existing_devices[i].active = true;
+            if(DEBUG_MASTER){ Serial.print("Device RE-ACTIVATED via ACK: "); Serial.println(origin_short_addr, HEX); }
+            if (Existing_devices[i].is_slave_anchor) {
+                slaves_discovered = true;
+            }
+            break;
+        }
+    }
+
+    if(Existing_devices[slaves_indexes[active_slave_index]].short_addr != origin_short_addr){return;} //ACK received from a device that is not the active slave. Ignore it.
+
+    else{
+
+        if(DEBUG_MASTER){
+            Serial.print("Mode switch completed: ");
+            Serial.print(origin_short_addr,HEX);
+            Serial.print(" is --> ");
+            Serial.println(is_initiator ? "Initiator" : "Responder");
+        }
+
+
+        if(is_initiator){
+
+            // Slave is initiator --> Always needs to have the mode_switch_pending = true to reach this point.
+            if(Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending == false){return;} 
+            else{
+                // Ack received from a slave with the change pending. OK
+                Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = false;
+                Existing_devices[slaves_indexes[active_slave_index]].is_responder = false;
+                state = SLAVE_RANGING;
+                waiting_initiator_switch_ack = false;
+                if(DEBUG_MASTER){Serial.println("Slave switched to initiator. Now --> Slave ranging");}
+                 
+
+            }
+        }
+        
+        else{ //Slave finished its ranging & switched back to responder.
+
+            if(ranging_mode == DW1000RangingClass::UNICAST){
+
+                //In this case, master didn't send the switchMode message. The slave switched back to responder by itself after ranging with all of its devices
+                //Therefore, it won't have the mode_switch_pending.
+                
+                Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = false; // Just in case.
+                Existing_devices[slaves_indexes[active_slave_index]].is_responder = true;
+                state = INITIATOR_HANDOFF; //Back to responder. Now, turn for the next slave.
+            }
+
+            else if (ranging_mode == DW1000RangingClass::BROADCAST){
+                // In this case, master sent the switchMode message, so the slave will have the mode_switch_pending = true.
+                Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = false; 
+                Existing_devices[slaves_indexes[active_slave_index]].is_responder = true;
+            }
+            
+            state = INITIATOR_HANDOFF; //Now turn for the next slave to range.
+            waiting_responder_switch_ack = false;
+            if(DEBUG_MASTER) Serial.println("Slave back to responder. Now, turn for the next slave to range");
+        }
+    }
+}
+
+void modeSwitchFailed(bool switching_to_initiator){
+
+    if(switching_to_initiator){
+
+        if(DEBUG_MASTER){Serial.println("Moving on to the next slave. Back to initiator handoff");}
+        Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = false;
+        waiting_initiator_switch_ack = false;
+        state = INITIATOR_HANDOFF;
+    
+    }
+    else{
+        if(DEBUG_MASTER){Serial.println("I need to switch it back to responder. restarting the switch to responder cycle");}
+
+        waiting_responder_switch_ack = false;
+        state = SWITCH_TO_RESPONDER;
+    }
+}
+
+
+
+/*UNICAST TRANSMISSIONS*/
 
 void transmitUnicast(uint8_t message_type){
 
@@ -572,25 +618,9 @@ void PollUnicastFailed(){
     state = UNICAST_MASTER_RANGING; 
 }
 
-void modeSwitchFailed(bool switching_to_initiator){
 
-    if(switching_to_initiator){
 
-        if(DEBUG_MASTER){Serial.println("Moving on to the next slave. Back to initiator handoff");}
-        Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = false;
-        waiting_initiator_switch_ack = false;
-        state = INITIATOR_HANDOFF;
-    
-    }
-
-    else{
-
-        if(DEBUG_MASTER){Serial.println("I need to switch it back to responder. restarting the switch to responder cycle");}
-
-        waiting_responder_switch_ack = false;
-        state = SWITCH_TO_RESPONDER;
-    }
-}
+/*DATA REPORTS*/
 
 void DataReportFailed(){
 
@@ -654,81 +684,66 @@ void DataReport(byte* data){
             
 }
 
-void ModeSwitchAck(bool is_initiator){
+void showData(){
 
-    uint8_t origin_short_addr = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
+    bool inactive_measures_exist = false;
 
-    for (int i = 0; i < amount_devices; i++) {
-        if (Existing_devices[i].short_addr == origin_short_addr && !Existing_devices[i].active) {
-            Existing_devices[i].active = true;
-            if(DEBUG_MASTER){ Serial.print("Device RE-ACTIVATED via ACK: "); Serial.println(origin_short_addr, HEX); }
-            if (Existing_devices[i].is_slave_anchor) {
-                slaves_discovered = true;
-            }
+    Serial.println("--------------------------- DATA REPORT ---------------------------");
+    
+    unsigned long time_between_prints = current_time - last_shown_data_timestamp;
+    last_shown_data_timestamp = current_time;
+    Serial.print("                   Time since last print --> ");
+    Serial.print(time_between_prints);
+    Serial.println(" ms\n");
+
+    for (int i = 0; i < amount_measurements ; i++){ 
+        
+        if(measurements[i].active == true){
+            Serial.print(" Devices: ");
+            Serial.print(measurements[i].short_addr_origin,HEX);
+            Serial.print(" -> ");
+            Serial.print(measurements[i].short_addr_dest,HEX);
+            Serial.print("\t Distance: ");
+            Serial.print(measurements[i].distance);
+            Serial.print(" m \t RX power: ");
+            Serial.print(measurements[i].rxPower);
+            Serial.println(" dBm");
+        }
+    }
+
+    for (int i = 0; i < amount_measurements ; i++){ 
+        
+        if(measurements[i].active == false){
+            inactive_measures_exist = true;
             break;
         }
     }
 
-    if(Existing_devices[slaves_indexes[active_slave_index]].short_addr != origin_short_addr){return;} //ACK received from a device that is not the active slave. Ignore it.
-
-    else{
-
-        if(DEBUG_MASTER){
-            Serial.print("Mode switch completed: ");
-            Serial.print(origin_short_addr,HEX);
-            Serial.print(" is --> ");
-            Serial.println(is_initiator ? "Initiator" : "Responder");
-        }
-
-
-        if(is_initiator){
-
-            // Slave is initiator --> Always needs to have the mode_switch_pending = true to reach this point.
-            if(Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending == false){return;} 
-            else{
-                // Ack received from a slave with the change pending. OK
-                Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = false;
-                Existing_devices[slaves_indexes[active_slave_index]].is_responder = false;
-                state = SLAVE_RANGING;
-                waiting_initiator_switch_ack = false;
-                if(DEBUG_MASTER){Serial.println("Slave switched to initiator. Now --> Slave ranging");}
-                 
-
-            }
-        }
+    if(inactive_measures_exist == true){
+        Serial.println("\n\t    ############ INACTIVE MEASURES ############");
+    
+        for (int i = 0; i < amount_measurements ; i++){ 
         
-        else{ //Slave finished its ranging & switched back to responder.
-
-            if(ranging_mode == DW1000RangingClass::UNICAST){
-
-                //In this case, master didn't send the switchMode message. The slave switched back to responder by itself after ranging with all of its devices
-                //Therefore, it won't have the mode_switch_pending.
+            if(measurements[i].active == false){
+                inactive_measures_exist = true;
                 
-                Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = false; // Just in case.
-                Existing_devices[slaves_indexes[active_slave_index]].is_responder = true;
-                state = INITIATOR_HANDOFF; //Back to responder. Now, turn for the next slave.
-
-            }
-
-            else if (ranging_mode == DW1000RangingClass::BROADCAST){
-
-                // In this case, master sent the switchMode message, so the slave will have the mode_switch_pending = true.
-                Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = false; 
-                Existing_devices[slaves_indexes[active_slave_index]].is_responder = true;
+                Serial.print("\t\tDevice: ["); Serial.print(measurements[i].short_addr_origin,HEX); Serial.print("] didn't range with: [");
+                Serial.print(measurements[i].short_addr_dest,HEX); Serial.println("]");
                 
             }
-            
-            state = INITIATOR_HANDOFF; //Now turn for the next slave to range.
-            waiting_responder_switch_ack = false;
-            if(DEBUG_MASTER) Serial.println("Slave back to responder. Now, turn for the next slave to range");
         }
-        
 
-        
+        Serial.println("\t    ###########################################");
+    
     }
-     
-
+    
+    Serial.println("--------------------------------------------------------------------");
+    
 }
+
+
+
+/*LOOP*/
 
 void loop(){
 
