@@ -431,8 +431,32 @@ void activateRanging(){
 
 void transmitUnicast(uint8_t message_type){
 
+    if(message_type == MSG_POLL_UNICAST){
 
-    if(message_type == MSG_SWITCH_TO_INITIATOR ||message_type == MSG_SWITCH_TO_INITIATOR){
+        DW1000Device* target = DW1000Ranging.searchDeviceByShortAddHeader(Existing_devices[active_polling_device_index].short_addr);
+
+        if(target){
+
+            if(DEBUG_MASTER){
+                    Serial.print("Ranging poll transmitted to: [");
+                    Serial.print(Existing_devices[active_polling_device_index].short_addr,HEX);
+                    Serial.println("] via unicast");
+                }
+
+            DW1000Ranging.transmitPollUnicast(target);
+            
+        }
+
+        else{
+            if(DEBUG_MASTER){Serial.println("Target Not found. Ranging poll via unicast not sent");}
+            Existing_devices[active_polling_device_index].range_pending = false;
+            waiting_unicast_range = false; // To restart the timer next time state is state = WAIT_UNICAST_RANGE.
+            state = UNICAST_MASTER_RANGING; 
+        }
+
+    }
+
+    else if(message_type == MSG_SWITCH_TO_INITIATOR ||message_type == MSG_SWITCH_TO_RESPONDER){
 
         bool switch_to_initiator = (message_type == MSG_SWITCH_TO_INITIATOR);
         
@@ -752,14 +776,25 @@ void loop(){
         active_polling_device_index++;
 
         if(active_polling_device_index < amount_devices){ //If there are still devices to poll
-            Existing_devices[active_polling_device_index].range_pending = true;
-            if(DEBUG_MASTER){
+            
+            if(Existing_devices[active_polling_device_index].active == true){
+                Existing_devices[active_polling_device_index].range_pending = true;
+                if(DEBUG_MASTER){
                 Serial.print("Transmitting ranging poll to: ");
                 Serial.print(Existing_devices[active_polling_device_index].short_addr,HEX);
                 Serial.println(" via unicast");
             }
-            transmitUnicast(MSG_POLL_UNICAST); 
-            state = WAIT_UNICAST_RANGE;
+                transmitUnicast(MSG_POLL_UNICAST); 
+                state = WAIT_UNICAST_RANGE;
+            }
+
+            else{
+                if(DEBUG_MASTER){
+                    Serial.print("Skipped Polling with an inactive device: ");
+                    Serial.println(Existing_devices[active_polling_device_index].short_addr,HEX);
+                }
+                //Do nothing --> Next loop, state will still be unicast master ranging, and the index will increase, trying the next device.
+            }
         }        
         else{ //All devices have been targeted with the unicast poll. Next, switching to initiator handoff.
             unicast_master_ranging_started = false;
