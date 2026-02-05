@@ -281,9 +281,13 @@ void switchToResponder(){
 
     if(DEBUG_SLAVE){Serial.println("Switching to RESPONDER");}
     
+    //Reset all the "ranging flags". Next initiator period, the slave restarts the process.
     for(int i=0; i<amount_devices; i++){
         Existing_devices[i].range_pending = false;
     }
+    slave_ranging = false;
+    unicast_ranging = false;
+    broadcast_ranging = false;
 
     is_initiator = false;
     DW1000.idle();
@@ -443,7 +447,7 @@ void loop(){
     DW1000Ranging.loop();
     current_time = millis();
 
-    if(current_time - slave_ranging_start >= ranging_timeout){
+    if(slave_ranging && current_time - slave_ranging_start >= ranging_timeout){
 
         if(DEBUG_SLAVE){Serial.println("Ranging timeout. Forcing slave back to responder.");}
         slave_ranging = false;
