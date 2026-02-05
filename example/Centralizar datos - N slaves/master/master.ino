@@ -443,7 +443,7 @@ void transmitUnicast(uint8_t message_type){
                     Serial.println("] via unicast");
                 }
 
-            DW1000Ranging.transmitPollUnicast(target);
+            DW1000Ranging.transmitPoll(target);
             
         }
 

@@ -162,6 +162,8 @@ class DW1000RangingClass {
 		void transmitDataRequest(DW1000Device* device = nullptr); //Data request. From master to slaves
 		void transmitDataReport(Measurement* measurements, int numMedidas, DW1000Device* device = nullptr); //Data report. from slaves to master.
 
+		//For ranging protocol: (sending poll has to be public --> the master chooses to send it automatically or manaually (broadcast or unicast))
+		static void transmitPoll(DW1000Device* myDistantDevice);
 		
 	private:
 
@@ -257,7 +259,7 @@ class DW1000RangingClass {
 		static void receiver();
 		
 		//for ranging protocole (Initiator)
-		static void transmitPoll(DW1000Device* myDistantDevice);
+		
 		static void transmitRange(DW1000Device* myDistantDevice);
 		
 		//methods for range computation
