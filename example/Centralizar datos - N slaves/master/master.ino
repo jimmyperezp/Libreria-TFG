@@ -562,8 +562,8 @@ void PollUnicastFailed(){
 
     if(DEBUG_MASTER){
         Serial.print("Poll via unicast with [");
-        Serial.print(Existing_devices[active_polling_device_index].short_addr,HEX); Serial.print("] FAILED.");
-        Serial.println(" Moving on to next slave. Back to Unicast Master Ranging.");
+        Serial.print(Existing_devices[active_polling_device_index].short_addr,HEX); Serial.println("] FAILED. Moving on to next device. Back to unicast ranging.");
+        
     }
     waiting_unicast_range = false; // To restart the timer next time state is state = WAIT_UNICAST_RANGE.
     Existing_devices[active_polling_device_index].range_pending = false;
