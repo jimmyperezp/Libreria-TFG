@@ -50,6 +50,8 @@ unsigned long broadcast_ranging_start = 0;
 unsigned long waiting_unicast_range_start = 0;
 unsigned long discovery_start = 0;
 
+uint8_t discovery_attempts = 0;
+static bool discovery_previously_done = false;
 static bool unicast_ranging = false;
 static bool discovering = false;
 static bool slave_ranging = false;
@@ -83,7 +85,8 @@ State state = DISCOVERY;
 
 // Message types to send via unicast
 enum UnicastMessageType{
-    MSG_POLL_UNICAST
+    MSG_POLL_UNICAST,
+    MSG_SWITCH_TO_RESPONDER
 }; 
 //TODO --> Now, only message sent with this function is poll via unicast. If in the future, more messages are sent with this function, add message types here.
 
@@ -221,7 +224,7 @@ void DataRequested(byte* short_addr_requester){
 void ModeSwitchRequested(byte* short_addr_requester, bool to_initiator, bool _broadcast_ranging){
 
     DW1000Device* requester = DW1000Ranging.searchDistantDevice(short_addr_requester);
-
+    short_addr_master = short_addr_requester;
     if(to_initiator == true){ //Asked to change to initiator
         
         if(is_initiator) {
@@ -294,9 +297,7 @@ void switchToResponder(){
     is_initiator = false;
     DW1000.idle();
     DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
-    
     attachCallbacks();
-
     state = IDLE;
 }
 
@@ -359,6 +360,27 @@ void transmitUnicast(uint8_t message_type){
             state = UNICAST_RANGING; 
         }
 
+    }
+
+    else if(message_type == MSG_SWITCH_TO_RESPONDER){
+
+        DW1000Device* master = DW1000Ranging.searchDistantDevice(short_addr_master);
+
+        if(master){
+            if(DEBUG_SLAVE){
+                    Serial.print("Mode switch to RESPONDER ACK transmitted via Unicast to: [");
+                    Serial.print(master->getShortAddressHeader(),HEX);
+                    Serial.println("]");
+                }
+
+            DW1000Ranging.transmitModeSwitchAck(master, false);
+            
+        }
+
+        else{
+            if(DEBUG_SLAVE){Serial.println("Master not found. Mode switch to RESPONDER ACK transmitted via broadcast.");}
+            DW1000Ranging.transmitModeSwitchAck(nullptr, false);
+        }
     }
     
 }
@@ -496,6 +518,7 @@ void loop(){
         state = SWITCH_TO_RESPONDER;
 
     }
+    
     if(state == IDLE){
         // Simply wait
 
@@ -511,15 +534,33 @@ void loop(){
 
     else if(state == DISCOVERY){
 
+        if(discovery_previously_done){
+            discovery_attempts++;
+            
+            if(discovery_attempts < 5){
+                state = SLAVE_RANGING;
+                return;
+            }
+            
+
+            if(DEBUG_SLAVE){Serial.println("Repeating discovery to update devices list");}
+            discovery_attempts = 0;
+            discovering = false;
+            discovery_previously_done = false;
+
+            
+        }
         if(!discovering){
             DW1000Ranging.setRangingMode(DW1000RangingClass::BROADCAST);
-            discovering =true;
+            discovering = true; // To avoid entering here again next loop.
+            
             discovery_start = current_time;
         }
 
         if(current_time - discovery_start >= discovery_period){
 
             discovering = false;
+            discovery_previously_done = true;
             state = SLAVE_RANGING;
             if(DEBUG_SLAVE){Serial.println("Discovery ended. Now --> Slave Ranging");}
         }
@@ -590,11 +631,13 @@ void loop(){
         }
 
         else{ 
-            //All known devices have been polled via unicast. Slave restarts the cycle until a switch to responder is asked by the master.
+            //All known devices have been polled via unicast.
+            //Slave switches back to responder and notifies the master that it has finished. 
 
-            unicast_ranging = false;
-            state = SLAVE_RANGING; 
             if(DEBUG_SLAVE){Serial.println("All known devices have been polled via unicast. Restarting slave ranging cycle.");}
+            
+            switchToResponder();
+            transmitUnicast(MSG_SWITCH_TO_RESPONDER); 
 
         }
 

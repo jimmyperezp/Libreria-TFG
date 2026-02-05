@@ -85,6 +85,8 @@ static bool seen_first_range = false;
 static bool discovering = false;
 static bool slaves_discovered = false;
 uint8_t amount_active_slaves = 0;
+uint8_t discovery_attempts = 0;
+static bool discovery_previously_done = false;
 
 /*Flags used in state = master_ranging*/
 static bool master_is_ranging = false;
@@ -667,12 +669,9 @@ void ModeSwitchAck(bool is_initiator){
         }
     }
 
-    if(Existing_devices[slaves_indexes[active_slave_index]].short_addr == origin_short_addr && Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending == true){
+    if(Existing_devices[slaves_indexes[active_slave_index]].short_addr != origin_short_addr){return;} //ACK received from a device that is not the active slave. Ignore it.
 
-        //Only if the ack is received from the active slave, and if it has the mode switch pending.
-
-        Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = false;
-        Existing_devices[slaves_indexes[active_slave_index]].is_responder = !is_initiator;
+    else{
 
         if(DEBUG_MASTER){
             Serial.print("Mode switch completed: ");
@@ -681,17 +680,53 @@ void ModeSwitchAck(bool is_initiator){
             Serial.println(is_initiator ? "Initiator" : "Responder");
         }
 
+
         if(is_initiator){
-            state = SLAVE_RANGING;
-            waiting_initiator_switch_ack = false;
-            if(DEBUG_MASTER){Serial.println("Slave switched to initiator. Now --> Slave ranging");}
+
+            // Slave is initiator --> Always needs to have the mode_switch_pending = true to reach this point.
+            if(Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending == false){return;} 
+            else{
+                // Ack received from a slave with the change pending. OK
+                Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = false;
+                Existing_devices[slaves_indexes[active_slave_index]].is_responder = false;
+                state = SLAVE_RANGING;
+                waiting_initiator_switch_ack = false;
+                if(DEBUG_MASTER){Serial.println("Slave switched to initiator. Now --> Slave ranging");}
+                 
+
+            }
         }
-        else{
-            state = INITIATOR_HANDOFF; //Back to responder. Now, turn for the next slave.
+        
+        else{ //Slave finished its ranging & switched back to responder.
+
+            if(ranging_mode == DW1000RangingClass::UNICAST){
+
+                //In this case, master didn't send the switchMode message. The slave switched back to responder by itself after ranging with all of its devices
+                //Therefore, it won't have the mode_switch_pending.
+                
+                Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = false; // Just in case.
+                Existing_devices[slaves_indexes[active_slave_index]].is_responder = true;
+                state = INITIATOR_HANDOFF; //Back to responder. Now, turn for the next slave.
+
+            }
+
+            else if (ranging_mode == DW1000RangingClass::BROADCAST){
+
+                // In this case, master sent the switchMode message, so the slave will have the mode_switch_pending = true.
+                Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = false; 
+                Existing_devices[slaves_indexes[active_slave_index]].is_responder = true;
+                
+            }
+            
+            state = INITIATOR_HANDOFF; //Now turn for the next slave to range.
             waiting_responder_switch_ack = false;
             if(DEBUG_MASTER) Serial.println("Slave back to responder. Now, turn for the next slave to range");
         }
-    }      
+        
+
+        
+    }
+     
 
 }
 
@@ -702,6 +737,23 @@ void loop(){
 
     if(state == DISCOVERY){
 
+        if(discovery_previously_done){
+            discovery_attempts++;
+            
+            if(discovery_attempts < 5){
+                state = MASTER_RANGING; // Only repeats discovery every 5 cycles.
+                return;
+            }
+            
+
+            if(DEBUG_MASTER){Serial.println("Repeating discovery to update devices list");}
+            discovery_attempts = 0;
+            discovering = false;
+            slaves_discovered = false;
+            discovery_previously_done = false;
+        }
+
+
         if(!discovering){
             DW1000Ranging.setRangingMode(DW1000RangingClass::BROADCAST);
             discovering =true;
@@ -711,7 +763,8 @@ void loop(){
 
         if(current_time - discovery_start >= ranging_period){
 
-            if(slaves_discovered){
+            if(slaves_discovered || amount_active_slaves >0){
+                discovery_previously_done = true;
                 discovering = false;
                 state = MASTER_RANGING;
                 if(DEBUG_MASTER){Serial.println("Slaves have been found. Now --> Master ranging");}
@@ -902,7 +955,7 @@ void loop(){
         else{
 
             if(current_time-slave_ranging_start >= ranging_period){
-                
+                //Acts as a timeout, no matter the ranging_mode. If the slave finished before, it would have sent the ACK and changed the state already. So, if code reaches this point, it means that the slave finished or the time is out. In both cases, I need to switch it back to responder and move on to the next slave.
                 slave_is_ranging = false;
                 state = SWITCH_TO_RESPONDER;
                 if(DEBUG_MASTER){Serial.println("End of slave ranging period. Switching it back to responder.");}
@@ -985,7 +1038,7 @@ void loop(){
             
             if(DEBUG_MASTER) Serial.println("Restarting the cycle --> going back to master ranging");
             
-            state = MASTER_RANGING;
+            state = DISCOVERY;
         }
     }
     
