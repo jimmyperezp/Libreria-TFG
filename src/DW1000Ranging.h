@@ -74,6 +74,7 @@ struct ExistingDevice{
 	bool is_slave_anchor;
 	bool is_responder;
 	bool active;
+	bool range_pending;
 	bool mode_switch_pending;
 	bool data_report_pending;
 	
@@ -86,8 +87,8 @@ class DW1000RangingClass {
 
 		//Ranging modes
 		enum RangingMode{
-				BROADCAST,
-				UNICAST
+			BROADCAST,
+			UNICAST
 		};
 		
 		//data buffer for transmission and reception
