@@ -67,7 +67,7 @@ void (* DW1000RangingClass::_handleNewRange)(void) = 0;
 void (* DW1000RangingClass::_handleBlinkDevice)(DW1000Device*) = 0;
 void (* DW1000RangingClass::_handleNewDevice)(DW1000Device*) = 0;
 void (* DW1000RangingClass::_handleInactiveDevice)(DW1000Device*) = 0;
-void (* DW1000RangingClass::_handleModeSwitchRequest)(byte*, bool toInitiator) = 0;
+void (* DW1000RangingClass::_handleModeSwitchRequest)(byte*, bool toInitiator,bool _broadcast_ranging) = 0;
 void (* DW1000RangingClass::_handleModeSwitchAck)(bool isInitiator) = 0;
 void (* DW1000RangingClass::_handleDataRequest)(byte*) = 0;
 void (* DW1000RangingClass::_handleDataReport)(byte*) = 0;
@@ -511,11 +511,11 @@ void DW1000RangingClass::loop() {
             }
 
 			int headerLen = _lastFrameWasLong ? LONG_MAC_LEN : SHORT_MAC_LEN;
-			bool toInitiator = (data[headerLen + 1] == 1);
-
+			bool toInitiator =  (data[headerLen + 1] == 1);
+			bool _broadcast_ranging = (data[headerLen + 2] == 1 );
 			if (_handleModeSwitchRequest) {
 				
-				(*_handleModeSwitchRequest)(shortAddress,toInitiator);
+				(*_handleModeSwitchRequest)(shortAddress,toInitiator,_broadcast_ranging);
 			}
 
 			return;
@@ -1225,29 +1225,9 @@ void DW1000RangingClass::transmitModeSwitch(bool toInitiator, DW1000Device* devi
 	uint16_t index = SHORT_MAC_LEN;
 	data[index++] = MODE_SWITCH;
 	data[index++] = toInitiator ? 1:0;
+	data[index++] = _ranging_mode == BROADCAST ? 1:0; // The receiver must do the ranging the same way as the sender.
 	data[index++] = sent_by_broadcast ? 1:0;
-
-	if(sent_by_broadcast){
-
-		//If sent by broadcast, I set a reply time to avoid colissions.
-		
-		data[index++] = _networkDevicesNumber;
-		for(uint8_t i = 0; i < _networkDevicesNumber; i++) {
-
-			const byte* add = _networkDevices[i].getByteShortAddress();
-			data[index++] = add[0];
-			data[index++] = add[1];
-
-
-			_networkDevices[i].setReplyTime((2*i+1)*DEFAULT_REPLY_DELAY_TIME);
-			uint16_t replyTime = _networkDevices[i].getReplyTime();
-			memcpy(data+index, &replyTime, sizeof(uint16_t));
-			index += sizeof(uint16_t);
-
-			//TODO: 
-			//Right now, if i>5, the uint16_t overflows. I should switch the _replyTime definitions everywhere to uint32_t
-		}
-	}
+	
 
 	if(index>LEN_DATA){
 		//TODO - Clip the exceeding length, instead of not sending it
