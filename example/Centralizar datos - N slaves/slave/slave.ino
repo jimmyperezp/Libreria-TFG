@@ -286,6 +286,15 @@ int searchDevice(uint8_t own_sa,uint8_t dest_sa){
 
 void ModeSwitchRequested(byte* short_addr_requester, bool to_initiator, bool _broadcast_ranging){
 
+    if(DEBUG_SLAVE){
+        Serial.print("Mode switch requested from: ");
+        Serial.print(((uint16_t)short_addr_requester[0] << 8) | short_addr_requester[1], HEX);
+        Serial.print("\t Requested mode: ");
+        Serial.print(to_initiator ? "Initiator" : "Responder");
+        Serial.print("\t Requested ranging type: ");
+        Serial.println(_broadcast_ranging ? "Broadcast" : "Unicast");
+    }
+
     DW1000Device* requester = DW1000Ranging.searchDistantDevice(short_addr_requester);
     short_addr_master = short_addr_requester;
     if(to_initiator == true){ //Asked to change to initiator
@@ -529,7 +538,9 @@ void loop(){
     }
 
     else if(state == SWITCH_TO_INITIATOR){
+
         switchToInitiator();
+        state = DISCOVERY; 
     }
 
     else if(state == SWITCH_TO_RESPONDER){
@@ -638,7 +649,9 @@ void loop(){
             //All known devices have been polled via unicast.
             //Slave switches back to responder and notifies the master that it has finished. 
 
-            if(DEBUG_SLAVE){Serial.println("All known devices have been polled via unicast. Restarting slave ranging cycle.");}
+            if(DEBUG_SLAVE){
+                Serial.print("Unicast Ranging OVER. All known devices have been targeted. ");
+                Serial.println("Going Back to responder and sending modeswitchAck to master.");}
             
             switchToResponder();
             transmitUnicast(MSG_SWITCH_TO_RESPONDER); 
@@ -661,8 +674,9 @@ void loop(){
         else{
             if(current_time - waiting_unicast_range_start >= waiting_time){
                 waiting_unicast_range_start = current_time;
-                retryTransmission(MSG_POLL_UNICAST);
                 if(DEBUG_SLAVE){Serial.println("Retrying unicast range transmission.");}
+                retryTransmission(MSG_POLL_UNICAST);
+                
             }
 
         }
