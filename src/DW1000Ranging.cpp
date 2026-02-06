@@ -512,10 +512,10 @@ void DW1000RangingClass::loop() {
 
 			int headerLen = _lastFrameWasLong ? LONG_MAC_LEN : SHORT_MAC_LEN;
 			bool toInitiator =  (data[headerLen + 1] == 1);
-			bool _broadcast_ranging = (data[headerLen + 2] == 1 );
+			bool _range_via_broadcast = (data[headerLen + 2] == 1 );
 			if (_handleModeSwitchRequest) {
 				
-				(*_handleModeSwitchRequest)(shortAddress,toInitiator,_broadcast_ranging);
+				(*_handleModeSwitchRequest)(shortAddress,toInitiator,_range_via_broadcast);
 			}
 
 			return;
@@ -1188,7 +1188,7 @@ void DW1000RangingClass::transmitStopRangingAck(DW1000Device* device){
 }
 
 
-void DW1000RangingClass::transmitModeSwitch(bool toInitiator, DW1000Device* device){
+void DW1000RangingClass::transmitModeSwitch(bool toInitiator, DW1000Device* device, bool _is_ranging_done_via_broadcast){
 
 	//1: Prepare for new transmission:
 	transmitInit(); //Resets ack flag and sets default parameters (power, bit rate, preamble)
@@ -1225,7 +1225,7 @@ void DW1000RangingClass::transmitModeSwitch(bool toInitiator, DW1000Device* devi
 	uint16_t index = SHORT_MAC_LEN;
 	data[index++] = MODE_SWITCH;
 	data[index++] = toInitiator ? 1:0;
-	data[index++] = _ranging_mode == BROADCAST ? 1:0; // The receiver must do the ranging the same way as the sender.
+	data[index++] = _is_ranging_done_via_broadcast ? 1:0; // The receiver must do the ranging the same way as the sender.
 	data[index++] = sent_by_broadcast ? 1:0;
 	
 

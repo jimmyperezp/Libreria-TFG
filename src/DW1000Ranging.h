@@ -153,7 +153,7 @@ class DW1000RangingClass {
 		//Message transmissions:
 		
 		//Request:
-		void transmitModeSwitch(bool toInitiator, DW1000Device* device = nullptr); //Mode Switch. From Master to Slaves
+		void transmitModeSwitch(bool toInitiator, DW1000Device* device = nullptr, bool _is_ranging_done_via_broadcast = true); //Mode Switch. From Master to Slaves
 		void transmitModeSwitchAck(DW1000Device* device,bool isInitiator); //Mode Switch Ack. From slave to master
 		
 		void transmitStopRanging(DW1000Device* device);

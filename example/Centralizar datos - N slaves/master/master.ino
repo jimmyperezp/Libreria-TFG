@@ -534,7 +534,8 @@ void transmitUnicast(uint8_t message_type){
                     Serial.println(" via unicast");
                 }
 
-            DW1000Ranging.transmitModeSwitch(switch_to_initiator,target);
+            bool broadcast_ranging = (ranging_mode == DW1000RangingClass::BROADCAST);
+            DW1000Ranging.transmitModeSwitch(switch_to_initiator,target,broadcast_ranging);
             
         }
 
@@ -797,7 +798,7 @@ void loop(){
                 discovery_previously_done = true;
                 discovering = false;
                 state = MASTER_RANGING;
-                if(DEBUG_MASTER){Serial.println("Slaves have been found. Now --> Master ranging");}
+                if(DEBUG_MASTER){Serial.print("Slaves have been found. Now --> Master ranging");}
 
             }
             else{
@@ -854,7 +855,7 @@ void loop(){
         if(!unicast_master_ranging_started){
             unicast_master_ranging_started = true;
             active_polling_device_index = -1; //Set at -1 so that when doing active_polling_index++, the first index is 0.
-            if(DEBUG_MASTER){Serial.println("Master starts unicast ranging. Now, transmitting ranging polls via unicast to the slaves.");}
+            if(DEBUG_MASTER){Serial.println("Unicast ranging starts: ");}
         }
         active_polling_device_index++;
 
@@ -903,8 +904,9 @@ void loop(){
         else{
             if(current_time - waiting_unicast_range_start >= waiting_time){
                 waiting_unicast_range_start = current_time;
-                retryTransmission(MSG_POLL_UNICAST);
                 if(DEBUG_MASTER){Serial.println("Retrying unicast range transmission.");}
+                retryTransmission(MSG_POLL_UNICAST);
+                
             }
         }
     }
@@ -942,7 +944,7 @@ void loop(){
             initiator_handoff_started = false;
             state = DATA_REPORT_STATE; 
 
-            if(DEBUG_MASTER){Serial.println("All slaves have been initiators and ranged. Now, starting data reports");}
+            if(DEBUG_MASTER){Serial.println("All slaves have been initiators. Now, starting data reports");}
         }
 
         
@@ -1067,7 +1069,7 @@ void loop(){
                 }
             }
             
-            if(DEBUG_MASTER) Serial.println("Restarting the cycle --> going back to master ranging");
+            if(DEBUG_MASTER) Serial.print("Restarting the cycle --> going back to master ranging");
             
             state = DISCOVERY;
         }
