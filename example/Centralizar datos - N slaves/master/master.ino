@@ -192,6 +192,34 @@ void newDevice(DW1000Device *device){
 
 void registerDevice(DW1000Device *device){
 
+    uint8_t incoming_short_addr = device->getShortAddressHeader();
+    uint8_t incoming_board_type = device->getBoardType();
+
+    for(int i=0;i<amount_devices;i++){
+        if(Existing_devices[i].short_addr == incoming_short_addr){
+            //Device already registered. Update its info but don't increase amount_devices.
+
+            if(Existing_devices[i].active == false){
+
+                Existing_devices[i].active = true;
+
+                if(incoming_board_type == SLAVE){
+            
+                    Existing_devices[i].is_slave = true;
+                    amount_active_slaves++; //Reactivated a slave.
+                    if(DEBUG_MASTER){ 
+                        Serial.print("Device ["); Serial.print(incoming_short_addr, HEX);   Serial.println("] re-activated as slave anchor!"); }
+                }   
+
+                else{ Existing_devices[i].is_slave = false;}
+
+            }
+                                   
+            return;
+        }
+    }
+
+    //If code reaches this point, the device wasn't previously registered. I add it to the list
 
     if (amount_devices >= MAX_DEVICES) {
         if (DEBUG_MASTER) {
@@ -202,21 +230,22 @@ void registerDevice(DW1000Device *device){
         return; 
     }
 
-    Existing_devices[amount_devices].short_addr = device->getShortAddressHeader();
-    memcpy(Existing_devices[amount_devices].byte_short_addr, device->getByteShortAddress(), 2);
-    uint8_t board_type = device->getBoardType();
 
-    if(board_type == SLAVE_ANCHOR){
+    Existing_devices[amount_devices].short_addr = incoming_short_addr;
+    memcpy(Existing_devices[amount_devices].byte_short_addr, device->getByteShortAddress(), 2);
+    
+    
+    if(incoming_board_type == SLAVE){
         
-        Existing_devices[amount_devices].is_slave_anchor = true;
+        Existing_devices[amount_devices].is_slave = true;
         slaves_indexes[amount_slaves] = amount_devices;
         
-        slaves_discovered = true;
+        if(!slaves_discovered) slaves_discovered = true;
         amount_slaves ++;
         amount_active_slaves++;
     }
 
-    else{ Existing_devices[amount_devices].is_slave_anchor = false;}
+    else{ Existing_devices[amount_devices].is_slave = false;}
 
     Existing_devices[amount_devices].is_responder = true;
     Existing_devices[amount_devices].active = true;
@@ -236,7 +265,7 @@ void inactiveDevice(DW1000Device *device){
 
             Existing_devices[i].active = false; //sets it as inactive, but doesn's delete it.
 
-            if(Existing_devices[i].is_slave_anchor){
+            if(Existing_devices[i].is_slave){
                 was_a_slave = true;
             }
             break; 
@@ -395,7 +424,7 @@ void ModeSwitchAck(bool is_initiator){
         if (Existing_devices[i].short_addr == origin_short_addr && !Existing_devices[i].active) {
             Existing_devices[i].active = true;
             if(DEBUG_MASTER){ Serial.print("Device RE-ACTIVATED via ACK: "); Serial.println(origin_short_addr, HEX); }
-            if (Existing_devices[i].is_slave_anchor) {
+            if (Existing_devices[i].is_slave) {
                 slaves_discovered = true;
             }
             break;
@@ -867,6 +896,7 @@ void loop(){
         else{ //All devices have been targeted with the unicast poll. Next, switching to initiator handoff.
             unicast_master_ranging_started = false;
            
+            stopRanging();
             if(DEBUG_MASTER){Serial.println("All slaves have been polled via unicast. Now --> initiator handoff");}
             state = INITIATOR_HANDOFF; 
 
