@@ -50,7 +50,7 @@ static bool discovery_previously_done = false;
 static bool discovering = false;
 
 uint8_t discovery_attempts = 0;
-uint8_t discovery_attempts = 0;
+
 
 /*Used in SLAVE_RANGING*/
 static bool slave_ranging = false;
@@ -115,7 +115,7 @@ void setup(){
     // Callbacks "enabled" 
     attachCallbacks();
 
-    DW1000Ranging.startAsResponder(DEVICE_ADDR,DW1000.MODE_1, false,SLAVE_ANCHOR);
+    DW1000Ranging.startAsResponder(DEVICE_ADDR,DW1000.MODE_1, false,SLAVE);
 
     own_short_addr = getOwnShortAddress();
     // I save the own_short_addr after the device has been set up propperly
@@ -128,7 +128,7 @@ void attachCallbacks(){
 
     DW1000Ranging.attachModeSwitchRequested(ModeSwitchRequested);
     DW1000Ranging.attachDataRequested(DataRequested);
-    DW1000Ranging.attachStopRangingRequested(stopRangingRequested);
+    
 }
 
 uint8_t getOwnShortAddress() {
@@ -359,7 +359,7 @@ void switchToResponder(){
 
     is_initiator = false;
     DW1000.idle();
-    DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
+    DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE);
     attachCallbacks();
     state = IDLE;
 }
@@ -372,7 +372,7 @@ void switchToInitiator(){
     
         
     DW1000.idle();
-    DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE_ANCHOR);
+    DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_1, false, SLAVE);
     DW1000.setAntennaDelay(Adelay);
     attachCallbacks();
 }
@@ -593,8 +593,8 @@ void loop(){
 
     else if(state == BROADCAST_RANGING_STATE){
 
-        if(!ranging_broacast_started){
-            ranging_broacast_started = true;
+        if(!ranging_broadcast_started){
+            ranging_broadcast_started = true;
             DW1000Ranging.setRangingMode(DW1000RangingClass::BROADCAST);
             broadcast_ranging_start = current_time;
         }

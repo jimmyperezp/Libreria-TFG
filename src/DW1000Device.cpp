@@ -103,7 +103,7 @@ void DW1000Device::noteActivity() {
 bool DW1000Device::isInactive() {
 	
 	
-	if(_boardType == MASTER_ANCHOR || _boardType == TAG) {
+	if(_boardType == MASTER || _boardType == TAG) {
 		return false;
 	}
 
