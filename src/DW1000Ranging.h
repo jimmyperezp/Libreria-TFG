@@ -71,7 +71,7 @@ struct ExistingDevice{
 	
 	uint8_t short_addr;
 	byte byte_short_addr[2];
-	bool is_slave_anchor;
+	bool is_slave;
 	bool is_responder;
 	bool active;
 	bool range_pending;

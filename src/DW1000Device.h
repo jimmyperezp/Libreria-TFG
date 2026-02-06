@@ -24,8 +24,8 @@
 
 #define INACTIVITY_TIME 5000
 
-#define MASTER_ANCHOR 1
-#define SLAVE_ANCHOR 2
+#define MASTER 1
+#define SLAVE 2
 #define TAG 3
 
 
