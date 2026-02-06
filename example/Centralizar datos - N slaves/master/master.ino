@@ -145,7 +145,7 @@ void setup(){
     DW1000Ranging.attachDataReport(DataReport);
     DW1000Ranging.attachModeSwitchAck(ModeSwitchAck);
     
-    DW1000Ranging.startAsInitiator(DEVICE_ADDR,DW1000.MODE_1, false,MASTER_ANCHOR);
+    DW1000Ranging.startAsInitiator(DEVICE_ADDR,DW1000.MODE_1, false,MASTER);
 
     own_short_addr = getOwnShortAddress();
 
@@ -442,7 +442,6 @@ void ModeSwitchAck(bool is_initiator){
             Serial.println(is_initiator ? "Initiator" : "Responder");
         }
 
-
         if(is_initiator){
 
             // Slave is initiator --> Always needs to have the mode_switch_pending = true to reach this point.
@@ -461,24 +460,11 @@ void ModeSwitchAck(bool is_initiator){
         
         else{ //Slave finished its ranging & switched back to responder.
 
-            if(ranging_mode == DW1000RangingClass::UNICAST){
-
-                //In this case, master didn't send the switchMode message. The slave switched back to responder by itself after ranging with all of its devices
-                //Therefore, it won't have the mode_switch_pending.
-                
-                Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = false; // Just in case.
-                Existing_devices[slaves_indexes[active_slave_index]].is_responder = true;
-                state = INITIATOR_HANDOFF; //Back to responder. Now, turn for the next slave.
-            }
-
-            else if (ranging_mode == DW1000RangingClass::BROADCAST){
-                // In this case, master sent the switchMode message, so the slave will have the mode_switch_pending = true.
-                Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = false; 
-                Existing_devices[slaves_indexes[active_slave_index]].is_responder = true;
-            }
-            
-            state = INITIATOR_HANDOFF; //Now turn for the next slave to range.
             waiting_responder_switch_ack = false;
+            Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = false; // Just in case.
+            Existing_devices[slaves_indexes[active_slave_index]].is_responder = true;
+            state = INITIATOR_HANDOFF; // Back to responder. Now, turn for the next slave.
+
             if(DEBUG_MASTER) Serial.println("Slave back to responder. Now, turn for the next slave to range");
         }
     }
