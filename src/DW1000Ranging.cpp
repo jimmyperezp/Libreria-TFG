@@ -440,6 +440,11 @@ void DW1000RangingClass::loop() {
 						myDistantDevice->timePollSent = timePollSent;
 					}
 				}
+				_expectedMsgId = POLL_ACK;
+				if(DEBUG){
+					Serial.print("Poll sent. Waiting for Ack..."); Serial.print("Ranging Mode --> "); Serial.println((_ranging_mode == BROADCAST) ? "BROADCAST" : "UNICAST");
+				}
+				receiver();
 			}
 			else if(messageType == RANGE) {
 				DW1000Time timeRangeSent;
@@ -474,7 +479,7 @@ void DW1000RangingClass::loop() {
 		
 		int messageType = detectMessageType(data); //Extracts message type from the data buffer.
 		
-		if (messageType == MODE_SWITCH || messageType == REQUEST_DATA ||messageType == DATA_REPORT || messageType == STOP_RANGING) {
+		if (messageType == MODE_SWITCH || messageType == REQUEST_DATA ||messageType == DATA_REPORT || messageType == STOP_RANGING || messageType == POLL || messageType == RANGE) {
 
 			bool is_broadcast = (data[5] == 0xFF && data[6] == 0xFF);
             bool is_for_me = (data[6] == _currentShortAddress[0] && data[5] == _currentShortAddress[1]);
@@ -783,7 +788,11 @@ void DW1000RangingClass::loop() {
 						if(_ranging_mode ==  UNICAST){
 
 							//Poll was only sent once. Only 1 poll_ack expected.
+							if(DEBUG){
 
+								Serial.println("POLL ACK RECEIVED. SENDING RANGE MESSAGE");
+							}
+							
 							transmitRange(myDistantDevice); //Directly send range to the responder.
 							_expectedMsgId = RANGE_REPORT; //Next expected message is RANGE_REPORT from the responder.
 							
@@ -955,7 +964,7 @@ void DW1000RangingClass::transmitPoll(DW1000Device* myDistantDevice) {
 	
 	if(myDistantDevice == nullptr) { //Polling via broadcast.
 		
-
+		_ranging_mode = BROADCAST;
 		//we need to set our timerDelay:
 		_timerDelay = DEFAULT_TIMER_DELAY+(uint16_t)(_networkDevicesNumber*3*DEFAULT_REPLY_DELAY_TIME/1000);
 		
@@ -992,7 +1001,7 @@ void DW1000RangingClass::transmitPoll(DW1000Device* myDistantDevice) {
 	
 	else { //Polling via unicast.
 		
-	
+		_ranging_mode = UNICAST;
 		_timerDelay = DEFAULT_TIMER_DELAY; //Only 1 device --> timer delay is OK as default.
 		
 		//1 Generate MAC frame
