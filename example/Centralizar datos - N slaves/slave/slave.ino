@@ -171,6 +171,20 @@ void newDevice(DW1000Device *device){
 
 void registerDevice(DW1000Device *device){
 
+    uint8_t incoming_short_addr = device->getShortAddressHeader();
+    uint8_t incoming_board_type = device->getBoardType();
+
+    for(int i=0;i<amount_devices;i++){
+        if(Existing_devices[i].short_addr == incoming_short_addr){
+            //Device already registered. Update its info but don't increase amount_devices.
+
+            if(Existing_devices[i].active == false){
+                Existing_devices[i].active = true;
+            }
+            return;
+        }
+    }
+
     if (amount_devices >= MAX_DEVICES) {
         if (DEBUG_SLAVE) {
             Serial.println("-------------------------------------------------------------"); 
@@ -180,9 +194,9 @@ void registerDevice(DW1000Device *device){
         return; 
     }
 
-    Existing_devices[amount_devices].short_addr = device->getShortAddressHeader();
+    Existing_devices[amount_devices].short_addr = incoming_short_addr;
     memcpy(Existing_devices[amount_devices].byte_short_addr, device->getByteShortAddress(), 2);
-    uint8_t board_type = device->getBoardType();
+    uint8_t board_type = incoming_board_type;
     Existing_devices[amount_devices].active = true;
     
     amount_devices ++;
@@ -322,7 +336,7 @@ void ModeSwitchRequested(byte* short_addr_requester, bool to_initiator, bool _br
 
             }
             DW1000Ranging.transmitModeSwitchAck(requester, true);
-            
+            delay(20);
         }
         else{
             if(DEBUG_SLAVE) Serial.println("Requester not found. Sending ACK (to Initiator) via broadcast.");
