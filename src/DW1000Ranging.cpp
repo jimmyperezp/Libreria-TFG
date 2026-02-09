@@ -442,7 +442,7 @@ void DW1000RangingClass::loop() {
 				}
 				_expectedMsgId = POLL_ACK;
 				if(DEBUG){
-					Serial.print("Poll sent. Waiting for Ack..."); Serial.print("Ranging Mode --> "); Serial.println((_ranging_mode == BROADCAST) ? "BROADCAST" : "UNICAST");
+					Serial.print("Poll sent. Waiting for Ack..."); Serial.print("Ranging Mode --> "); Serial.println((_ranging_mode == DW1000RangingClass::BROADCAST) ? "BROADCAST" : "UNICAST");
 				}
 				receiver();
 			}
@@ -785,7 +785,7 @@ void DW1000RangingClass::loop() {
 
 						//If the poll was sent via unicast:
 
-						if(_ranging_mode ==  UNICAST){
+						if(_ranging_mode ==  DW1000RangingClass::UNICAST){
 
 							//Poll was only sent once. Only 1 poll_ack expected.
 							if(DEBUG){
@@ -889,7 +889,7 @@ void DW1000RangingClass::timerTick() {
 
 	if(ranging_enabled && !stop_ranging){
 
-		if(_ranging_mode == BROADCAST){ //Only ticks "automatically" in broadcast mode.
+		if(_ranging_mode == DW1000RangingClass::BROADCAST){ //Only ticks "automatically" in broadcast mode.
 
 			if(_networkDevicesNumber > 0 && counterForBlink != 0) {
 				if(_type == INITIATOR) {
@@ -964,7 +964,7 @@ void DW1000RangingClass::transmitPoll(DW1000Device* myDistantDevice) {
 	
 	if(myDistantDevice == nullptr) { //Polling via broadcast.
 		
-		_ranging_mode = BROADCAST;
+		_ranging_mode = DW1000RangingClass::BROADCAST;
 		//we need to set our timerDelay:
 		_timerDelay = DEFAULT_TIMER_DELAY+(uint16_t)(_networkDevicesNumber*3*DEFAULT_REPLY_DELAY_TIME/1000);
 		
@@ -1001,7 +1001,7 @@ void DW1000RangingClass::transmitPoll(DW1000Device* myDistantDevice) {
 	
 	else { //Polling via unicast.
 		
-		_ranging_mode = UNICAST;
+		_ranging_mode = DW1000RangingClass::UNICAST;
 		_timerDelay = DEFAULT_TIMER_DELAY; //Only 1 device --> timer delay is OK as default.
 		
 		//1 Generate MAC frame
