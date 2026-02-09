@@ -65,8 +65,8 @@ unsigned long last_shown_data_timestamp = 0;
 unsigned long waiting_unicast_range_start = 0;
 
 /*2: Time constants*/
-const unsigned long ranging_period = 500;
-const unsigned long waiting_time = 200;
+const unsigned long ranging_period = 750;
+const unsigned long waiting_time = 500;
 const unsigned long retry_time = 200;
 
 
@@ -313,7 +313,7 @@ void inactiveDevice(DW1000Device *device){
 
 void newRange(){
 
-    if(master_is_ranging == false) return;
+    if(master_is_ranging == false && discovering == false) return;
 
     uint8_t short_addr_origin = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
 
@@ -454,7 +454,7 @@ void ModeSwitchAck(bool is_initiator){
                 Existing_devices[slaves_indexes[active_slave_index]].is_responder = false;
                 state = SLAVE_RANGING;
                 waiting_initiator_switch_ack = false;
-                if(DEBUG_MASTER){Serial.println(". Now, slave ranging: ");}
+                if(DEBUG_MASTER){Serial.println(". Now, SLAVE RANGING: \n");}
                  
 
             }
@@ -472,7 +472,7 @@ void ModeSwitchAck(bool is_initiator){
 
                 if(ranging_mode == DW1000RangingClass::UNICAST && waiting_responder_switch_ack == false){
                     //If unicasting and the change was not pending --> slave finished ranging early and change by itself.
-                    Serial.println("Slave finished unicast ranging early. Now, turn for the next slave to range");
+                    Serial.println("\nSlave finished unicast ranging early. Now, turn for the next slave to range");
                 }
 
                 if(waiting_responder_switch_ack == true){
@@ -813,7 +813,7 @@ void loop(){
 
         }
 
-        if(current_time - discovery_start >= ranging_period){
+        if(discovering && current_time - discovery_start >= ranging_period){
 
             if(slaves_discovered || amount_active_slaves >0){
                 discovery_previously_done = true;
