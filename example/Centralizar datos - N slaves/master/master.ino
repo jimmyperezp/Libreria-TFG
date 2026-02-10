@@ -215,7 +215,6 @@ void registerDevice(DW1000Device *device){
                 else{ Existing_devices[i].is_slave = false;}
 
             }
-                                   
             return;
         }
     }
@@ -316,8 +315,9 @@ void newRange(){
     if(master_is_ranging == false && discovering == false) return;
 
     uint8_t short_addr_origin = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
+    uint8_t incoming_board_type = DW1000Ranging.getDistantDevice()->getBoardType();
 
-    if(ranging_mode == DW1000RangingClass::UNICAST)
+    if(ranging_mode == DW1000RangingClass::UNICAST && discovering == false){
     
         if (Existing_devices[active_polling_device_index].short_addr == short_addr_origin && Existing_devices[active_polling_device_index].range_pending == true){
             Existing_devices[active_polling_device_index].range_pending = false;
@@ -325,8 +325,12 @@ void newRange(){
             state = UNICAST_MASTER_RANGING; 
 
         }
-        else return;
+        else return; //If range arrives from a device with which master is not currently ranging.
+    }
 
+    if(discovering && incoming_board_type == SLAVE){
+        if(!slaves_discovered) slaves_discovered = true;
+    }
     // If code reaches this point, the measure is valid and can be logged and registered.
 
     float dist = DW1000Ranging.getDistantDevice()->getRange();
@@ -346,7 +350,8 @@ void newRange(){
         Serial.print("\t RX power: ");
         Serial.print(rx_pwr);
         Serial.print("\tRanging Mode --> ");
-        Serial.println((ranging_mode == DW1000RangingClass::BROADCAST) ? "BROADCAST" : "UNICAST");
+        if(discovering) Serial.println("BROADCAST (Discovering)");
+        else Serial.println((ranging_mode == DW1000RangingClass::BROADCAST) ? "BROADCAST" : "UNICAST");
 
     }
 }
@@ -441,7 +446,7 @@ void ModeSwitchAck(bool is_initiator){
             Serial.print("Mode switch completed: ");
             Serial.print(origin_short_addr,HEX);
             Serial.print(" is ");
-            Serial.print(is_initiator ? "Initiator" : "Responder");
+            Serial.print(is_initiator ? "Initiator" : "Responder ");
         }
 
         if(is_initiator){
@@ -462,7 +467,7 @@ void ModeSwitchAck(bool is_initiator){
         
         else{ //Slave finished its ranging & switched back to responder.
 
-            waiting_responder_switch_ack = false;
+            
             Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = false; // Just in case.
             Existing_devices[slaves_indexes[active_slave_index]].is_responder = true;
             state = INITIATOR_HANDOFF; // Back to responder. Now, turn for the next slave.
@@ -479,6 +484,9 @@ void ModeSwitchAck(bool is_initiator){
                     Serial.println("Turn for the next slave to range");
                 }
             }
+
+            waiting_responder_switch_ack = false;
+            slave_is_ranging = false;
             
         }
     }
@@ -810,12 +818,13 @@ void loop(){
             DW1000Ranging.setRangingMode(DW1000RangingClass::BROADCAST);
             discovering =true;
             discovery_start = current_time;
+            slaves_discovered = false;
 
         }
 
         if(discovering && current_time - discovery_start >= ranging_period){
 
-            if(slaves_discovered || amount_active_slaves >0){
+            if(slaves_discovered){
                 discovery_previously_done = true;
                 discovering = false;
                 state = MASTER_RANGING;
@@ -886,7 +895,7 @@ void loop(){
             if(DEBUG_MASTER){
                 Serial.print("\nUnicast Polling with device: ");
                 Serial.print(active_polling_device_index+1); 
-                Serial.print("/"); Serial.print(amount_devices); Serial.print("--> ");
+                Serial.print("/"); Serial.print(amount_devices); Serial.print(" --> ");
             }
 
             if(Existing_devices[active_polling_device_index].active == true){
@@ -952,7 +961,7 @@ void loop(){
                 if(DEBUG_MASTER){
                     Serial.print("Switching slave ");
                     Serial.print(active_slave_index+1); 
-                    Serial.print("/"); Serial.print(amount_slaves+1); 
+                    Serial.print("/"); Serial.print(amount_slaves); 
                     Serial.print(" to initiator. ");
                 }
 
@@ -1007,7 +1016,7 @@ void loop(){
             slave_ranging_start = current_time;
             
             if(DEBUG_MASTER){
-                Serial.print("\nSlave ");
+                Serial.print("Slave ");
                 Serial.print(Existing_devices[slaves_indexes[active_slave_index]].short_addr,HEX);
                 Serial.println(" starts ranging... ");
             }
@@ -1020,7 +1029,7 @@ void loop(){
                 //Acts as a timeout, no matter the ranging_mode. If the slave finished before, it would have sent the ACK and changed the state already. So, if code reaches this point, it means that the slave finished or the time is out. In both cases, I need to switch it back to responder and move on to the next slave.
                 slave_is_ranging = false;
                 state = SWITCH_TO_RESPONDER;
-                if(DEBUG_MASTER){Serial.println("Slave Ranging Timeout!!. Swithing it back to responder.");}
+                if(DEBUG_MASTER){Serial.println("Slave Ranging Timeout!!. Swithing it back to responder.\n");}
             }
         }
     }

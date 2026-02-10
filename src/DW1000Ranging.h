@@ -133,7 +133,7 @@ class DW1000RangingClass {
 		static void attachNewDevice(void (* handleNewDevice)(DW1000Device*)) { _handleNewDevice = handleNewDevice; };
 		static void attachInactiveDevice(void (* handleInactiveDevice)(DW1000Device*)) { _handleInactiveDevice = handleInactiveDevice; };
 		
-		static void attachModeSwitchRequested(void (* handleModeSwitch)(byte* shortAddress, bool toInitiator,bool _broadcast_ranging)){ _handleModeSwitchRequest = handleModeSwitch;}
+		static void attachModeSwitchRequested(void (* handleModeSwitch)(bool toInitiator,bool _broadcast_ranging)){ _handleModeSwitchRequest = handleModeSwitch;}
 		static void attachModeSwitchAck(void (* handleModeSwitchAck)(bool isInitiator)){ _handleModeSwitchAck = handleModeSwitchAck;}
 		
 		static void attachDataRequested(void (*handleDataRequest)(byte* shortAddress)){ _handleDataRequest = handleDataRequest; }
@@ -164,6 +164,9 @@ class DW1000RangingClass {
 
 		//For ranging protocol: (sending poll has to be public --> the master chooses to send it automatically or manaually (broadcast or unicast))
 		static void transmitPoll(DW1000Device* myDistantDevice);
+
+		//Public --> to check en each loop
+		static void checkForInactiveDevices();
 		
 	private:
 
@@ -177,6 +180,7 @@ class DW1000RangingClass {
 		static DW1000Mac    _globalMac;
 		static int32_t      timer;
 		static int16_t      counterForBlink;
+		static int8_t 		check_inactive_devices_count;
 		static bool 		_lastFrameWasLong;
 		
 		//Handlers:
@@ -185,7 +189,7 @@ class DW1000RangingClass {
 		static void (* _handleNewDevice)(DW1000Device*);
 		static void (* _handleInactiveDevice)(DW1000Device*);
 
-		static void (* _handleModeSwitchRequest)(byte* shortAddress, bool toInitiator, bool _broadcast_ranging);
+		static void (* _handleModeSwitchRequest)( bool toInitiator, bool _broadcast_ranging);
 		static void (* _handleModeSwitchAck)(bool isInitiator);
 
 		static void (* _handleDataRequest)(byte* shortAddress);
@@ -244,7 +248,7 @@ class DW1000RangingClass {
 		
 		//global functions:
 		static void checkForReset();
-		static void checkForInactiveDevices();
+		
 		static void copyShortAddress(byte address1[], byte address2[]);
 		
 		//for ranging protocole (responder)

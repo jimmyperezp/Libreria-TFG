@@ -46,6 +46,7 @@ bool DW1000RangingClass::_lastFrameWasLong = false;
 // timestamps to remember
 int32_t DW1000RangingClass::timer           = 0;
 int16_t DW1000RangingClass::counterForBlink = 0; // TODO 8 bit?
+int8_t  DW1000RangingClass::check_inactive_devices_count = 0;
 
 // data buffer
 byte DW1000RangingClass::data[LEN_DATA];
@@ -67,7 +68,7 @@ void (* DW1000RangingClass::_handleNewRange)(void) = 0;
 void (* DW1000RangingClass::_handleBlinkDevice)(DW1000Device*) = 0;
 void (* DW1000RangingClass::_handleNewDevice)(DW1000Device*) = 0;
 void (* DW1000RangingClass::_handleInactiveDevice)(DW1000Device*) = 0;
-void (* DW1000RangingClass::_handleModeSwitchRequest)(byte*, bool toInitiator,bool _broadcast_ranging) = 0;
+void (* DW1000RangingClass::_handleModeSwitchRequest)(bool toInitiator,bool _broadcast_ranging) = 0;
 void (* DW1000RangingClass::_handleModeSwitchAck)(bool isInitiator) = 0;
 void (* DW1000RangingClass::_handleDataRequest)(byte*) = 0;
 void (* DW1000RangingClass::_handleDataReport)(byte*) = 0;
@@ -520,7 +521,7 @@ void DW1000RangingClass::loop() {
 			bool _range_via_broadcast = (data[headerLen + 2] == 1 );
 			if (_handleModeSwitchRequest) {
 				
-				(*_handleModeSwitchRequest)(shortAddress,toInitiator,_range_via_broadcast);
+				(*_handleModeSwitchRequest)(toInitiator,_range_via_broadcast);
 			}
 
 			return;
@@ -897,6 +898,7 @@ void DW1000RangingClass::timerTick() {
 					transmitPoll(nullptr);  //broadcast poll
 				}
 			}
+			
 			else if(counterForBlink == 0) {
 				if(_type == INITIATOR) {
 					transmitBlink();	
@@ -910,6 +912,18 @@ void DW1000RangingClass::timerTick() {
 			}
 		}
 	}
+	
+	else if(_ranging_mode == DW1000RangingClass::UNICAST){
+
+		if(check_inactive_devices_count ==0) checkForInactiveDevices();
+		check_inactive_devices_count++;
+		if(check_inactive_devices_count >6){
+			check_inactive_devices_count = 0;
+
+		}
+	}
+	
+	
 }
 
 void DW1000RangingClass::copyShortAddress(byte address1[], byte address2[]) {
