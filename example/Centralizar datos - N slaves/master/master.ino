@@ -65,7 +65,7 @@ unsigned long last_shown_data_timestamp = 0;
 unsigned long waiting_unicast_range_start = 0;
 
 /*2: Time constants*/
-const unsigned long ranging_period = 750;
+const unsigned long ranging_period = 1000;
 const unsigned long waiting_time = 500;
 const unsigned long retry_time = 200;
 
@@ -82,7 +82,7 @@ static bool seen_first_range = false;
 #define UPDATE_DISCOVERY_ATTEMPTS 5
 static bool discovering = false;
 static bool slaves_discovered = false;
-uint8_t amount_active_slaves = 0;
+
 uint8_t discovery_attempts = 0;
 static bool discovery_previously_done = false;
 
@@ -172,13 +172,13 @@ void newDevice(DW1000Device *device){
     uint8_t board_type = device->getBoardType();
     switch(board_type){
         case 1:
-            Serial.println("Master anchor");
+            Serial.println("MASTER");
             break;
         case 2:
-            Serial.println("Slave Anchor");
+            Serial.println("SLAVE");
             break;
         case 3: 
-            Serial.println("Tag");
+            Serial.println("TAG");
             break;
 
         default:
@@ -207,7 +207,7 @@ void registerDevice(DW1000Device *device){
                 if(incoming_board_type == SLAVE){
             
                     Existing_devices[i].is_slave = true;
-                    amount_active_slaves++; //Reactivated a slave.
+                    
                     if(DEBUG_MASTER){ 
                         Serial.print("Device ["); Serial.print(incoming_short_addr, HEX);   Serial.println("] re-activated as slave anchor!"); }
                 }   
@@ -242,7 +242,7 @@ void registerDevice(DW1000Device *device){
         
         if(!slaves_discovered) slaves_discovered = true;
         amount_slaves ++;
-        amount_active_slaves++;
+       
     }
 
     else{ Existing_devices[amount_devices].is_slave = false;}
@@ -274,7 +274,8 @@ void inactiveDevice(DW1000Device *device){
 
 
     if(was_a_slave){
-        Serial.println("A SLAVE has disconnected! Aborting current cycle, returning to master ranging.");
+
+        Serial.print("SLAVE DISCONNECTED! Aborting current cycle. ");
 
         // Reset all fsm's flags
         master_is_ranging = false;
@@ -285,24 +286,21 @@ void inactiveDevice(DW1000Device *device){
         slave_is_ranging = false;
         waiting_data_report = false;
         num_retries = 0;
-
-        amount_active_slaves--;
-        for (int i = 0; i < amount_devices; i++) {
-            Existing_devices[i].mode_switch_pending = false;
-            Existing_devices[i].data_report_pending = false;
-        }
-
-        if(amount_active_slaves == 0){
-            Serial.println("All slaves disconnected. Going back to discovery");
-            slaves_discovered = false;
-            state = DISCOVERY; 
-            return;
-        }
-
-        state = MASTER_RANGING; 
         
+
+    for (int i = 0; i < amount_devices; i++) {
+        Existing_devices[i].mode_switch_pending = false;
+        Existing_devices[i].data_report_pending = false;
+        Existing_devices[i].range_pending = false;
     }
+
     
+    Serial.println("Redoing DISCOVERY");
+    discovery_attempts = UPDATE_DISCOVERY_ATTEMPTS;
+    slaves_discovered = false;
+    state = DISCOVERY; 
+    return;   
+    } 
 }
 
 
@@ -948,7 +946,7 @@ void loop(){
             stopRanging();
             initiator_handoff_started = true;
             active_slave_index = -1; //Set at -1 so that when doing active_slave_index++, the first index is 0.
-            if(DEBUG_MASTER) Serial.println("INITIATOR HANDOFF starts:\n  ");
+            if(DEBUG_MASTER) Serial.println("INITIATOR HANDOFF starts:");
         }
         active_slave_index++;
 
@@ -959,7 +957,7 @@ void loop(){
 
                 Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = true;
                 if(DEBUG_MASTER){
-                    Serial.print("Switching slave ");
+                    Serial.print("\nSwitching slave ");
                     Serial.print(active_slave_index+1); 
                     Serial.print("/"); Serial.print(amount_slaves); 
                     Serial.print(" to initiator. ");
@@ -972,7 +970,7 @@ void loop(){
             else{
                 
                 if(DEBUG_MASTER){
-                    Serial.print("Skipped an inactive slave: ");
+                    Serial.print("\nSkipped an inactive slave: ");
                     Serial.println(Existing_devices[slaves_indexes[active_slave_index]].short_addr,HEX);
                 }
             }
