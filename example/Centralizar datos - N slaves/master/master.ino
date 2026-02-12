@@ -65,7 +65,7 @@ unsigned long last_shown_data_timestamp = 0;
 unsigned long waiting_unicast_range_start = 0;
 
 /*2: Time constants*/
-const unsigned long ranging_period = 1000;
+const unsigned long ranging_period = 500;
 const unsigned long waiting_time = 500;
 const unsigned long retry_time = 200;
 
@@ -79,9 +79,10 @@ static bool stop_ranging_requested = false;
 static bool seen_first_range = false;
 
 /*Flags used in state = discovering*/
-#define UPDATE_DISCOVERY_ATTEMPTS 5
+#define UPDATE_DISCOVERY_ATTEMPTS 2
 static bool discovering = false;
 static bool slaves_discovered = false;
+uint8_t amount_active_slaves = 0;
 
 uint8_t discovery_attempts = 0;
 static bool discovery_previously_done = false;
@@ -96,7 +97,9 @@ static bool unicast_master_ranging_started = false;
 /*Flags used in state = initiator_handoff*/
 static bool initiator_handoff_started = false;
 int8_t active_slave_index = 0;
-
+ 
+/*Used in case mode swith to responder fails*/
+uint8_t switch_to_responder_retries = 0;
 
 /*Flags used in state = wait_switch_to_(...)*/
 static bool waiting_initiator_switch_ack = false;
@@ -207,6 +210,7 @@ void registerDevice(DW1000Device *device){
                 if(incoming_board_type == SLAVE){
             
                     Existing_devices[i].is_slave = true;
+                    amount_active_slaves++;
                     
                     if(DEBUG_MASTER){ 
                         Serial.print("Device ["); Serial.print(incoming_short_addr, HEX);   Serial.println("] re-activated as slave anchor!"); }
@@ -241,7 +245,8 @@ void registerDevice(DW1000Device *device){
         slaves_indexes[amount_slaves] = amount_devices;
         
         if(!slaves_discovered) slaves_discovered = true;
-        amount_slaves ++;
+        amount_slaves++;
+        amount_active_slaves++;
        
     }
 
@@ -286,21 +291,27 @@ void inactiveDevice(DW1000Device *device){
         slave_is_ranging = false;
         waiting_data_report = false;
         num_retries = 0;
+        amount_active_slaves--;
         
 
-    for (int i = 0; i < amount_devices; i++) {
-        Existing_devices[i].mode_switch_pending = false;
-        Existing_devices[i].data_report_pending = false;
-        Existing_devices[i].range_pending = false;
-    }
+        for (int i = 0; i < amount_devices; i++) {
+            Existing_devices[i].mode_switch_pending = false;
+            Existing_devices[i].data_report_pending = false;
+            Existing_devices[i].range_pending = false;
+        }
 
-    
-    Serial.println("Redoing DISCOVERY");
-    discovery_attempts = UPDATE_DISCOVERY_ATTEMPTS;
-    slaves_discovered = false;
-    state = DISCOVERY; 
-    return;   
-    } 
+        if(amount_active_slaves ==0){
+            Serial.println("NO ACTIVE SLAVES. Redoing DISCOVERY");
+            discovery_attempts = UPDATE_DISCOVERY_ATTEMPTS;
+            slaves_discovered = false;
+            state = DISCOVERY; 
+            return;  
+        }
+        else{
+            Serial.println("Goind back to MASTER RANGING");
+            state = MASTER_RANGING;
+        }
+    }
 }
 
 
@@ -501,10 +512,30 @@ void modeSwitchFailed(bool switching_to_initiator){
     
     }
     else{
-        if(DEBUG_MASTER){Serial.println("I need to switch it back to responder. restarting the switch to responder cycle");}
-
+        //Switching to responder. This is more critical, as I need to make sure only 1 device is initiator at a time.
+        
         waiting_responder_switch_ack = false;
-        state = SWITCH_TO_RESPONDER;
+
+        if(switch_to_responder_retries < 1){
+            switch_to_responder_retries++;
+            if(DEBUG_MASTER){Serial.println("I need to switch it back to responder. restarting the switch to responder cycle");}
+            
+            state = SWITCH_TO_RESPONDER;
+        }
+
+        else{
+            //Enough retries for the device to have switched back to responder by itself
+            switch_to_responder_retries=0;
+            if(DEBUG_MASTER){
+                Serial.print("Aborting mode switch. Connection lost with ["); 
+                Serial.print(Existing_devices[slaves_indexes[active_slave_index]].short_addr,HEX); Serial.print("]");
+            }
+            
+
+            Existing_devices[slaves_indexes[active_slave_index]].mode_switch_pending = false; // Just in case.
+            Existing_devices[slaves_indexes[active_slave_index]].is_responder = true;
+            state = INITIATOR_HANDOFF; // Back to responder. Now, turn for the next slave to range.
+        }       
     }
 }
 
