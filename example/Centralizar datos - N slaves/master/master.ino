@@ -337,8 +337,17 @@ void newRange(){
         else return; //If range arrives from a device with which master is not currently ranging.
     }
 
+    //Reactivation logic (to avoid misalignments between local devices list and DW1000Ranging.cpp's list)
     if(discovering && incoming_board_type == SLAVE){
+        
         if(!slaves_discovered) slaves_discovered = true;
+        
+        for(int i = 0; i < amount_devices; i++){
+            if(Existing_devices[i].short_addr == short_addr_origin){
+                Existing_devices[i].active = true; // Need to set it active (master ranging checks if it is active)
+                break; 
+            }
+        }
     }
     // If code reaches this point, the measure is valid and can be logged and registered.
 
