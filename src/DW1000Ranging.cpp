@@ -911,18 +911,18 @@ void DW1000RangingClass::timerTick() {
 				counterForBlink = 0;
 			}
 		}
-	}
 	
-	else if(_ranging_mode == DW1000RangingClass::UNICAST){
+	
+		else if(_ranging_mode == DW1000RangingClass::UNICAST){
 
-		if(check_inactive_devices_count ==0) checkForInactiveDevices();
-		check_inactive_devices_count++;
-		if(check_inactive_devices_count >6){
-			check_inactive_devices_count = 0;
+			if(check_inactive_devices_count ==0) checkForInactiveDevices();
+			check_inactive_devices_count++;
+			if(check_inactive_devices_count >6){
+				check_inactive_devices_count = 0;
 
+			}
 		}
 	}
-	
 	
 }
 
