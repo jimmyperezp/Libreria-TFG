@@ -63,17 +63,25 @@ uint16_t  DW1000RangingClass::_timerDelay;
 // ranging counter (per second)
 uint16_t  DW1000RangingClass::_successRangingCount = 0;
 uint32_t  DW1000RangingClass::_rangingCountPeriod  = 0;
-//Here our handlers
+
+//Callback Function handlers
 void (* DW1000RangingClass::_handleNewRange)(void) = 0;
 void (* DW1000RangingClass::_handleBlinkDevice)(DW1000Device*) = 0;
+
 void (* DW1000RangingClass::_handleNewDevice)(DW1000Device*) = 0;
 void (* DW1000RangingClass::_handleInactiveDevice)(DW1000Device*) = 0;
+
 void (* DW1000RangingClass::_handleModeSwitchRequest)(bool toInitiator,bool _broadcast_ranging) = 0;
 void (* DW1000RangingClass::_handleModeSwitchAck)(bool isInitiator) = 0;
+
 void (* DW1000RangingClass::_handleDataRequest)(byte*) = 0;
-void (* DW1000RangingClass::_handleDataReport)(byte*) = 0;
+void (* DW1000RangingClass::_handleLocalDataReport)(byte*) = 0;
+void (* DW1000RangingClass::_handleAggregatedDataReport)(byte*) = 0;
+void (* DW1000RangingClass::_handleDataReportAck)(void) = 0;
+
 void (* DW1000RangingClass::_handleStopRanging)(byte*) = 0;
 void (* DW1000RangingClass::_handleStopRangingAck)(void) = 0;
+
 void (* DW1000RangingClass::_handleTokenHandoff)(void) = 0;
 void (* DW1000RangingClass::_handleTokenHandoffAck)(void) = 0;
 
@@ -407,9 +415,9 @@ void DW1000RangingClass::loop() {
 		int messageType = detectMessageType(data);
 		
 		if(messageType == MODE_SWITCH || messageType == REQUEST_DATA || messageType == STOP_RANGING) {
-             if(_type == RESPONDER || _type == INITIATOR){
-                 receiver(); //To wait for the ack just after sending a message.
-             }
+            if(_type == RESPONDER || _type == INITIATOR){
+                receiver(); //To wait for the ack just after sending a message.
+            }
         }
 		if(messageType != POLL_ACK && messageType != POLL && messageType != RANGE)
 			return;
@@ -467,12 +475,9 @@ void DW1000RangingClass::loop() {
 						myDistantDevice->timeRangeSent = timeRangeSent;
 					}
 				}
-				
 			}
 		}
-		
 	}
-	
 	//Checks for received messages:
 	if(_receivedAck) {
 
@@ -482,7 +487,7 @@ void DW1000RangingClass::loop() {
 		
 		int messageType = detectMessageType(data); //Extracts message type from the data buffer.
 		
-		if (messageType == MODE_SWITCH || messageType == REQUEST_DATA ||messageType == DATA_REPORT || messageType == STOP_RANGING || messageType == POLL || messageType == RANGE || messageType == TOKEN_HANDOFF|| messageType == TOKEN_HANDOFF_ACK) {
+		if (messageType == MODE_SWITCH || messageType == REQUEST_DATA ||messageType == DATA_REPORT_LOCAL || messageType == DATA_REPORT_ACK || messageType == DATA_REPORT_AGGREGATED || messageType == STOP_RANGING || messageType == POLL || messageType == RANGE || messageType == TOKEN_HANDOFF|| messageType == TOKEN_HANDOFF_ACK) {
 
 			bool is_broadcast = (data[5] == 0xFF && data[6] == 0xFF);
             bool is_for_me = (data[6] == _currentShortAddress[0] && data[5] == _currentShortAddress[1]);
@@ -621,21 +626,46 @@ void DW1000RangingClass::loop() {
 			return;
 
 		}
-		else if(messageType == DATA_REPORT){
+		else if(messageType == DATA_REPORT_LOCAL){
 			
 			byte shortAddress[2]; //Creates 2 bytes to save 'shortAddress'
 			_globalMac.decodeShortMACFrame(data, shortAddress); //To extract the shortAddress from the frame data[]
-			DW1000Device* req = searchDistantDevice(shortAddress);
-    		if (req){ req->noteActivity(); _lastDistantDevice = req->getIndex();}
+			DW1000Device* dev = searchDistantDevice(shortAddress);
+    		if (dev){ dev->noteActivity(); _lastDistantDevice = dev->getIndex();}
 			// The master anchor requests the slaves for a data report.
 			// Slaves will have to send their measurements struct
 			
-			if(_handleDataReport){
-				(* _handleDataReport)(data);
+			if(_handleLocalDataReport){
+				(* _handleLocalDataReport)(data);
+			}
+			return;
+		}
+		else if(messageType == DATA_REPORT_AGGREGATED){
+
+			byte shortAddress[2]; //Creates 2 bytes to save 'shortAddress'
+			_globalMac.decodeShortMACFrame(data, shortAddress); //To extract the shortAddress from the frame data[]
+			DW1000Device* dev = searchDistantDevice(shortAddress);
+    		if (dev){ dev->noteActivity(); _lastDistantDevice = dev->getIndex();}
+			
+			if(_handleAggregatedDataReport){
+				(* _handleAggregatedDataReport)(data);
+			}
+			return;
+		}
+		else if(messageType == DATA_REPORT_ACK){
+
+			byte shortAddress[2]; //Creates 2 bytes to save 'shortAddress'
+			_globalMac.decodeShortMACFrame(data, shortAddress); //To extract the shortAddress from the frame data[]
+			DW1000Device* dev = searchDistantDevice(shortAddress);
+			if (dev){ dev->noteActivity(); _lastDistantDevice = dev->getIndex();}
+
+			if(_handleDataReportAck){
+				(* _handleDataReportAck)();
 			}
 			return;
 		}
 
+		
 		if(ranging_enabled){
 
 			if(messageType == BLINK && _type == RESPONDER) { //If I'm a responder and I receive a BLINK (discovery) message:
@@ -1338,7 +1368,7 @@ void DW1000RangingClass::transmitDataRequest(DW1000Device* device){
 	transmit(data); //the data is sent via UWB
 }
 
-void DW1000RangingClass::transmitDataReport(Measurement* measurements, int numMeasures, DW1000Device* device) {
+void DW1000RangingClass::transmitLocalDataReport(Measurement* measurements, int numMeasures, DW1000Device* device) {
 
 	uint8_t active_measures = 0;
     byte dest[2];
@@ -1362,7 +1392,7 @@ void DW1000RangingClass::transmitDataReport(Measurement* measurements, int numMe
 
     // Then, first byte is reserved to the type of message.
 	// It is stored in the index with value short_mac_len
-    data[SHORT_MAC_LEN] = DATA_REPORT;
+    data[SHORT_MAC_LEN] = DATA_REPORT_LOCAL;
 
     // Variable "index" is used to fill up the data buffer.
     uint8_t index = SHORT_MAC_LEN + 1;
@@ -1385,7 +1415,7 @@ void DW1000RangingClass::transmitDataReport(Measurement* measurements, int numMe
 
     if (totalMessageSize > LEN_DATA) {
         if (DEBUG) {
-            Serial.println("Error: DATA_REPORT exceeds the size of the data[] buffer");
+            Serial.println("Error: DATA REPORT exceeds the size of the data[] buffer");
         }
         return;  // If there isn't enough space, I return without sending it.
     }
@@ -1411,6 +1441,78 @@ void DW1000RangingClass::transmitDataReport(Measurement* measurements, int numMe
 	
 
     transmit(data); //Finally, sends the message
+}
+
+void DW1000RangingClass::transmitAggregatedDataReport(Measurement* measurements, int numMeasures, DW1000Device* device) {
+
+	//Works same as local data report, but includes the origin short Address in the payload, as this message is aggregated and can be sent by other devices that are not the origin of the measures. 
+
+	
+	uint8_t active_measures = 0;
+	byte dest[2];
+
+	if (device == nullptr) {
+		dest[0] = 0xFF;
+		dest[1] = 0xFF;
+	} 
+	else memcpy(dest, device->getByteShortAddress(), 2);
+	
+	transmitInit(); 
+
+	_globalMac.generateShortMACFrame(data, _currentShortAddress, dest);
+
+	data[SHORT_MAC_LEN] = DATA_REPORT_AGGREGATED;
+
+	uint8_t index = SHORT_MAC_LEN + 1;
+
+	for (int i = 0; i<numMeasures;i++){
+		if(measurements[i].active == true){
+			active_measures++;
+		}
+	}
+	data[index++] = active_measures;
+
+	size_t totalPayloadSize = 1 + active_measures * 6; //1 byte more than the localDataReport, as the origin_short_address has to be included as well.  
+	size_t totalMessageSize = SHORT_MAC_LEN + 1 + totalPayloadSize; 
+
+	if (totalMessageSize > LEN_DATA) {
+		if (DEBUG) {
+			Serial.println("Error: DATA REPORT exceeds the size of the data[] buffer");
+		}
+		return;  
+	}
+
+	for (uint8_t i = 0; i < numMeasures; i++) {
+		if(measurements[i].active == true){
+
+			data[index++] = (uint8_t)measurements[i].short_addr_origin;
+			data[index++] = (uint8_t)measurements[i].short_addr_dest;
+			uint16_t distance_cm = (uint16_t)(measurements[i].distance * 100.0f);
+			memcpy(data + index, &distance_cm, 2); 
+			index += 2;
+			int16_t rxPower_tx = (int16_t)(measurements[i].rxPower * 100.0f); 
+			memcpy(data + index, &rxPower_tx, 2); 
+			index += 2;
+		}
+		
+	}
+	
+	transmit(data);
+}
+
+void DW1000RangingClass::transmitDataReportAck(DW1000Device* device){
+
+	transmitInit();
+	byte dest[2];
+
+	if(device == nullptr){
+		dest[0] = 0xFF;
+		dest[1] = 0xFF;
+	}
+	else memcpy(dest,device->getByteShortAddress(),2);
+	_globalMac.generateShortMACFrame(data, _currentShortAddress, dest);
+	data[SHORT_MAC_LEN] = DATA_REPORT_ACK;
+	transmit(data);
 }
 
 void DW1000RangingClass::transmitTokenHandoff(DW1000Device* device){

@@ -26,7 +26,6 @@ ExistingDevice Existing_devices[MAX_DEVICES];
 uint8_t amount_devices = 0;
 
 uint8_t nodes_indexes[MAX_DEVICES];
-static bool nodes_discovered = false;
 uint8_t amount_nodes = 0;
 uint8_t amount_active_nodes = 0;
 
@@ -72,9 +71,12 @@ unsigned long wait_token_handoff_ack_start = 0;
 
 /*state = WAIT_FOR_RETURN*/
 static bool _wait_for_return = false;
+static bool return_received = false; // To avoid processing the same report more than once in case it is received multiple times due to retries and ACK failures.
 unsigned long wait_for_return_start = 0;
 const unsigned long WAIT_FOR_RETURN_TIMEOUT = 2000;
 
+/*Used to print results*/
+unsigned long last_shown_data_timestamp = 0;
 
 /*States used in the FSM*/
 enum State{
@@ -84,13 +86,15 @@ enum State{
     TOKEN_HANDOFF_STATE,
     WAIT_TOKEN_HANDOFF_ACK,
     WAIT_FOR_RETURN,
-    DATA_REPORT_STATE
+    DATA_REPORT_STATE,
+    END_CYCLE
 };
 State state = DISCOVERY;
 
 enum UnicastMessageType{
     MSG_POLL_UNICAST,
-    MSG_TOKEN_HANDOFF
+    MSG_TOKEN_HANDOFF,
+    MSG_DATA_REPORT_ACK
 };
 
 
@@ -107,13 +111,8 @@ void setup(){
 
     DW1000.setAntennaDelay(Adelay);
         
-    // Callbacks "enabled" 
-    DW1000Ranging.attachNewRange(newRange);
-    DW1000Ranging.attachNewDevice(newDevice);
-    DW1000Ranging.attachInactiveDevice(inactiveDevice); 
-    DW1000Ranging.attachTokenHandoffAck(tokenHandoffAck);  
-
-       
+    attachCallbacks();
+   
     DW1000Ranging.startAsInitiator(DEVICE_ADDR,DW1000.MODE_1, false,COORDINATOR);
 
     own_short_addr = getOwnShortAddressHeader();
@@ -127,6 +126,15 @@ uint8_t getOwnShortAddressHeader() {
     return (uint8_t)sa[0];
 }
 
+void attachCallbacks(){
+
+    DW1000Ranging.attachNewRange(newRange);
+    DW1000Ranging.attachNewDevice(newDevice);
+    DW1000Ranging.attachInactiveDevice(inactiveDevice); 
+    DW1000Ranging.attachTokenHandoffAck(tokenHandoffAck); 
+    DW1000Ranging.attachAggregatedDataReport(aggregatedDataReport);
+    
+}
 
 
 /*DEVICE DISCOVERY*/
@@ -497,6 +505,30 @@ void transmitUnicast(uint8_t message_type){
 
         }
     }
+
+    else if(message_type == MSG_DATA_REPORT_ACK){
+
+        DW1000Device* token_target_device = DW1000Ranging.searchDeviceByShortAddHeader(token_target_address);
+
+        if(token_target_device){
+
+            if(DEBUG_COORDINATOR){
+                    Serial.print("Data report ACK transmitted to: [");
+                    Serial.print(token_target_address,HEX);
+                    Serial.println("] via unicast");
+                }
+
+            DW1000Ranging.transmitDataReportAck(token_target_device);
+            
+        }
+
+        else{
+            if(DEBUG_COORDINATOR) Serial.println("Target device not found. Sending data report ACK via broadcast.");
+            DW1000Ranging.transmitDataReportAck(nullptr);
+        }
+
+    }
+
 }
 
 void retryTransmission(uint8_t message_type){
@@ -556,6 +588,142 @@ void TokenHandoffFailed(){
 
 }
 
+
+/*DATA REPORTING*/
+
+void aggregatedDataReport(byte* data){
+
+    DW1000Device* reporting_device = DW1000Ranging.getDistantDevice();
+
+    uint8_t reporting_node_short_addr = reporting_device->getShortAddressHeader();
+
+    if(!(reporting_node_short_addr == token_target_address)){
+
+        // Only process reports received from the node to which the token was passed.
+        if(DEBUG_COORDINATOR){
+            Serial.print("Data report received from ["); Serial.print(reporting_node_short_addr,HEX); 
+            Serial.print("] but expected from ["); Serial.print(token_target_address,HEX); Serial.println("]. Data report ignored");
+        }
+        return;
+    }
+
+    else{ //The report comes from the valid device
+
+        if(DEBUG_COORDINATOR){
+            Serial.print("Data report received from: [");
+            Serial.print(reporting_node_short_addr,HEX);
+            Serial.println("]");
+        }
+
+        if(_wait_for_return == true && return_received == false){ //The device is valid but I wasn't waiting for a report.
+            return_received = true;
+            _wait_for_return = false; // To restart the timer next time state is WAIT_FOR_RETURN.
+            if(DEBUG_COORDINATOR) Serial.print(" Sending ACK and processing data...");
+        }
+
+        else if(return_received == true){ //The device is valid + I was waiting for the report
+             
+            if(DEBUG_COORDINATOR) Serial.print(" but already received before. Only need to send ACK");
+            transmitUnicast(MSG_DATA_REPORT_ACK);
+
+        }
+
+        else if(_wait_for_return == false){
+            if(DEBUG_COORDINATOR) Serial.print(" but I wasn't waiting for it anymore. Sending ack of reception but ignoring data");
+            transmitUnicast(MSG_DATA_REPORT_ACK);
+        }
+
+        transmitUnicast(MSG_DATA_REPORT_ACK);
+        return_received = true; //To avoid processing the same report more than once in case it is received multiple times due to retries and ACK failures.
+        uint8_t index = SHORT_MAC_LEN+1; // Variable "index" is used to go through all the payload.
+        uint8_t num_measures = data[index++];
+
+        if(num_measures*6>LEN_DATA-SHORT_MAC_LEN-4){
+            // x5 because every measure takes 5 bytes.
+            Serial.println("DATA REPORT RECEIVED IS TOO LONG");
+            return;
+        }
+
+        for(int i=0; i<num_measures;i++){
+
+            uint8_t short_addr_origin = data[index++];
+            uint8_t short_addr_dest = data[index++];
+
+            uint16_t distance_cm;
+            memcpy(&distance_cm, data+index, 2);
+            index += 2;
+            float distance_m = (float)distance_cm/100;
+            int16_t _rxPower; //Already has a sign (int, not uint)
+            memcpy(&_rxPower, data+index, 2);
+            index += 2;
+            float rxPower = (float)_rxPower/100;
+
+            logMeasure(short_addr_origin,short_addr_dest,distance_m,rxPower);
+
+        }
+    }
+
+    _wait_for_return = false; // To restart the timer next time state is WAIT_FOR_RETURN.
+    state = END_CYCLE;
+    
+}
+
+void showData(){
+
+    bool inactive_measures_exist = false;
+
+    Serial.println("\n--------------------------- DATA REPORT ---------------------------");
+    
+    unsigned long time_between_prints = current_time - last_shown_data_timestamp;
+    last_shown_data_timestamp = current_time;
+    Serial.print("                   Time since last print --> ");
+    Serial.print(time_between_prints);
+    Serial.println(" ms\n");
+
+    for (int i = 0; i < amount_measurements ; i++){ 
+        
+        if(measurements[i].active == true){
+            Serial.print(" Devices: ");
+            Serial.print(measurements[i].short_addr_origin,HEX);
+            Serial.print(" -> ");
+            Serial.print(measurements[i].short_addr_dest,HEX);
+            Serial.print("\t Distance: ");
+            Serial.print(measurements[i].distance);
+            Serial.print(" m \t RX power: ");
+            Serial.print(measurements[i].rxPower);
+            Serial.println(" dBm");
+        }
+    }
+
+    for (int i = 0; i < amount_measurements ; i++){ 
+        
+        if(measurements[i].active == false){
+            inactive_measures_exist = true;
+            break;
+        }
+    }
+
+    if(inactive_measures_exist == true){
+        Serial.println("\n\t    ############ INACTIVE MEASURES ############");
+    
+        for (int i = 0; i < amount_measurements ; i++){ 
+        
+            if(measurements[i].active == false){
+                inactive_measures_exist = true;
+                
+                Serial.print("\t\tDevice: ["); Serial.print(measurements[i].short_addr_origin,HEX); Serial.print("] didn't range with: [");
+                Serial.print(measurements[i].short_addr_dest,HEX); Serial.println("]");
+                
+            }
+        }
+
+        Serial.println("\t    ###########################################");
+    
+    }
+    
+    Serial.println("--------------------------------------------------------------------");
+    
+}
 
 
 /*LOOP*/
@@ -702,4 +870,13 @@ void loop(){
             
         }
     }   
+
+    else if(state == END_CYCLE){
+
+        showData();
+        if(DEBUG_COORDINATOR){
+            Serial.print("\nEnd of cycle. Restarting process... ");
+        }
+        state = DISCOVERY;
+    }
 }

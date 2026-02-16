@@ -415,8 +415,6 @@ void switchToInitiator(){
 
 void DataRequested(byte* short_addr_requester){
     
-    uint8_t num_measures = amount_measurements;
-
     if (DEBUG_SLAVE) {
         Serial.print("\n["); 
         Serial.print(((uint16_t)short_addr_requester[0] << 8),HEX);// | short_addr_requester[1], HEX);
@@ -432,10 +430,10 @@ void DataRequested(byte* short_addr_requester){
             Serial.print("Data report sent to: [");
             Serial.print(requester->getShortAddressHeader(), HEX);
             Serial.print("]\tSent ");
-            Serial.print(num_measures);
+            Serial.print(amount_measurements);
             Serial.println(" measures");
         }
-        DW1000Ranging.transmitDataReport((Measurement*)measurements, num_measures, requester);
+        DW1000Ranging.transmitDataReport((Measurement*)measurements, amount_measurements, requester);
     }
 
     else{
@@ -443,11 +441,11 @@ void DataRequested(byte* short_addr_requester){
         if(DEBUG_SLAVE){
             Serial.print("Requester not found. Sent data report via broadcast.");
             Serial.print("\tSent ");
-            Serial.print(num_measures);
+            Serial.print(amount_measurements);
             Serial.println(" measures");
         } 
               
-        DW1000Ranging.transmitDataReport((Measurement*)measurements, num_measures, nullptr);
+        DW1000Ranging.transmitDataReport((Measurement*)measurements, amount_measurements, nullptr);
     }
         
     clearMeasures();

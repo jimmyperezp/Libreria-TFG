@@ -21,14 +21,14 @@
 //Messages used to control the data flow: 
 #define MODE_SWITCH 6 // To request a switch in mode. From initiator to responder (or viceversa)
 #define MODE_SWITCH_ACK 7
-
 #define REQUEST_DATA 8 // The master anchor sends this message to request the slave anchors the data they've collected (this data includes the measurements from the slave to the rest of devices)
-#define DATA_REPORT 9 // The slave anchors respond with this message. In it, the requested data is codified.
-
-#define STOP_RANGING 10
-#define STOP_RANGING_ACK 11
-#define TOKEN_HANDOFF 12
-#define TOKEN_HANDOFF_ACK 13
+#define DATA_REPORT_LOCAL 9 
+#define DATA_REPORT_AGGREGATED 10
+#define DATA_REPORT_ACK 11
+#define STOP_RANGING 12
+#define STOP_RANGING_ACK 13
+#define TOKEN_HANDOFF 14
+#define TOKEN_HANDOFF_ACK 15
 
 //Length of tha payload in the sent messages.
 #define LEN_DATA 90
@@ -82,8 +82,6 @@ struct ExistingDevice{
 	bool data_report_pending;
 	
 };
-
-
 
 class DW1000RangingClass {
 	public:
@@ -140,8 +138,13 @@ class DW1000RangingClass {
 		static void attachModeSwitchAck(void (* handleModeSwitchAck)(bool isInitiator)){ _handleModeSwitchAck = handleModeSwitchAck;}
 		
 		static void attachDataRequested(void (*handleDataRequest)(byte* shortAddress)){ _handleDataRequest = handleDataRequest; }
-		static void attachDataReport(void (*handleDataReport)(byte* dataReport)){ _handleDataReport = handleDataReport;}
+
+		static void attachLocalDataReport(void (*handleLocalDataReport)(byte* dataReport)){ _handleLocalDataReport = handleLocalDataReport;}
+
+		static void attachAggregatedDataReport(void (*handleAggregatedDataReport)(byte* dataReport)){ _handleAggregatedDataReport = handleAggregatedDataReport;}
 		
+		static void attachDataReportAck(void (*handleDataReportAck)(void)){ _handleDataReportAck = handleDataReportAck;}
+
 		static void attachStopRangingRequested( void(*handleStopRanging)(byte* shortAddress)){_handleStopRanging = handleStopRanging;}
 		
 		static void attachStopRangingAck(void(*handleStopRangingAck)(void)){_handleStopRangingAck = handleStopRangingAck;}
@@ -169,7 +172,12 @@ class DW1000RangingClass {
 		void transmitStopRangingAck(DW1000Device* device);
 		
 		void transmitDataRequest(DW1000Device* device = nullptr); //Data request. From master to slaves
-		void transmitDataReport(Measurement* measurements, int numMedidas, DW1000Device* device = nullptr); //Data report. from slaves to master.
+		
+		void transmitLocalDataReport(Measurement* measurements, int num_measures, DW1000Device* device = nullptr); //Data report. from slaves to master.
+
+		void transmitAggregatedDataReport(Measurement* measurements, int num_measures, DW1000Device* device = nullptr);
+
+		void transmitDataReportAck(DW1000Device* device = nullptr); 
 
 		void transmitTokenHandoff(DW1000Device* device = nullptr); //Token handoff. From coordinator to closest node.
 
@@ -205,7 +213,9 @@ class DW1000RangingClass {
 		static void (* _handleModeSwitchAck)(bool isInitiator);
 
 		static void (* _handleDataRequest)(byte* shortAddress);
-		static void (* _handleDataReport)(byte* dataReport);
+		static void (* _handleLocalDataReport)(byte* dataReport);
+		static void (* _handleAggregatedDataReport)(byte* dataReport);
+		static void (* _handleDataReportAck)(void);
 
 		static void (* _handleStopRanging)(byte* shortAddress);
 		static void (* _handleStopRangingAck)(void);

@@ -35,7 +35,9 @@ uint8_t amount_nodes = 0;
 enum UnicastMessageType{
     MSG_POLL_UNICAST,
     MSG_TOKEN_HANDOFF,
-    MSG_TOKEN_HANDOFF_ACK
+    MSG_TOKEN_HANDOFF_ACK,
+    MSG_RETURN_TO_PARENT,
+    MSG_DATA_REPORT_ACK
 };
 
 /*Node's FSM states*/
@@ -46,7 +48,8 @@ enum node_state{
     WAIT_FOR_RANGE,
     TOKEN_HANDOFF_STATE,
     WAIT_TOKEN_HANDOFF_ACK,
-    RETURN,
+    RETURN_TO_PARENT,
+    WAIT_RETURN_TO_PARENT_ACK,
     WAIT_FOR_RETURN
 };
 node_state state = IDLE;
@@ -83,9 +86,18 @@ uint8_t parent_address = 0; //Device that sent the token to this node. The data 
 static bool _wait_token_handoff_ack = false;
 unsigned long wait_token_handoff_ack_start = 0;
 
+/*state = RETURN_TO_PARENT*/
+
+/*satet = WAIT_RETURN_TO_PARENT_ACK*/
+static bool _wait_return_to_parent_ack = false;
+unsigned long wait_return_to_parent_ack_start = 0;
 
 /*state = WAIT_FOR_RETURN*/
 static bool _wait_for_return = false;
+static bool return_received = false; // To avoid processing the same report more than once in case it is received multiple times due to retries and ACK failures.
+unsigned long wait_for_return_start = 0;
+const unsigned long WAITING_RETURN_TIME = 10000;
+
 
 /*CODE*/
 
@@ -114,6 +126,9 @@ void attachCallbacks(){
 
     DW1000Ranging.attachTokenHandoff(tokenHandoff);
     DW1000Ranging.attachTokenHandoffAck(tokenHandoffAck);
+
+    DW1000Ranging.attachAggregatedDataReport(aggregatedDataReport);  
+    DW1000Ranging.attachDataReportAck(dataReportAck);
 }
 
 uint8_t getOwnShortAddress() {
@@ -306,20 +321,8 @@ void tokenHandoff(){
         state = DISCOVERY;
     }
     
-    if(parent_device){
-        if(DEBUG_SLAVE){
-            Serial.print("Sending token handoff ACK via Unicast to --> ");
-            Serial.print(parent_address,HEX); Serial.println();
-        }
-        DW1000Ranging.transmitTokenHandoffAck(parent_device);
-        delay(20);
-    }
-    else{
-        if(DEBUG_SLAVE) Serial.println("Parent device not found. Sending token handoff ACK via broadcast.");
-        DW1000Ranging.transmitTokenHandoffAck(nullptr);
-    }
+    transmitUnicast(MSG_TOKEN_HANDOFF_ACK);
    
-    
 }
 
 void tokenHandoffAck(){
@@ -521,7 +524,6 @@ void transmitUnicast(uint8_t message_type){
         }
 
     }
-
     else if(message_type == MSG_TOKEN_HANDOFF){
 
         token_target_address = getClosestNodeAddress();
@@ -546,8 +548,76 @@ void transmitUnicast(uint8_t message_type){
             // Simply prints the transmission was not sent. the retryTransmission logic handles the retries and, in case of failure, moving on to the next closest node
         }
     }
+    else if(message_type == MSG_TOKEN_HANDOFF_ACK){
 
-    
+        DW1000Device* parent = DW1000Ranging.searchDeviceByShortAddHeader(parent_address);
+
+        if(parent){
+
+            if(DEBUG_SLAVE){
+                    Serial.print("Token Handoff ACK transmitted to: [");
+                    Serial.print(parent_address,HEX);
+                    Serial.println("] via unicast");
+                }
+
+            DW1000Ranging.transmitTokenHandoffAck(parent);
+                    
+        }
+
+        else{
+            if(DEBUG_SLAVE) Serial.println("Parent device not found. Sending token handoff ACK via broadcast.");
+            DW1000Ranging.transmitTokenHandoffAck(nullptr);
+        }
+
+    }
+    else if(message_type == MSG_RETURN_TO_PARENT){
+
+        DW1000Device* parent = DW1000Ranging.searchDeviceByShortAddHeader(parent_address);
+
+        if(parent){
+
+            if(DEBUG_SLAVE){
+                    Serial.print("Sending data report to parent: [");
+                    Serial.print(parent_address,HEX);
+                    Serial.println("] via unicast");
+                }
+            DW1000Ranging.transmitAggregatedDataReport((Measurement*)measurements, amount_measurements,parent);
+        }
+
+
+        else{
+            if(DEBUG_SLAVE){
+                Serial.print("Parent ["); 
+                Serial.print(parent_address,HEX); 
+                Serial.println("] not found. Data report sent via broadcast. ");
+            }
+            DW1000Ranging.transmitAggregatedDataReport((Measurement*)measurements, amount_measurements, nullptr);
+        }
+
+        clearMeasures(); // No matter if transmitting via unicast or broadcast, measures are "cleared" (marked as inactive) to avoid sending obsolete measures next time.
+    }
+    else if(message_type == MSG_DATA_REPORT_ACK){
+
+        DW1000Device* token_target_device = DW1000Ranging.searchDeviceByShortAddHeader(token_target_address);
+
+        if(token_target_device){
+
+            if(DEBUG_SLAVE){
+                    Serial.print("Data report ACK transmitted to: [");
+                    Serial.print(token_target_address,HEX);
+                    Serial.println("] via unicast");
+                }
+
+            DW1000Ranging.transmitDataReportAck(token_target_device);
+                    
+        }
+
+        else{
+            if(DEBUG_SLAVE) Serial.println("Target device not found. Sending data report ACK via broadcast.");
+            DW1000Ranging.transmitDataReportAck(nullptr);
+        }
+    }
+
 }
 
 void retryTransmission(uint8_t message_type){
@@ -574,6 +644,11 @@ void retryTransmission(uint8_t message_type){
             TokenHandoffFailed(); 
         }
    
+        else if(message_type == MSG_RETURN_TO_PARENT){
+
+            dataReportFailed();
+        }
+        
     }
 }
 
@@ -608,6 +683,118 @@ void TokenHandoffFailed(){
 }
 
 
+/*DATA REPORTING*/
+
+void aggregatedDataReport(byte* data){
+
+    DW1000Device* reporting_device = DW1000Ranging.getDistantDevice();
+
+    uint8_t reporting_node_short_addr = reporting_device->getShortAddressHeader();
+
+    if(!(reporting_node_short_addr == token_target_address)){
+
+        // Only process reports received from the node to which the token was passed.
+        if(DEBUG_SLAVE){
+            Serial.print("Data report received from ["); Serial.print(reporting_node_short_addr,HEX); 
+            Serial.print("] but expected from ["); Serial.print(token_target_address,HEX); Serial.println("]. Data report ignored");
+        }
+        return;
+    }
+
+    else{ //The report comes from the valid device
+
+        if(DEBUG_SLAVE){
+            Serial.print("Data report received from: [");
+            Serial.print(reporting_node_short_addr,HEX);
+            Serial.print("]");
+        }
+
+        if(_wait_for_return == true && return_received == false){ //The device is valid but I wasn't waiting for a report.
+            return_received = true;
+            _wait_for_return = false; // To restart the timer next time state is WAIT_FOR_RETURN.
+            if(DEBUG_SLAVE) Serial.print(" Sending ACK and processing data...");
+        }
+
+        else if(return_received == true){ //The device is valid + I was waiting for the report
+             
+            if(DEBUG_SLAVE) Serial.print(" but already received before. Only need to send ACK");
+            transmitUnicast(MSG_DATA_REPORT_ACK);
+
+        }
+
+        else if(_wait_for_return == false){
+            if(DEBUG_SLAVE) Serial.print(" but I wasn't waiting for it anymore. Sending ack of reception but ignoring data");
+            transmitUnicast(MSG_DATA_REPORT_ACK);
+        }
+
+        transmitUnicast(MSG_DATA_REPORT_ACK);
+        return_received = true; //To avoid processing the same report more than once in case it is received multiple times due to retries and ACK failures.
+        uint8_t index = SHORT_MAC_LEN+1; // Variable "index" is used to go through all the payload.
+        uint8_t num_measures = data[index++];
+
+        if(num_measures*6>LEN_DATA-SHORT_MAC_LEN-4){
+            // x5 because every measure takes 5 bytes.
+            Serial.println("DATA REPORT RECEIVED IS TOO LONG");
+            return;
+        }
+
+        for(int i=0; i<num_measures;i++){
+
+            uint8_t short_addr_origin = data[index++];
+            uint8_t short_addr_dest = data[index++];
+
+            uint16_t distance_cm;
+            memcpy(&distance_cm, data+index, 2);
+            index += 2;
+            float distance_m = (float)distance_cm/100;
+            int16_t _rxPower; //Already has a sign (int, not uint)
+            memcpy(&_rxPower, data+index, 2);
+            index += 2;
+            float rxPower = (float)_rxPower/100;
+
+            logMeasure(short_addr_origin,short_addr_dest,distance_m,rxPower);
+
+        }
+    }
+
+    state = RETURN_TO_PARENT;
+    
+}
+
+void dataReportAck(){
+
+    uint8_t message_origin_short_addr = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
+
+    if(!(message_origin_short_addr == parent_address)) return;
+    else{
+
+        _wait_return_to_parent_ack = false; // To restart the timer next time state is WAIT_RETURN_TO_PARENT_ACK.
+        num_retries = 0; // If ACK is received, retries count must be restarted for the next transmissions.
+        state = IDLE;
+
+        if(DEBUG_SLAVE){
+            Serial.print("Data report ACK received from: [");
+            Serial.print(DW1000Ranging.getDistantDevice()->getShortAddressHeader(),HEX);
+            Serial.println("]. Back to IDLE");
+        }
+    }
+}
+
+void clearMeasures(){
+    for(int i=0; i<amount_measurements; i++){
+        measurements[i].active = false;
+    }
+}
+
+void dataReportFailed(){
+
+    if(DEBUG_SLAVE){
+        Serial.print("Data report transmission to parent [");
+        Serial.print(parent_address,HEX);
+        Serial.println("] FAILED after max retries. Going back to IDLE... ");
+    }
+    state = IDLE;
+}
 
 /*Loop*/
 
@@ -716,7 +903,7 @@ void loop(){
 
         if(token_target_address == -1){
             Serial.println("NO ACTIVE NODES. I am the TAIL. Building up the return\n\n");
-            state = RETURN;
+            state = RETURN_TO_PARENT;
         }
         else{
             state = WAIT_TOKEN_HANDOFF_ACK;
@@ -743,9 +930,40 @@ void loop(){
     }
     else if(state == WAIT_FOR_RETURN){
        
+        if(!(_wait_for_return)){
+            _wait_for_return = true;
+            wait_for_return_start = current_time;
+            if(DEBUG_SLAVE){
+                Serial.print("Waiting for return from: [");
+                Serial.print(token_target_address,HEX); Serial.println("] ... ");
+            }
+        }
+        else if(current_time - wait_for_return_start >= WAITING_RETURN_TIME){
+            
+            _wait_for_return = false; // To restart the timer next time state is WAIT_FOR_RETURN.
+            if(DEBUG_SLAVE){Serial.println("Waiting for return TIMEOUT. Sending my return to my parent: ["); Serial.print(parent_address,HEX); Serial.println("]\n ");}
+            state = RETURN_TO_PARENT;
+        }
     }
+    else if(state == RETURN_TO_PARENT){
 
-    else if(state == RETURN){}
-      
+        state = WAIT_RETURN_TO_PARENT_ACK;
+        transmitUnicast(MSG_RETURN_TO_PARENT);
+    }     
+    else if(state == WAIT_RETURN_TO_PARENT_ACK){
 
+        if(!(_wait_return_to_parent_ack)){
+            _wait_return_to_parent_ack = true;
+            wait_return_to_parent_ack_start = current_time;
+            if(DEBUG_SLAVE){
+                Serial.print("Waiting for return to parent ACK from: [");
+                Serial.print(parent_address,HEX); Serial.println("] ... ");
+            }
+        }
+        else if(current_time - wait_return_to_parent_ack_start >= WAITING_TIME){
+            
+            _wait_return_to_parent_ack = false; // To restart the timer next time state is WAIT_RETURN_TO_PARENT_ACK.
+            retryTransmission(MSG_RETURN_TO_PARENT);
+        }
+    }
 }
