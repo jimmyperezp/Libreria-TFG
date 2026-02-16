@@ -1480,5 +1480,3 @@ float DW1000RangingClass::filterValue(float value, float previousValue, uint16_t
 	return (value * k) + previousValue * (1.0f - k);
 }
 
-
-void transmitDataReport()
