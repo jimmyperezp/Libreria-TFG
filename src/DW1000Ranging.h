@@ -27,7 +27,8 @@
 
 #define STOP_RANGING 10
 #define STOP_RANGING_ACK 11
-
+#define TOKEN_HANDOFF 12
+#define TOKEN_HANDOFF_ACK 13
 
 //Length of tha payload in the sent messages.
 #define LEN_DATA 90
@@ -71,10 +72,12 @@ struct ExistingDevice{
 	
 	uint8_t short_addr;
 	byte byte_short_addr[2];
-	bool is_slave;
-	bool is_responder;
+	
 	bool active;
+	bool is_node;
+	
 	bool range_pending;
+	bool token_handoff_pending;
 	bool mode_switch_pending;
 	bool data_report_pending;
 	
@@ -140,7 +143,13 @@ class DW1000RangingClass {
 		static void attachDataReport(void (*handleDataReport)(byte* dataReport)){ _handleDataReport = handleDataReport;}
 		
 		static void attachStopRangingRequested( void(*handleStopRanging)(byte* shortAddress)){_handleStopRanging = handleStopRanging;}
+		
 		static void attachStopRangingAck(void(*handleStopRangingAck)(void)){_handleStopRangingAck = handleStopRangingAck;}
+
+		static void attachTokenHandoffAck(void(*handleTokenHandoffAck)(void)){_handleTokenHandoffAck = handleTokenHandoffAck;}
+
+		static void attachTokenHandoff(void(*handleTokenHandoff)(void)){_handleTokenHandoff = handleTokenHandoff;}
+
 
 		//search devices in the networkDevices array
 		static DW1000Device* getDistantDevice();
@@ -162,11 +171,14 @@ class DW1000RangingClass {
 		void transmitDataRequest(DW1000Device* device = nullptr); //Data request. From master to slaves
 		void transmitDataReport(Measurement* measurements, int numMedidas, DW1000Device* device = nullptr); //Data report. from slaves to master.
 
-		//For ranging protocol: (sending poll has to be public --> the master chooses to send it automatically or manaually (broadcast or unicast))
+		void transmitTokenHandoff(DW1000Device* device = nullptr); //Token handoff. From coordinator to closest node.
+
+		void transmitTokenHandoffAck(DW1000Device* device = nullptr); 
+
+		//For ranging protocol: transmitPoll has to be public so that the coordinator can tranmit it via unicast to certain target devices.
 		static void transmitPoll(DW1000Device* myDistantDevice);
 
-		//Public --> to check en each loop
-		static void checkForInactiveDevices();
+
 		
 	private:
 
@@ -197,6 +209,10 @@ class DW1000RangingClass {
 
 		static void (* _handleStopRanging)(byte* shortAddress);
 		static void (* _handleStopRangingAck)(void);
+
+		static void (* _handleTokenHandoff)(void);
+		static void (* _handleTokenHandoffAck)(void);
+
 		
 		//To select the mode of ranging (broadcast or unicast)
 		static RangingMode _ranging_mode;
@@ -248,7 +264,7 @@ class DW1000RangingClass {
 		
 		//global functions:
 		static void checkForReset();
-		
+		static void checkForInactiveDevices();
 		static void copyShortAddress(byte address1[], byte address2[]);
 		
 		//for ranging protocole (responder)

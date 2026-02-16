@@ -18,7 +18,7 @@ const uint8_t PIN_SS = 4;   // spi select pin
 uint8_t own_short_addr = 0; 
 uint16_t Adelay = 16580;
 
-#define IS_MASTER false
+
 #define DEBUG_SLAVE true
 
 /*Structs to handle devices & measurements*/

@@ -24,8 +24,8 @@
 
 #define INACTIVITY_TIME 5000
 
-#define MASTER 1
-#define SLAVE 2
+#define COORDINATOR 1
+#define NODE 2
 #define TAG 3
 
 

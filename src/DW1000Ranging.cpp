@@ -74,6 +74,8 @@ void (* DW1000RangingClass::_handleDataRequest)(byte*) = 0;
 void (* DW1000RangingClass::_handleDataReport)(byte*) = 0;
 void (* DW1000RangingClass::_handleStopRanging)(byte*) = 0;
 void (* DW1000RangingClass::_handleStopRangingAck)(void) = 0;
+void (* DW1000RangingClass::_handleTokenHandoff)(void) = 0;
+void (* DW1000RangingClass::_handleTokenHandoffAck)(void) = 0;
 
 
 /* ###########################################################################
@@ -480,7 +482,7 @@ void DW1000RangingClass::loop() {
 		
 		int messageType = detectMessageType(data); //Extracts message type from the data buffer.
 		
-		if (messageType == MODE_SWITCH || messageType == REQUEST_DATA ||messageType == DATA_REPORT || messageType == STOP_RANGING || messageType == POLL || messageType == RANGE) {
+		if (messageType == MODE_SWITCH || messageType == REQUEST_DATA ||messageType == DATA_REPORT || messageType == STOP_RANGING || messageType == POLL || messageType == RANGE || messageType == TOKEN_HANDOFF|| messageType == TOKEN_HANDOFF_ACK) {
 
 			bool is_broadcast = (data[5] == 0xFF && data[6] == 0xFF);
             bool is_for_me = (data[6] == _currentShortAddress[0] && data[5] == _currentShortAddress[1]);
@@ -575,6 +577,36 @@ void DW1000RangingClass::loop() {
             if(_handleStopRangingAck){
                 (*_handleStopRangingAck)();
             }
+		}
+		else if(messageType == TOKEN_HANDOFF){
+			
+			byte shortAddress[2];
+			_globalMac.decodeShortMACFrame(data, shortAddress);
+			DW1000Device* ackDevice = searchDistantDevice(shortAddress);
+			if (ackDevice) {
+				_lastDistantDevice = ackDevice->getIndex();
+				ackDevice ->noteActivity();
+			}
+
+			if(_handleTokenHandoffAck){
+				(*_handleTokenHandoffAck)();
+			}
+			return;
+		}
+		else if(messageType == TOKEN_HANDOFF_ACK){
+			
+			byte shortAddress[2];
+			_globalMac.decodeShortMACFrame(data, shortAddress);
+			DW1000Device* ackDevice = searchDistantDevice(shortAddress);
+			if (ackDevice) {
+				_lastDistantDevice = ackDevice->getIndex();
+				ackDevice ->noteActivity();
+			}
+
+			if(_handleTokenHandoffAck){
+				(*_handleTokenHandoffAck)();
+			}
+			return;
 		}
 		else if(messageType == REQUEST_DATA){
 
@@ -1283,7 +1315,6 @@ void DW1000RangingClass::transmitModeSwitchAck(DW1000Device* device,bool isIniti
 	transmit(data);
 }
 
-
 void DW1000RangingClass::transmitDataRequest(DW1000Device* device){
 
 	//This method works just as the "transmitModeSwitch". See explanations and commentaries there.
@@ -1306,7 +1337,6 @@ void DW1000RangingClass::transmitDataRequest(DW1000Device* device){
 	
 	transmit(data); //the data is sent via UWB
 }
-
 
 void DW1000RangingClass::transmitDataReport(Measurement* measurements, int numMeasures, DW1000Device* device) {
 
@@ -1383,6 +1413,35 @@ void DW1000RangingClass::transmitDataReport(Measurement* measurements, int numMe
     transmit(data); //Finally, sends the message
 }
 
+void DW1000RangingClass::transmitTokenHandoff(DW1000Device* device){
+
+	transmitInit();
+	byte dest[2];
+
+	if(device == nullptr){
+		dest[0] = 0xFF;
+		dest[1] = 0xFF;
+	}
+	else memcpy(dest,device->getByteShortAddress(),2);
+	_globalMac.generateShortMACFrame(data, _currentShortAddress, dest);
+	data[SHORT_MAC_LEN] = TOKEN_HANDOFF;
+	transmit(data);
+}
+
+void DW1000RangingClass::transmitTokenHandoffAck(DW1000Device* device){
+
+	transmitInit();
+	byte dest[2];
+
+	if(device == nullptr){
+		dest[0] = 0xFF;
+		dest[1] = 0xFF;
+	}
+	else memcpy(dest,device->getByteShortAddress(),2);
+	_globalMac.generateShortMACFrame(data, _currentShortAddress, dest);
+	data[SHORT_MAC_LEN] = TOKEN_HANDOFF_ACK;
+	transmit(data);
+}
 
 /* ###########################################################################
  * #### Methods for range computation and corrections  #######################
@@ -1420,3 +1479,6 @@ float DW1000RangingClass::filterValue(float value, float previousValue, uint16_t
 	float k = 2.0f / ((float)numberOfElements + 1.0f);
 	return (value * k) + previousValue * (1.0f - k);
 }
+
+
+void transmitDataReport()
