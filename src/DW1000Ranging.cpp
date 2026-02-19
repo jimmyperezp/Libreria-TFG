@@ -232,6 +232,7 @@ bool DW1000RangingClass::addNetworkDevices(DW1000Device* device, bool shortAddre
 	for(uint8_t i = 0; i < _networkDevicesNumber; i++) {
 		if(_networkDevices[i].isAddressEqual(device) && !shortAddress) {
 			//the device already exists
+			_networkDevices[i].noteActivity();
 			addDevice = false;
 			return false;
 		}
@@ -247,6 +248,7 @@ bool DW1000RangingClass::addNetworkDevices(DW1000Device* device, bool shortAddre
 		device->setRange(0);
 		memcpy((uint8_t *)&_networkDevices[_networkDevicesNumber], device, sizeof(DW1000Device)); //3_16_24 add pointer cast sjr
 		_networkDevices[_networkDevicesNumber].setIndex(_networkDevicesNumber);
+		_networkDevices[_networkDevicesNumber].noteActivity();
 		_networkDevicesNumber++;
 		return true;
 	}
@@ -261,6 +263,7 @@ bool DW1000RangingClass::addNetworkDevices(DW1000Device* device) {
 	for(uint8_t i = 0; i < _networkDevicesNumber; i++) {
 		if(_networkDevices[i].isAddressEqual(device) && _networkDevices[i].isShortAddressEqual(device)) {
 			//the device already exists
+			_networkDevices[i].noteActivity();
 			addDevice = false;
 			return false;
 		}
@@ -271,6 +274,7 @@ bool DW1000RangingClass::addNetworkDevices(DW1000Device* device) {
 		
 		memcpy((uint8_t *)&_networkDevices[_networkDevicesNumber], device, sizeof(DW1000Device));  //3_16_24 pointer cast sjr
 		_networkDevices[_networkDevicesNumber].setIndex(_networkDevicesNumber);
+		_networkDevices[_networkDevicesNumber].noteActivity();
 		_networkDevicesNumber++;
 		return true;
 	}
@@ -593,8 +597,8 @@ void DW1000RangingClass::loop() {
 				ackDevice ->noteActivity();
 			}
 
-			if(_handleTokenHandoffAck){
-				(*_handleTokenHandoffAck)();
+			if(_handleTokenHandoff){
+				(*_handleTokenHandoff)();
 			}
 			return;
 		}
