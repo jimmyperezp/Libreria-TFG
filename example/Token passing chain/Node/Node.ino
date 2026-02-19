@@ -57,7 +57,7 @@ node_state state = IDLE;
 
 /*Time management*/
 unsigned long current_time = 0;
-const unsigned long WAITING_TIME = 500;
+const unsigned long WAITING_TIME = 200;
 
 /*Retry messages management*/
 unsigned long last_retry = 0;
@@ -66,7 +66,7 @@ uint8_t num_retries = 0;
 /*state = DISCOVERY*/
 static bool _discovery = false;
 unsigned long discovery_start = 0;
-const unsigned long DISCOVERY_PERIOD = 500;
+const unsigned long DISCOVERY_PERIOD = 200;
 
 /*State = RANGING*/
 static bool _ranging = false;
@@ -81,6 +81,13 @@ unsigned long wait_for_range_start = 0;
 static bool i_have_token = false; 
 int16_t token_target_address = -1; 
 uint8_t parent_address = 0; //Device that sent the token to this node. The data return will be sent to this address. 
+
+
+/*MODE SWITCHING control*/
+static bool _switch_to_initiator_pending = false; //Used inside tokenHandoff. Checks if has to switch or not (need to send ack before switching)
+static bool device_is_initiator = false;
+unsigned long being_initiator_start = 0;
+const unsigned long INITIATOR_TIMEOUT = 3000;
 
 /*state = WAIT_TOKEN_HANDOFF_ACK*/
 static bool _wait_token_handoff_ack = false;
@@ -307,21 +314,30 @@ void tokenHandoff(){
     else parent_address = 0;
 
     if(DEBUG_SLAVE){
-        Serial.print("Token received from: [");
+        Serial.print("\nTOKEN RECEIVED from: [");
         Serial.print(parent_address,HEX);
-        Serial.println("]");
+        Serial.print("]. ");
     }
 
-    if(i_have_token){
-        Serial.print("Already have the token. Only needs to send the ACK");
+    if(!(i_have_token)){
+        i_have_token = true;
+        _switch_to_initiator_pending = true;
     }
     else{
-        i_have_token = true;
+        Serial.println("Already have the token. Only needs to send the ACK");
+        state = DISCOVERY;
+    }
+
+    transmitUnicast(MSG_TOKEN_HANDOFF_ACK);
+    
+    
+    if(_switch_to_initiator_pending){
+        _switch_to_initiator_pending = false;
         switchToInitiator();
         state = DISCOVERY;
     }
     
-    transmitUnicast(MSG_TOKEN_HANDOFF_ACK);
+    
    
 }
 
@@ -332,7 +348,7 @@ void tokenHandoffAck(){
     if(!(origin_short_addr == token_target_address)){ // If the ACK received is not from the target of the token handoff, it is ignored.
 
         if(DEBUG_SLAVE){
-            Serial.print("ACK received from ["); Serial.print(origin_short_addr,HEX);
+            Serial.print("Token Handoff ACK received from ["); Serial.print(origin_short_addr,HEX);
             Serial.print("] but expected from ["); Serial.print(token_target_address,HEX); Serial.println("]. ACK ignored");
         }
 
@@ -358,8 +374,10 @@ void tokenHandoffAck(){
 
 void switchToInitiator(){
 
-    if(DEBUG_SLAVE) {Serial.println("Switching to INITIATOR");}
-    
+    if(DEBUG_SLAVE) {Serial.print("MODE SWITCH --> now: Inititiator... ");}
+    device_is_initiator = true; 
+    being_initiator_start = current_time; 
+
     DW1000.idle();
     DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_1, false, NODE);
     DW1000.setAntennaDelay(Adelay);
@@ -368,8 +386,8 @@ void switchToInitiator(){
 
 void switchToResponder(){
 
-    if(DEBUG_SLAVE){Serial.println("\nSwitching to RESPONDER");}
-    
+    if(DEBUG_SLAVE){Serial.print("\nMODE SWITCH --> now: Responder...");}
+    device_is_initiator = false;
     DW1000.idle();
     DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false, NODE);
     attachCallbacks();
@@ -422,7 +440,7 @@ void newRange(){
         Serial.print(dist);
         Serial.print(" m");
         Serial.print("\t RX power: ");
-        Serial.print(rx_pwr);
+        Serial.println(rx_pwr);
 
     }
 }
@@ -555,7 +573,7 @@ void transmitUnicast(uint8_t message_type){
         if(parent){
 
             if(DEBUG_SLAVE){
-                    Serial.print("Token Handoff ACK transmitted to: [");
+                    Serial.print("Token Handoff ACK sent to: [");
                     Serial.print(parent_address,HEX);
                     Serial.println("] via unicast");
                 }
@@ -577,9 +595,9 @@ void transmitUnicast(uint8_t message_type){
         if(parent){
 
             if(DEBUG_SLAVE){
-                    Serial.print("Sending data report to parent: [");
+                    Serial.print("Data report sent to parent: [");
                     Serial.print(parent_address,HEX);
-                    Serial.println("] via unicast");
+                    Serial.print("] via unicast");
                 }
             DW1000Ranging.transmitAggregatedDataReport((Measurement*)measurements, amount_measurements,parent);
         }
@@ -770,6 +788,8 @@ void dataReportAck(){
 
         _wait_return_to_parent_ack = false; // To restart the timer next time state is WAIT_RETURN_TO_PARENT_ACK.
         num_retries = 0; // If ACK is received, retries count must be restarted for the next transmissions.
+        
+
         state = IDLE;
 
         if(DEBUG_SLAVE){
@@ -789,10 +809,11 @@ void clearMeasures(){
 void dataReportFailed(){
 
     if(DEBUG_SLAVE){
-        Serial.print("Data report transmission to parent [");
+        Serial.print("\nData report to parent [");
         Serial.print(parent_address,HEX);
-        Serial.println("] FAILED after max retries. Going back to IDLE... ");
+        Serial.println("] FAILED after max retries. Going back to IDLE");
     }
+    
     state = IDLE;
 }
 
@@ -803,8 +824,19 @@ void loop(){
     DW1000Ranging.loop();
     current_time = millis();
 
+    if(device_is_initiator && current_time - being_initiator_start > INITIATOR_TIMEOUT){
+
+        if(DEBUG_SLAVE){Serial.println("Initiator timeout. Forcing node back to responder.");}
+        switchToResponder();
+    }
     if(state == IDLE){
         //Simply acts as responder. Answers to polls & waits for token
+        if(i_have_token) i_have_token = false;
+        if(device_is_initiator){
+            switchToResponder();
+            if(DEBUG_SLAVE) Serial.println("Waiting for token");
+        }
+
         activateRanging();
         
     }
@@ -816,19 +848,19 @@ void loop(){
             activateRanging();
             nodes_discovered = false;
             discovery_start = current_time;
-            Serial.println("DISCOVERY: ");
+            Serial.println("DISCOVERING:");
         }
         if(_discovery && current_time - discovery_start >= DISCOVERY_PERIOD){
-
+            _discovery = false;
             if(nodes_discovered){
-                _discovery = false;
+                
                 state = RANGING;
                 if(DEBUG_SLAVE){Serial.println("Nodes have been found. Now --> Ranging");}
             }
             
             else{
-                if(DEBUG_SLAVE){Serial.println("No nodes detected. Back to discovering");}
-                discovery_start = current_time;
+                if(DEBUG_SLAVE){Serial.println("\nNO ACTIVE NODES. I am the TAIL. Returning to parent\n");}
+                state = RETURN_TO_PARENT;
             }
         }
     }
@@ -934,7 +966,7 @@ void loop(){
             _wait_for_return = true;
             wait_for_return_start = current_time;
             if(DEBUG_SLAVE){
-                Serial.print("Waiting for return from: [");
+                Serial.print("... Waiting for return from: [");
                 Serial.print(token_target_address,HEX); Serial.println("] ... ");
             }
         }
@@ -949,6 +981,7 @@ void loop(){
 
         state = WAIT_RETURN_TO_PARENT_ACK;
         transmitUnicast(MSG_RETURN_TO_PARENT);
+        
     }     
     else if(state == WAIT_RETURN_TO_PARENT_ACK){
 
@@ -956,8 +989,8 @@ void loop(){
             _wait_return_to_parent_ack = true;
             wait_return_to_parent_ack_start = current_time;
             if(DEBUG_SLAVE){
-                Serial.print("Waiting for return to parent ACK from: [");
-                Serial.print(parent_address,HEX); Serial.println("] ... ");
+                Serial.print("... Waiting for data report ACK from: [");
+                Serial.print(parent_address,HEX); Serial.println("]...");
             }
         }
         else if(current_time - wait_return_to_parent_ack_start >= WAITING_TIME){
