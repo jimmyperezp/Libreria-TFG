@@ -12,7 +12,7 @@ const uint8_t PIN_IRQ = 34; // irq pin
 const uint8_t PIN_SS = 4;   // spi select pin
 
 /*Device's own definitions*/
-#define DEVICE_ADDR "B1:00:5B:D5:A9:9A:E2:9C" 
+#define DEVICE_ADDR "B3:00:5B:D5:A9:9A:E2:9C" 
 uint8_t own_short_addr = 0; 
 uint16_t Adelay = 16580;
 
@@ -57,7 +57,7 @@ node_state state = IDLE;
 
 /*Time management*/
 unsigned long current_time = 0;
-const unsigned long WAITING_TIME = 200;
+const unsigned long WAITING_TIME = 500;
 
 /*Retry messages management*/
 #define MAX_RETRIES 3
@@ -67,7 +67,7 @@ uint8_t num_retries = 0;
 /*state = DISCOVERY*/
 static bool _discovery = false;
 unsigned long discovery_start = 0;
-const unsigned long DISCOVERY_PERIOD = 200;
+const unsigned long DISCOVERY_PERIOD = 500;
 
 //To only re-discovery after a certain number of cycles: 
 #define UPDATE_DISCOVERY_ATTEMPTS 2
@@ -282,7 +282,7 @@ void inactiveDevice(DW1000Device *device){
 
 int16_t getClosestNodeAddress(){
     
-    float min_distance = 0.0;
+    float min_distance = 999.99;
     uint8_t examined_node_short_addr_header = 0; 
     uint8_t closest_node_short_addr_header = 0;
     bool min_distance_updated = false;
@@ -336,7 +336,7 @@ void tokenHandoff(){
     }
 
     transmitUnicast(MSG_TOKEN_HANDOFF_ACK);
-    delay(10); //Time to send the token handoff ack. Without this, the parent rarely receives the ack. 5ms is too small. 10 works fine
+    delay(30); //Time to send the token handoff ack. Without this, the parent rarely receives the ack. 5ms is too small. 10 works fine
     
     if(_switch_to_initiator_pending){
         _switch_to_initiator_pending = false;
@@ -385,7 +385,7 @@ void switchToInitiator(){
     if(DEBUG_SLAVE) {Serial.print("MODE SWITCH --> now: Inititiator... ");}
     device_is_initiator = true; 
     being_initiator_start = current_time; 
-
+    activateRanging();
     DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_1, false, NODE);
 
     
@@ -395,7 +395,7 @@ void switchToResponder(){
 
     if(DEBUG_SLAVE){Serial.print("\nMODE SWITCH --> now: Responder...");}
     device_is_initiator = false;
-    
+    activateRanging();
     DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false, NODE);
    
 }
@@ -563,7 +563,7 @@ void transmitUnicast(uint8_t message_type){
             if(DEBUG_SLAVE){
                     Serial.print("Passing token to: [");
                     Serial.print(token_target_address,HEX);
-                    Serial.println("] via unicast");
+                    Serial.print("] via unicast");
                 }
             DW1000Ranging.transmitTokenHandoff(target);
         }
@@ -737,23 +737,30 @@ void aggregatedDataReport(byte* data){
         if(_wait_for_return == true && return_received == false){ //The device is valid but I wasn't waiting for a report.
             return_received = true;
             _wait_for_return = false; // To restart the timer next time state is WAIT_FOR_RETURN.
-            if(DEBUG_SLAVE) Serial.print(" Sending ACK and processing data...");
+            if(DEBUG_SLAVE) Serial.print("\nSending ACK and processing data...");
         }
 
         else if(return_received == true){ //The device is valid + I was waiting for the report
              
             if(DEBUG_SLAVE) Serial.print(" but already received before. Only need to send ACK");
             transmitUnicast(MSG_DATA_REPORT_ACK);
+            delay(30);
+            return;
 
         }
 
         else if(_wait_for_return == false){
             if(DEBUG_SLAVE) Serial.print(" but I wasn't waiting for it anymore. Sending ack of reception but ignoring data");
             transmitUnicast(MSG_DATA_REPORT_ACK);
+            delay(30);
+            return;
         }
 
         transmitUnicast(MSG_DATA_REPORT_ACK);
+        delay(30);
+
         return_received = true; //To avoid processing the same report more than once in case it is received multiple times due to retries and ACK failures.
+        
         uint8_t index = SHORT_MAC_LEN+1; // Variable "index" is used to go through all the payload.
         uint8_t num_measures = data[index++];
 
@@ -782,7 +789,9 @@ void aggregatedDataReport(byte* data){
         }
     }
 
+    _wait_for_return = false;
     state = RETURN_TO_PARENT;
+
     
 }
 
@@ -993,7 +1002,7 @@ void loop(){
             _wait_token_handoff_ack = true;
             wait_token_handoff_ack_start = current_time;
             if(DEBUG_SLAVE){
-                Serial.print("Waiting for token handoff ACK from: [");
+                Serial.print("... Waiting for token handoff ACK from: [");
                 Serial.print(token_target_address,HEX); Serial.println("] ... ");
             }
         }
@@ -1007,13 +1016,17 @@ void loop(){
     else if(state == WAIT_FOR_RETURN){
        
         if(!(_wait_for_return)){
+
             _wait_for_return = true;
+            return_received = false;
             wait_for_return_start = current_time;
+            
             if(DEBUG_SLAVE){
                 Serial.print("... Waiting for return from: [");
                 Serial.print(token_target_address,HEX); Serial.println("] ... ");
             }
         }
+
         else if(current_time - wait_for_return_start >= WAITING_RETURN_TIME){
             
             _wait_for_return = false; // To restart the timer next time state is WAIT_FOR_RETURN.
@@ -1024,6 +1037,8 @@ void loop(){
     else if(state == RETURN_TO_PARENT){
 
         state = WAIT_RETURN_TO_PARENT_ACK;
+        _wait_return_to_parent_ack = false;
+        num_retries = 0;
         transmitUnicast(MSG_RETURN_TO_PARENT);
         
     }     
