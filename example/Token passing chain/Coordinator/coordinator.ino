@@ -30,7 +30,6 @@ uint8_t amount_nodes = 0;
 uint8_t amount_active_nodes = 0;
 
 
-
 /*Ranging Mode --> Broadcast or Unicast*/
 DW1000RangingClass::RangingMode ranging_mode = DW1000RangingClass::UNICAST;
 //DW1000RangingClass::RangingMode ranging_mode = DW1000RangingClass::BROADCAST;
@@ -38,19 +37,24 @@ DW1000RangingClass::RangingMode ranging_mode = DW1000RangingClass::UNICAST;
 
 /*Time management*/
 unsigned long current_time = 0;
-const unsigned long WAITING_TIME = 500; 
+const unsigned long WAITING_TIME = 100; 
 
 /*Retry messages management*/
+#define MAX_RETRIES 5
 unsigned long last_retry = 0;
 uint8_t num_retries = 0;
 
 
 /*state = DISCOVERY*/
+const unsigned long DISCOVERY_PERIOD = 300;
 static bool _discovery = false;
 static bool nodes_discovered = false;
 unsigned long discovery_start = 0;
-const unsigned long DISCOVERY_PERIOD = 500;
 
+//To only re-discover after certain number of cycles:
+#define UPDATE_DISCOVERY_ATTEMPTS 2
+static bool discovery_previously_done = false;
+uint8_t discovery_attempts = 0;
 
 /*State = COORDINATOR_RANGING*/
 static bool _coordinator_ranging = false;
@@ -73,7 +77,7 @@ unsigned long wait_token_handoff_ack_start = 0;
 static bool _wait_for_return = false;
 static bool return_received = false; // To avoid processing the same report more than once in case it is received multiple times due to retries and ACK failures.
 unsigned long wait_for_return_start = 0;
-const unsigned long WAIT_FOR_RETURN_TIMEOUT = 2000;
+const unsigned long WAIT_FOR_RETURN_TIMEOUT = 250;
 
 /*Used to print results*/
 unsigned long last_shown_data_timestamp = 0;
@@ -258,6 +262,7 @@ void inactiveDevice(DW1000Device *device){
                 TokenHandoffFailed(); //If it was doing the token handoff, sets as failed to move on
                 num_retries = 0; // As failure was set "manually", the retry count must be restarted
             }
+
         }
     }
 }
@@ -539,7 +544,7 @@ void retryTransmission(uint8_t message_type){
     last_retry = current_time;
     num_retries = num_retries +1;
 
-    if(num_retries == 5){
+    if(num_retries == MAX_RETRIES){
 
         num_retries = 0;
                                                  
@@ -568,6 +573,7 @@ void PollUnicastFailed(){
     }
     Existing_devices[ranging_device_index].range_pending = false;
     _wait_unicast_range = false; 
+    num_retries = 0;
     state = COORDINATOR_RANGING; 
 }
 
@@ -579,11 +585,12 @@ void TokenHandoffFailed(){
         
     }
     
+    // Set both measure and device as inactive, so that it is not selected again when calling getClosestNodeAddress().
     Existing_devices[searchDevice(token_target_address)].active = false;
     measurements[searchMeasure(own_short_addr,token_target_address)].active = false;
     
-    // Set both measure and device as inactive, so that it is not selected again when calling getClosestNodeAddress().
-
+    
+    num_retries = 0;
     state = TOKEN_HANDOFF_STATE; // Goes back to handoff. When calling getClosestNodeAddress(), the failed node won't be selected (it is set as inactive), so token will go to the next closest node. 
 
 
@@ -619,22 +626,28 @@ void aggregatedDataReport(byte* data){
         if(_wait_for_return == true && return_received == false){ //The device is valid but I wasn't waiting for a report.
             return_received = true;
             _wait_for_return = false; // To restart the timer next time state is WAIT_FOR_RETURN.
-            if(DEBUG_COORDINATOR) Serial.print(" Sending ACK and processing data...");
+            if(DEBUG_COORDINATOR) Serial.print("\nSending ACK and processing data... ");
         }
 
         else if(return_received == true){ //The device is valid + I was waiting for the report
              
             if(DEBUG_COORDINATOR) Serial.println(" but already received before. Only need to send ACK");
-            
+            transmitUnicast(MSG_DATA_REPORT_ACK);
+            delay(20);
+            return;
 
         }
 
         else if(_wait_for_return == false){
-            if(DEBUG_COORDINATOR) Serial.print(" but I wasn't waiting for it anymore. Sending ack of reception but ignoring data");
-            
+            if(DEBUG_COORDINATOR) Serial.print(" but I wasn't waiting for it anymore. Sending ack of reception but ignoring data\n");
+            transmitUnicast(MSG_DATA_REPORT_ACK);
+            delay(20);
+            return;
         }
 
         transmitUnicast(MSG_DATA_REPORT_ACK);
+        delay(20); //To make sure ack is sent correctly. 5ms is too small. 10 works fine.
+
         return_received = true; //To avoid processing the same report more than once in case it is received multiple times due to retries and ACK failures.
         uint8_t index = SHORT_MAC_LEN+1; // Variable "index" is used to go through all the payload.
         uint8_t num_measures = data[index++];
@@ -724,9 +737,15 @@ void showData(){
     
     Serial.println("--------------------------------------------------------------------");
     
+    resetMeasures();
     
 }
 
+void resetMeasures(){ 
+    for(int i = 0;i<amount_measurements;i++){
+        measurements[i].active = false; //This way, only prints active measures next time showData() is called
+    }
+}
 
 /*LOOP*/
 
@@ -737,10 +756,31 @@ void loop(){
 
     if(state == DISCOVERY){
         
+        if(discovery_previously_done){
+            //Only repeats discovery every UPDATE_DISCOVERY_ATTEMPTS cycles
+            discovery_attempts++;
+
+            if(DEBUG_COORDINATOR){
+                Serial.print("Discovery attempt: "); Serial.print(discovery_attempts); 
+                Serial.print("/");Serial.print(UPDATE_DISCOVERY_ATTEMPTS);
+            }
+            if(discovery_attempts<UPDATE_DISCOVERY_ATTEMPTS){
+                if(DEBUG_COORDINATOR){
+                    Serial.println(" No need to re-discover."); 
+                }
+                state = COORDINATOR_RANGING; 
+                return;
+            }
+
+            if(DEBUG_COORDINATOR) Serial.print("\nRepeating discovery --> ");
+            _discovery = false;
+            discovery_previously_done = false;
+            discovery_attempts = 0;
+        }
 
         if(!_discovery){
             
-            if(DEBUG_COORDINATOR){Serial.println("DISCOVERING: ");}
+            if(DEBUG_COORDINATOR){Serial.println("DISCOVERING:\n");}
             _discovery = true;
             nodes_discovered = false;
             discovery_start = current_time;
@@ -752,8 +792,11 @@ void loop(){
 
             _discovery = false;
             if(nodes_discovered){
+                discovery_previously_done = true;
                 state = COORDINATOR_RANGING;
-                if(DEBUG_COORDINATOR){Serial.print("Nodes have been found. Now --> Coordinator ranging");}
+                if(DEBUG_COORDINATOR){
+                    Serial.print("\nNodes have been found. Now --> Coordinator ranging\n");
+                }
             }
             
             else{
@@ -772,7 +815,7 @@ void loop(){
             DW1000Ranging.setRangingMode(DW1000RangingClass::UNICAST);
             activateRanging();
             ranging_device_index = -1; //Set at -1 so that when doing active_polling_index++, the first index is 0.
-            if(DEBUG_COORDINATOR){Serial.print("\n\nCOORDINATOR RANGING");}
+            if(DEBUG_COORDINATOR){Serial.print("\nCOORDINATOR RANGING:");}
         }
         ranging_device_index++;
 
@@ -787,6 +830,7 @@ void loop(){
 
             if(Existing_devices[ranging_device_index].active == true){
                 Existing_devices[ranging_device_index].range_pending = true;
+                num_retries = 0; //Before starting polling, set retries to 0 to avoid carrying previous retry attempt counts.
                 transmitUnicast(MSG_POLL_UNICAST); 
                 state = WAIT_UNICAST_RANGE;
             }
@@ -807,7 +851,7 @@ void loop(){
             _coordinator_ranging = false;
            
             stopRanging();
-            if(DEBUG_COORDINATOR){Serial.print("\n\nCoordinator Ranging ended. ");}
+            if(DEBUG_COORDINATOR){Serial.print("\nCoordinator Ranging ended. ");}
             state = TOKEN_HANDOFF_STATE;
         }
     }
@@ -835,7 +879,9 @@ void loop(){
         if(DEBUG_COORDINATOR) Serial.println("\n\nTOKEN HANDOFF starts:");
         
         stopRanging();
+        num_retries = 0; //To clear previous retry attempts.
         state = WAIT_TOKEN_HANDOFF_ACK;
+        _wait_token_handoff_ack = false;
         transmitUnicast(MSG_TOKEN_HANDOFF);
         
 
@@ -863,14 +909,15 @@ void loop(){
         if(!_wait_for_return){
             
             _wait_for_return = true;
+            return_received = false;
             wait_for_return_start = current_time;
             
-            if(DEBUG_COORDINATOR){Serial.println("Waiting for return... ");}
+            if(DEBUG_COORDINATOR){Serial.println("\nWAIT FOR RETURN: ");}
         }
 
         else if(current_time - wait_for_return_start >= WAIT_FOR_RETURN_TIMEOUT){
             _wait_for_return = false;
-            if(DEBUG_COORDINATOR){Serial.print("Return Timeout... ");}
+            if(DEBUG_COORDINATOR){Serial.print("RETURN TIMEOUT... ");}
             state = END_CYCLE;
         }
     }   
@@ -878,9 +925,11 @@ void loop(){
     else if(state == END_CYCLE){
 
         showData();
+        num_retries = 0;
         if(DEBUG_COORDINATOR){
-            Serial.print("End of cycle. Restarting process... ");
+            Serial.print("\nEnd of cycle. Restarting process... ");
         }
+        _discovery = false;
         state = DISCOVERY;
     }
 }

@@ -60,6 +60,7 @@ unsigned long current_time = 0;
 const unsigned long WAITING_TIME = 200;
 
 /*Retry messages management*/
+#define MAX_RETRIES 3
 unsigned long last_retry = 0;
 uint8_t num_retries = 0;
 
@@ -67,6 +68,12 @@ uint8_t num_retries = 0;
 static bool _discovery = false;
 unsigned long discovery_start = 0;
 const unsigned long DISCOVERY_PERIOD = 200;
+
+//To only re-discovery after a certain number of cycles: 
+#define UPDATE_DISCOVERY_ATTEMPTS 2
+static bool discovery_previously_done = false;
+uint8_t discovery_attempts = 0;
+
 
 /*State = RANGING*/
 static bool _ranging = false;
@@ -154,10 +161,10 @@ void newDevice(DW1000Device *device){
     uint8_t board_type = device->getBoardType();
     switch(board_type){
         case 1:
-            Serial.println("MASTER");
+            Serial.println("COORDINATOR");
             break;
         case 2:
-            Serial.println("SLAVE");
+            Serial.println("NODE");
             break;
         case 3: 
             Serial.println("TAG");
@@ -329,7 +336,7 @@ void tokenHandoff(){
     }
 
     transmitUnicast(MSG_TOKEN_HANDOFF_ACK);
-    
+    delay(10); //Time to send the token handoff ack. Without this, the parent rarely receives the ack. 5ms is too small. 10 works fine
     
     if(_switch_to_initiator_pending){
         _switch_to_initiator_pending = false;
@@ -343,6 +350,7 @@ void tokenHandoff(){
 
 void tokenHandoffAck(){
 
+    if(!(state == WAIT_RETURN_TO_PARENT_ACK)) return;
     uint8_t origin_short_addr = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
 
     if(!(origin_short_addr == token_target_address)){ // If the ACK received is not from the target of the token handoff, it is ignored.
@@ -378,19 +386,18 @@ void switchToInitiator(){
     device_is_initiator = true; 
     being_initiator_start = current_time; 
 
-    DW1000.idle();
     DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_1, false, NODE);
-    DW1000.setAntennaDelay(Adelay);
-    attachCallbacks();
+
+    
 }
 
 void switchToResponder(){
 
     if(DEBUG_SLAVE){Serial.print("\nMODE SWITCH --> now: Responder...");}
     device_is_initiator = false;
-    DW1000.idle();
+    
     DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false, NODE);
-    attachCallbacks();
+   
 }
 
 
@@ -645,7 +652,7 @@ void retryTransmission(uint8_t message_type){
     last_retry = current_time;
     num_retries = num_retries +1;
 
-    if(num_retries == 5){
+    if(num_retries == MAX_RETRIES){
 
         num_retries = 0;
                                                  
@@ -842,30 +849,67 @@ void loop(){
     }
     else if(state == DISCOVERY){
 
+        if(discovery_previously_done){
+            //Only repeats discovery every UPDATE_DISCOVERY_ATTEMPTS cycles
+            discovery_attempts++;
+
+            if(DEBUG_SLAVE){
+                Serial.print("Discovery attempt: "); Serial.print(discovery_attempts); 
+                Serial.print("/");Serial.print(UPDATE_DISCOVERY_ATTEMPTS);
+            }
+
+            if(discovery_attempts<UPDATE_DISCOVERY_ATTEMPTS){
+                if(DEBUG_SLAVE){
+                    Serial.println(" No need to re-discover\n"); 
+                }
+                state = RANGING; 
+                return;
+            }
+
+            if(DEBUG_SLAVE) Serial.print("\nRepeating discovery --> ");
+            _discovery = false;
+            discovery_previously_done = false;
+            discovery_attempts = 0;
+        }
+
+
         if(!_discovery){
+            Serial.println("DISCOVERING:\n");
+
             _discovery = true;
             DW1000Ranging.setRangingMode(DW1000RangingClass::BROADCAST); //Discovery is done via broadcast.
             activateRanging();
+
             nodes_discovered = false;
             discovery_start = current_time;
-            Serial.println("DISCOVERING:");
         }
+
+
         if(_discovery && current_time - discovery_start >= DISCOVERY_PERIOD){
             _discovery = false;
+            discovery_previously_done = true;
+            
             if(nodes_discovered){
                 
                 state = RANGING;
-                if(DEBUG_SLAVE){Serial.println("Nodes have been found. Now --> Ranging");}
+                if(DEBUG_SLAVE){Serial.print("Nodes have been found. Now --> ");}
             }
             
             else{
-                if(DEBUG_SLAVE){Serial.println("\nNO ACTIVE NODES. I am the TAIL. Returning to parent\n");}
+                if(DEBUG_SLAVE){Serial.println("NO NODES DISCOVERED. I am the TAIL. Returning to parent\n");}
                 state = RETURN_TO_PARENT;
             }
         }
     }
     else if(state == RANGING){
 
+        if(!nodes_discovered){
+            if(DEBUG_SLAVE){
+                Serial.print("No nodes to range with. Returning to parent\n");
+            }
+            state = RETURN_TO_PARENT;
+            return;
+        }
         if(!_ranging){
             _ranging = true;
             DW1000Ranging.setRangingMode(DW1000RangingClass::UNICAST); // After discovery, ranging is done via unicast.
@@ -927,7 +971,7 @@ void loop(){
     }
     else if(state == TOKEN_HANDOFF_STATE){
 
-        if(DEBUG_SLAVE) Serial.println("TOKEN HANDOFF starts: ");
+        if(DEBUG_SLAVE) Serial.println("TOKEN HANDOFF:\n ");
 
         stopRanging();
 
