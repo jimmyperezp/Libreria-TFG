@@ -623,6 +623,19 @@ void aggregatedDataReport(byte* data){
             Serial.print("]");
         }
 
+        if(state == WAIT_TOKEN_HANDOFF_ACK){
+
+            //See explanation in node's code. 
+
+            if(DEBUG_COORDINATOR) Serial.print("\nImplicit ACK! Received data report while waiting for Token Handoff ACK. Proceeding...");
+            
+            Existing_devices[searchDevice(reporting_node_short_addr)].token_handoff_pending = false;
+            
+            state = WAIT_FOR_RETURN;
+            _wait_for_return = true;
+            return_received = false;
+        }
+        
         if(_wait_for_return == true && return_received == false){ //The device is valid but I wasn't waiting for a report.
             return_received = true;
             _wait_for_return = false; // To restart the timer next time state is WAIT_FOR_RETURN.
