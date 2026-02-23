@@ -350,7 +350,7 @@ void tokenHandoff(){
 
 void tokenHandoffAck(){
 
-    if(!(state == WAIT_RETURN_TO_PARENT_ACK)) return;
+    if(!(state == WAIT_TOKEN_HANDOFF_ACK)) return;
     uint8_t origin_short_addr = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
 
     if(!(origin_short_addr == token_target_address)){ // If the ACK received is not from the target of the token handoff, it is ignored.
@@ -664,7 +664,7 @@ void retryTransmission(uint8_t message_type){
         
         else if(message_type == MSG_TOKEN_HANDOFF){
 
-            if(DEBUG_SLAVE){Serial.print("Token handoff failed. ");}
+            if(DEBUG_SLAVE){Serial.print("\nToken handoff failed. ");}
 
             TokenHandoffFailed(); 
         }
@@ -734,10 +734,30 @@ void aggregatedDataReport(byte* data){
             Serial.print("]");
         }
 
+        if(state == WAIT_TOKEN_HANDOFF_ACK){ //Implicit ACK reception
+         
+            //This section is for the following case: the parent didn't receive the token Handoff ACK (THA) but the "son" did receive the TH. In this case, the "son" has finished its rangings and sent the data report back to its parent, but the parent was still busy retrying to get the THA
+            //Receiving a data report from the son while expecting the THA carrys whithin an implicit reception of said THA.
+
+            if(DEBUG_SLAVE){
+                Serial.println(" Implicit token handoff ACK reception");
+
+            }
+            //1) Manages tokenHandoffAck flags as if it was received
+            Existing_devices[searchDevice(reporting_node_short_addr)].token_handoff_pending = false;
+            i_have_token = false; 
+            switchToResponder();
+
+            //2) Sets the state and flags before processing the data.
+            state = WAIT_FOR_RETURN;
+            _wait_for_return = true;
+            return_received = false;
+
+        }
         if(_wait_for_return == true && return_received == false){ //The device is valid but I wasn't waiting for a report.
             return_received = true;
             _wait_for_return = false; // To restart the timer next time state is WAIT_FOR_RETURN.
-            if(DEBUG_SLAVE) Serial.print("\nSending ACK and processing data...");
+            if(DEBUG_SLAVE) Serial.print(" Sending data report ACK and processing data...");
         }
 
         else if(return_received == true){ //The device is valid + I was waiting for the report
@@ -901,7 +921,7 @@ void loop(){
             if(nodes_discovered){
                 
                 state = RANGING;
-                if(DEBUG_SLAVE){Serial.print("Nodes have been found. Now --> ");}
+                if(DEBUG_SLAVE){Serial.print("\nNodes have been found. Now --> ");}
             }
             
             else{
@@ -980,7 +1000,7 @@ void loop(){
     }
     else if(state == TOKEN_HANDOFF_STATE){
 
-        if(DEBUG_SLAVE) Serial.println("TOKEN HANDOFF:\n ");
+        if(DEBUG_SLAVE) Serial.println("\n\nTOKEN HANDOFF starts: ");
 
         stopRanging();
 
@@ -1002,8 +1022,8 @@ void loop(){
             _wait_token_handoff_ack = true;
             wait_token_handoff_ack_start = current_time;
             if(DEBUG_SLAVE){
-                Serial.print("... Waiting for token handoff ACK from: [");
-                Serial.print(token_target_address,HEX); Serial.println("] ... ");
+                Serial.print("Waiting for token handoff ACK from: [");
+                Serial.print(token_target_address,HEX); Serial.println("]... ");
             }
         }
 
@@ -1022,15 +1042,15 @@ void loop(){
             wait_for_return_start = current_time;
             
             if(DEBUG_SLAVE){
-                Serial.print("... Waiting for return from: [");
-                Serial.print(token_target_address,HEX); Serial.println("] ... ");
+                Serial.print("\nWAIT FOR RETURN from: [");
+                Serial.print(token_target_address,HEX); Serial.println("]: ");
             }
         }
 
         else if(current_time - wait_for_return_start >= WAITING_RETURN_TIME){
             
             _wait_for_return = false; // To restart the timer next time state is WAIT_FOR_RETURN.
-            if(DEBUG_SLAVE){Serial.println("Waiting for return TIMEOUT. Sending my return to my parent: ["); Serial.print(parent_address,HEX); Serial.println("]\n ");}
+            if(DEBUG_SLAVE){Serial.print("WAIT FOR RETURN TIMEOUT. Sending my report to my parent: ["); Serial.print(parent_address,HEX); Serial.println("]\n ");}
             state = RETURN_TO_PARENT;
         }
     }
