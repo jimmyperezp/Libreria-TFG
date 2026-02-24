@@ -77,7 +77,7 @@ unsigned long wait_token_handoff_ack_start = 0;
 static bool _wait_for_return = false;
 static bool return_received = false; // To avoid processing the same report more than once in case it is received multiple times due to retries and ACK failures.
 unsigned long wait_for_return_start = 0;
-const unsigned long WAIT_FOR_RETURN_TIMEOUT = 250;
+const unsigned long WAIT_FOR_RETURN_TIMEOUT = 2000;
 
 /*Used to print results*/
 unsigned long last_shown_data_timestamp = 0;
