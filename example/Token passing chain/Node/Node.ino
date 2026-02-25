@@ -94,7 +94,7 @@ uint8_t parent_address = 0; //Device that sent the token to this node. The data 
 static bool _switch_to_initiator_pending = false; //Used inside tokenHandoff. Checks if has to switch or not (need to send ack before switching)
 static bool device_is_initiator = false;
 unsigned long being_initiator_start = 0;
-const unsigned long INITIATOR_TIMEOUT = 500;
+const unsigned long INITIATOR_TIMEOUT = 3000;
 
 /*state = WAIT_TOKEN_HANDOFF_ACK*/
 static bool _wait_token_handoff_ack = false;
@@ -441,7 +441,6 @@ void switchToInitiator(){
     if(DEBUG_SLAVE) {Serial.print("MODE SWITCH --> now: Inititiator... ");}
     device_is_initiator = true; 
     being_initiator_start = current_time; 
-    activateRanging();
     DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_1, false, NODE);
 
     
@@ -451,7 +450,6 @@ void switchToResponder(){
 
     if(DEBUG_SLAVE){Serial.print("\nMODE SWITCH --> now: Responder...");}
     device_is_initiator = false;
-    activateRanging();
     DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false, NODE);
    
 }
@@ -616,7 +614,7 @@ void transmitUnicast(uint8_t message_type,DW1000Device* explicit_target){
             if(DEBUG_SLAVE){
                     Serial.print("Passing token to: [");
                     Serial.print(token_target_address,HEX);
-                    Serial.print("] via unicast");
+                    Serial.print("] via unicast. ");
                 }
             DW1000Ranging.transmitTokenHandoff(target);
         }
