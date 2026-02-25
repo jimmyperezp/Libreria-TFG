@@ -973,9 +973,11 @@ void DW1000RangingClass::timerTick() {
 			}
 
 			counterForBlink++;
-			if(counterForBlink > 6) {
+
+			if(_networkDevicesNumber == 0 || counterForBlink > 2){
 				counterForBlink = 0;
 			}
+			
 		}
 	
 	
@@ -983,6 +985,7 @@ void DW1000RangingClass::timerTick() {
 
 			if(check_inactive_devices_count ==0) checkForInactiveDevices();
 			check_inactive_devices_count++;
+
 			if(check_inactive_devices_count >6){
 				check_inactive_devices_count = 0;
 
