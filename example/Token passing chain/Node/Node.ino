@@ -110,7 +110,7 @@ unsigned long wait_return_to_parent_ack_start = 0;
 static bool _wait_for_return = false;
 static bool return_received = false; // To avoid processing the same report more than once in case it is received multiple times due to retries and ACK failures.
 unsigned long wait_for_return_start = 0;
-const unsigned long WAITING_RETURN_TIME = 2000;
+const unsigned long WAITING_RETURN_TIME = 1000;
 
 
 /*Function prototypes*/
@@ -340,7 +340,7 @@ void tokenHandoff(){
             Serial.println(". Sending ACK but continuing with current task...");
         }
         transmitUnicast(MSG_TOKEN_HANDOFF_ACK,requesting_device);
-        delay(30);
+        delay(50);
         return;
     }
 
@@ -358,7 +358,7 @@ void tokenHandoff(){
     }
 
     transmitUnicast(MSG_TOKEN_HANDOFF_ACK,requesting_device);
-    delay(30); //Time to send the token handoff ack. Without this, the parent rarely receives the ack. 5ms is too small. 10 works fine
+    delay(50); //Time to send the token handoff ack. Without this, the parent rarely receives the ack. 5ms is too small. 10 works fine
     
     if(_switch_to_initiator_pending){
         _switch_to_initiator_pending = false;
@@ -463,6 +463,7 @@ void newRange(){
 
     uint8_t short_addr_origin = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
     uint8_t incoming_board_type = DW1000Ranging.getDistantDevice()->getBoardType();
+    
 
     if(_ranging && _discovery == false){
     
@@ -474,20 +475,29 @@ void newRange(){
         else return; //If range arrives from a device with which master is not currently ranging.
     }
 
-    //Reactivation logic (to avoid misalignments between local devices list and DW1000Ranging.cpp's list)
-    if(_discovery && incoming_board_type == NODE){
-        
-        if(!nodes_discovered) nodes_discovered = true;
-        
-        for(int i = 0; i < amount_devices; i++){
-            if(Existing_devices[i].short_addr == short_addr_origin){
-                Existing_devices[i].active = true; // Need to set it active (master ranging checks if it is active)
-                break; 
-            }
+    //Reactivation logic (to avoid misalignments)
+
+    int device_index = searchDevice(short_addr_origin);
+
+    if(device_index != -1){
+        Existing_devices[device_index].active = true; 
+        if(incoming_board_type == NODE){
+            Existing_devices[device_index].is_node = true;
+            if(!nodes_discovered) nodes_discovered = true;
+        }  
+    }
+    else{
+        if(DEBUG_SLAVE){
+            Serial.print("New Node discovered during ranging: ["); Serial.print(short_addr_origin, HEX); Serial.println("]. Adding it to the list of devices... ");
+        }
+        newDevice(DW1000Ranging.getDistantDevice());
+        if(incoming_board_type == NODE){
+            if(!nodes_discovered) nodes_discovered = true;
         }
     }
-    // If code reaches this point, the measure is valid and can be logged and registered.
 
+    
+    //Once code gets here, range is valid and device is registered and active. Now it can be logged.
     float dist = DW1000Ranging.getDistantDevice()->getRange();
     float rx_pwr = DW1000Ranging.getDistantDevice()->getRXPower();
     
@@ -796,7 +806,7 @@ void aggregatedDataReport(byte* data){
             }
         }
         transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
-        delay(30);
+        delay(50);
         return;
     }
 
@@ -838,7 +848,7 @@ void aggregatedDataReport(byte* data){
              
             if(DEBUG_SLAVE) Serial.print(" but already received before. Only need to send ACK");
             transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
-            delay(30);
+            delay(50);
             return;
 
         }
@@ -846,12 +856,12 @@ void aggregatedDataReport(byte* data){
         else if(_wait_for_return == false){
             if(DEBUG_SLAVE) Serial.print(" but I wasn't waiting for it anymore. Sending ack of reception but ignoring data");
             transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
-            delay(30);
+            delay(50);
             return;
         }
 
         transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
-        delay(30);
+        delay(50);
 
         return_received = true; //To avoid processing the same report more than once in case it is received multiple times due to retries and ACK failures.
         

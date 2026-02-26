@@ -37,7 +37,7 @@ DW1000RangingClass::RangingMode ranging_mode = DW1000RangingClass::UNICAST;
 
 /*Time management*/
 unsigned long current_time = 0;
-const unsigned long WAITING_TIME = 100; 
+const unsigned long WAITING_TIME = 400; 
 
 /*Retry messages management*/
 #define MAX_RETRIES 5
@@ -46,7 +46,7 @@ uint8_t num_retries = 0;
 
 
 /*state = DISCOVERY*/
-const unsigned long DISCOVERY_PERIOD = 300;
+const unsigned long DISCOVERY_PERIOD = 500;
 static bool _discovery = false;
 static bool nodes_discovered = false;
 unsigned long discovery_start = 0;
