@@ -317,9 +317,9 @@ void DW1000RangingClass::setStopRanging(bool stop_ranging_input){
 
 	stop_ranging = stop_ranging_input;
 
-	if(!stop_ranging && !ranging_enabled ){ //when asked to continue
-		ranging_enabled = true;
-	}
+	if(stop_ranging) ranging_enabled = false;
+	else ranging_enabled = true;
+	
 	
 }
 
@@ -896,9 +896,7 @@ void DW1000RangingClass::loop() {
 						if(_handleNewRange != 0) {
 							(*_handleNewRange)();
 						}
-						if(stop_ranging){
-							ranging_enabled = false;
-						}
+						
 
 					}
 					else if(messageType == RANGE_FAILED) {
