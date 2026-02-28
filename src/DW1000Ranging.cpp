@@ -67,6 +67,7 @@ uint32_t  DW1000RangingClass::_rangingCountPeriod  = 0;
 //Callback Function handlers
 void (* DW1000RangingClass::_handleNewRange)(void) = 0;
 void (* DW1000RangingClass::_handleBlinkDevice)(DW1000Device*) = 0;
+void (* DW1000RangingClass::_handleDiscoveredDevice)(DW1000Device*) = 0;
 
 void (* DW1000RangingClass::_handleNewDevice)(DW1000Device*) = 0;
 void (* DW1000RangingClass::_handleInactiveDevice)(DW1000Device*) = 0;
@@ -708,6 +709,24 @@ void DW1000RangingClass::loop() {
             	        (*_handleNewDevice)(&_networkDevices[_networkDevicesNumber-1]);
             	    }
             	}
+
+				else{ //The device is already known
+					
+					if(_ranging_mode == DW1000RangingClass::DISCOVERY){
+
+						DW1000Device* dev = searchDistantDevice(address);
+
+						if(dev){
+							dev -> noteActivity();
+							dev -> setBoardType(responderboardType);
+
+							if(_handleDiscoveredDevice != 0){
+								(*_handleDiscoveredDevice)(dev);
+							}
+						}
+					}
+				}
+
 				noteActivity();
 			}
 			
@@ -954,37 +973,57 @@ void DW1000RangingClass::timerTick() {
 
 	if(ranging_enabled && !stop_ranging){
 
-		if(_ranging_mode == DW1000RangingClass::BROADCAST){ //Only ticks "automatically" in broadcast mode.
+		if(_ranging_mode == DW1000RangingClass::DISCOVERY){
+			//Only sends blinks. Used exclusively for discovery.
+
+			if(counterForBlink == 0){
+				if(_type == INITIATOR){
+					transmitBlink();
+				}
+				checkForInactiveDevices();
+			}
+			counterForBlink++;
+
+			if(counterForBlink > 2){
+				counterForBlink = 0;
+			}
+		}
+		
+
+		if(_ranging_mode == DW1000RangingClass::BROADCAST){ 
+			
+			// Sends polls and periodical blinks. 
 
 			if(_networkDevicesNumber > 0 && counterForBlink != 0) {
 				if(_type == INITIATOR) {
 					_expectedMsgId = POLL_ACK;
-					transmitPoll(nullptr);  //broadcast poll
+					transmitPoll(nullptr);  // Prioriza los Broadcast POLLs
 				}
 			}
-			
 			else if(counterForBlink == 0) {
 				if(_type == INITIATOR) {
 					transmitBlink();	
 				}	
-    	   	 	checkForInactiveDevices(); //check for inactive devices if we are a INITIATOR or RESPONDER
+    	   	 	checkForInactiveDevices(); // Limpieza de inactivos
 			}
 
 			counterForBlink++;
-
-			if(_networkDevicesNumber == 0 || counterForBlink > 2){
+			
+			if(counterForBlink > 6) { 
 				counterForBlink = 0;
 			}
-			
 		}
-	
+
 	
 		else if(_ranging_mode == DW1000RangingClass::UNICAST){
+
+			//Exclusively checks for inactive devices after a few timerTicks
+			//The transmitPoll(target device) is "manually" sent.
 
 			if(check_inactive_devices_count ==0) checkForInactiveDevices();
 			check_inactive_devices_count++;
 
-			if(check_inactive_devices_count >6){
+			if(check_inactive_devices_count >6){ //To not kill devices too fast.
 				check_inactive_devices_count = 0;
 
 			}

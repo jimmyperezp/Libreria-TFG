@@ -40,7 +40,7 @@ unsigned long current_time = 0;
 const unsigned long WAITING_TIME = 400; 
 
 /*Retry messages management*/
-#define MAX_RETRIES 5
+#define MAX_RETRIES 3
 unsigned long last_retry = 0;
 uint8_t num_retries = 0;
 
@@ -77,7 +77,7 @@ unsigned long wait_token_handoff_ack_start = 0;
 static bool _wait_for_return = false;
 static bool return_received = false; // To avoid processing the same report more than once in case it is received multiple times due to retries and ACK failures.
 unsigned long wait_for_return_start = 0;
-const unsigned long WAIT_FOR_RETURN_TIMEOUT = 2000;
+const unsigned long WAIT_FOR_RETURN_TIMEOUT = 15000;
 
 /*Used to print results*/
 unsigned long last_shown_data_timestamp = 0;
@@ -133,6 +133,7 @@ uint8_t getOwnShortAddressHeader() {
 void attachCallbacks(){
 
     DW1000Ranging.attachNewRange(newRange);
+    DW1000Ranging.atttachDiscoveredDevice(discoveredDevice);
     DW1000Ranging.attachNewDevice(newDevice);
     DW1000Ranging.attachInactiveDevice(inactiveDevice); 
     DW1000Ranging.attachTokenHandoffAck(tokenHandoffAck); 
@@ -168,7 +169,32 @@ void newDevice(DW1000Device *device){
     }
     
     registerDevice(device);
+
+    if(_discovery){
+        if(!nodes_discovered) nodes_discovered = true;
+    }
 }
+
+void discoveredDevice(DW1000Device *device){
+    //This callback is called when doing discovery, and a known device answers to a blink.
+
+    if(_discovery == false) return;
+
+    uint8_t short_addr_origin = device->getShortAddressHeader();
+    uint8_t incoming_board_type = device->getBoardType();
+
+    if(incoming_board_type == NODE){
+        if(!nodes_discovered) nodes_discovered = true;
+    }
+
+    if(DEBUG_COORDINATOR){
+        Serial.print("Device discovered: ["); 
+        Serial.print(short_addr_origin,HEX); Serial.println("]");
+    }
+
+    registerDevice(device); //registerDevice takes control on reactivating and counting nodes.
+}
+
 
 void registerDevice(DW1000Device *device){
 
@@ -336,33 +362,20 @@ void tokenHandoffAck(){
 
 void newRange(){
 
-    if(_coordinator_ranging == false && _discovery == false) return;
+    if(_coordinator_ranging == false) return; //If ranges arrive while not ranging, ignore them
 
     uint8_t short_addr_origin = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
     uint8_t incoming_board_type = DW1000Ranging.getDistantDevice()->getBoardType();
 
-    if(_discovery == false){
     
-        if (Existing_devices[ranging_device_index].short_addr == short_addr_origin && Existing_devices[ranging_device_index].range_pending == true){
-            Existing_devices[ranging_device_index].range_pending = false;
-            _wait_unicast_range = false;  // To restart the timer next time state is state = WAIT_UNICAST_RANGE.
-            state = COORDINATOR_RANGING;
-        }
-        else return; //If range arrives from a device with which master is not currently ranging.
+    if (Existing_devices[ranging_device_index].short_addr == short_addr_origin && Existing_devices[ranging_device_index].range_pending == true){
+        Existing_devices[ranging_device_index].range_pending = false;
+        _wait_unicast_range = false;  // To restart the timer next time state is state = WAIT_UNICAST_RANGE.
+        state = COORDINATOR_RANGING;
     }
-
-    //Reactivation logic (to avoid misalignments between local devices list and DW1000Ranging.cpp's list)
-    if(_discovery && incoming_board_type == NODE){
-        
-        if(!nodes_discovered) nodes_discovered = true;
-        
-        for(int i = 0; i < amount_devices; i++){
-            if(Existing_devices[i].short_addr == short_addr_origin){
-                Existing_devices[i].active = true; // Need to set it active (master ranging checks if it is active)
-                break; 
-            }
-        }
-    }
+    else return; //If range arrives from a device with which master is not currently ranging.
+    
+    
     // If code reaches this point, the measure is valid and can be logged and registered.
 
     float dist = DW1000Ranging.getDistantDevice()->getRange();
@@ -797,7 +810,7 @@ void loop(){
             _discovery = true;
             nodes_discovered = false;
             discovery_start = current_time;
-            DW1000Ranging.setRangingMode(DW1000RangingClass::BROADCAST);
+            DW1000Ranging.setRangingMode(DW1000RangingClass::DISCOVERY);
             activateRanging();
         }
 

@@ -89,7 +89,8 @@ class DW1000RangingClass {
 		//Ranging modes
 		enum RangingMode{
 			BROADCAST,
-			UNICAST
+			UNICAST,
+			DISCOVERY
 		};
 		
 		//data buffer for transmission and reception
@@ -131,6 +132,8 @@ class DW1000RangingClass {
 		static void attachNewRange(void (* handleNewRange)(void)) { _handleNewRange = handleNewRange; };
 		
 		static void attachBlinkDevice(void (* handleBlinkDevice)(DW1000Device*)) { _handleBlinkDevice = handleBlinkDevice; };
+		
+		static void atttachDiscoveredDevice(void (* handleDiscoveredDevice)(DW1000Device*)){_handleDiscoveredDevice = handleDiscoveredDevice;}
 		static void attachNewDevice(void (* handleNewDevice)(DW1000Device*)) { _handleNewDevice = handleNewDevice; };
 		static void attachInactiveDevice(void (* handleInactiveDevice)(DW1000Device*)) { _handleInactiveDevice = handleInactiveDevice; };
 		
@@ -206,6 +209,7 @@ class DW1000RangingClass {
 		//Handlers:
 		static void (* _handleNewRange)(void);
 		static void (* _handleBlinkDevice)(DW1000Device*);
+		static void (* _handleDiscoveredDevice)(DW1000Device*);
 		static void (* _handleNewDevice)(DW1000Device*);
 		static void (* _handleInactiveDevice)(DW1000Device*);
 

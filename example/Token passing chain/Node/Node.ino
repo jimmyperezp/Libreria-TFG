@@ -110,7 +110,7 @@ unsigned long wait_return_to_parent_ack_start = 0;
 static bool _wait_for_return = false;
 static bool return_received = false; // To avoid processing the same report more than once in case it is received multiple times due to retries and ACK failures.
 unsigned long wait_for_return_start = 0;
-const unsigned long WAITING_RETURN_TIME = 1000;
+const unsigned long WAITING_RETURN_TIME = 2000;
 
 
 /*Function prototypes*/
@@ -138,8 +138,11 @@ void setup(){
 }
 
 void attachCallbacks(){
+
     DW1000Ranging.attachNewRange(newRange);
     DW1000Ranging.attachNewDevice(newDevice);
+    DW1000Ranging.atttachDiscoveredDevice(discoveredDevice);
+    DW1000Ranging.attachBlinkDevice(newDevice);
     DW1000Ranging.attachInactiveDevice(inactiveDevice);   
 
     DW1000Ranging.attachTokenHandoff(tokenHandoff);
@@ -182,6 +185,29 @@ void newDevice(DW1000Device *device){
     }
     
     registerDevice(device);
+
+    if(_discovery){
+        if(!nodes_discovered) nodes_discovered = true;
+    }
+}
+
+void discoveredDevice(DW1000Device *device){
+    //This callback is called when doing discovery, and a known device answers to a blink.
+
+    if(_discovery == false) return;
+    uint8_t short_addr_origin = device->getShortAddressHeader();
+    uint8_t incoming_board_type = device->getBoardType();
+
+    if(incoming_board_type == NODE){
+        if(!nodes_discovered) nodes_discovered = true;
+    }
+
+    if(DEBUG_SLAVE){
+        Serial.print("Device discovered: ["); 
+        Serial.print(short_addr_origin,HEX); Serial.println("]");
+    }
+
+    registerDevice(device); //registerDevice takes control on reactivating and counting nodes.
 }
 
 void registerDevice(DW1000Device *device){
@@ -442,6 +468,7 @@ void switchToInitiator(){
     device_is_initiator = true; 
     being_initiator_start = current_time; 
     DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_1, false, NODE);
+    delay(50);
 
     
 }
@@ -451,6 +478,7 @@ void switchToResponder(){
     if(DEBUG_SLAVE){Serial.print("\nMODE SWITCH --> now: Responder...");}
     device_is_initiator = false;
     DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false, NODE);
+    delay(50);
    
 }
 
@@ -459,43 +487,18 @@ void switchToResponder(){
 
 void newRange(){
 
-    if(_ranging == false && _discovery == false) return;
+    if(_ranging == false) return;
 
     uint8_t short_addr_origin = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
     uint8_t incoming_board_type = DW1000Ranging.getDistantDevice()->getBoardType();
     
-
-    if(_ranging && _discovery == false){
+    if (Existing_devices[ranging_device_index].short_addr == short_addr_origin && Existing_devices[ranging_device_index].range_pending == true){
+        Existing_devices[ranging_device_index].range_pending = false;
+        _wait_for_range = false;  // To restart the timer next time state is state = WAIT_FOR_RANGE.
+        state = RANGING;
+    }
+    else return; //If range arrives from a device with which node is not currently ranging.
     
-        if (Existing_devices[ranging_device_index].short_addr == short_addr_origin && Existing_devices[ranging_device_index].range_pending == true){
-            Existing_devices[ranging_device_index].range_pending = false;
-            _wait_for_range = false;  // To restart the timer next time state is state = WAIT_FOR_RANGE.
-            state = RANGING;
-        }
-        else return; //If range arrives from a device with which master is not currently ranging.
-    }
-
-    //Reactivation logic (to avoid misalignments)
-
-    int device_index = searchDevice(short_addr_origin);
-
-    if(device_index != -1){
-        Existing_devices[device_index].active = true; 
-        if(incoming_board_type == NODE){
-            Existing_devices[device_index].is_node = true;
-            if(!nodes_discovered) nodes_discovered = true;
-        }  
-    }
-    else{
-        if(DEBUG_SLAVE){
-            Serial.print("New Node discovered during ranging: ["); Serial.print(short_addr_origin, HEX); Serial.println("]. Adding it to the list of devices... ");
-        }
-        newDevice(DW1000Ranging.getDistantDevice());
-        if(incoming_board_type == NODE){
-            if(!nodes_discovered) nodes_discovered = true;
-        }
-    }
-
     
     //Once code gets here, range is valid and device is registered and active. Now it can be logged.
     float dist = DW1000Ranging.getDistantDevice()->getRange();
@@ -990,7 +993,7 @@ void loop(){
             Serial.println("DISCOVERING:\n");
 
             _discovery = true;
-            DW1000Ranging.setRangingMode(DW1000RangingClass::BROADCAST); //Discovery is done via broadcast.
+            DW1000Ranging.setRangingMode(DW1000RangingClass::DISCOVERY); //Discovery is done via broadcast.
             activateRanging();
 
             nodes_discovered = false;
@@ -1036,6 +1039,18 @@ void loop(){
 
         if(ranging_device_index < amount_devices){
             // There still are devices to poll
+
+            //1st, checks if ranging device is parent. If so, skips it
+            //This shouldn't happen, as parent does stopRanging(), but just in case
+
+            if(Existing_devices[ranging_device_index].short_addr == parent_address){
+
+                if(DEBUG_SLAVE){
+                    Serial.print("Skipped ranging with my parent [");
+                    Serial.print(Existing_devices[ranging_device_index].short_addr,HEX);Serial.println("]");
+                }
+                return; //Exits. Next loop, ranging_device_index is increased, aiming at the next device.
+            }
             if(DEBUG_SLAVE){
                 Serial.print("\nUnicast Polling with device: ");
                 Serial.print(ranging_device_index+1); 
@@ -1099,6 +1114,7 @@ void loop(){
             _wait_token_handoff_ack = false;
             num_retries = 0;
             transmitUnicast(MSG_TOKEN_HANDOFF); 
+            delay(50);
         }
          
     }
@@ -1146,6 +1162,7 @@ void loop(){
         _wait_return_to_parent_ack = false;
         num_retries = 0;
         transmitUnicast(MSG_RETURN_TO_PARENT);
+        delay(50);
         
     }     
     else if(state == WAIT_RETURN_TO_PARENT_ACK){
