@@ -37,10 +37,10 @@ DW1000RangingClass::RangingMode ranging_mode = DW1000RangingClass::UNICAST;
 
 /*Time management*/
 unsigned long current_time = 0;
-const unsigned long WAITING_TIME = 400; 
+const unsigned long WAITING_TIME = 1000; 
 
 /*Retry messages management*/
-#define MAX_RETRIES 3
+#define MAX_RETRIES 5
 unsigned long last_retry = 0;
 uint8_t num_retries = 0;
 
@@ -659,7 +659,7 @@ void aggregatedDataReport(byte* data){
              
             if(DEBUG_COORDINATOR) Serial.println(" but already received before. Only need to send ACK");
             transmitUnicast(MSG_DATA_REPORT_ACK);
-            delay(20);
+            delay(50);
             return;
 
         }
@@ -667,12 +667,12 @@ void aggregatedDataReport(byte* data){
         else if(_wait_for_return == false){
             if(DEBUG_COORDINATOR) Serial.print(" but I wasn't waiting for it anymore. Sending ack of reception but ignoring data\n");
             transmitUnicast(MSG_DATA_REPORT_ACK);
-            delay(20);
+            delay(50);
             return;
         }
 
         transmitUnicast(MSG_DATA_REPORT_ACK);
-        delay(20); //To make sure ack is sent correctly. 5ms is too small. 10 works fine.
+        delay(50); //To make sure ack is sent correctly. 5ms is too small. 10 works fine.
 
         return_received = true; //To avoid processing the same report more than once in case it is received multiple times due to retries and ACK failures.
         uint8_t index = SHORT_MAC_LEN+1; // Variable "index" is used to go through all the payload.
@@ -903,8 +903,8 @@ void loop(){
     else if(state == TOKEN_HANDOFF_STATE){
 
         if(DEBUG_COORDINATOR) Serial.println("\n\nTOKEN HANDOFF starts:");
-        
         stopRanging();
+        
         num_retries = 0; //To clear previous retry attempts.
         state = WAIT_TOKEN_HANDOFF_ACK;
         _wait_token_handoff_ack = false;

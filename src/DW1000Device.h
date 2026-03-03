@@ -22,7 +22,7 @@
  */
 
 
-#define INACTIVITY_TIME 5000
+#define INACTIVITY_TIME 15000
 
 #define COORDINATOR 1
 #define NODE 2

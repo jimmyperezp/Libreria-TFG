@@ -57,10 +57,10 @@ node_state state = IDLE;
 
 /*Time management*/
 unsigned long current_time = 0;
-const unsigned long WAITING_TIME = 500;
+const unsigned long WAITING_TIME = 800;
 
 /*Retry messages management*/
-#define MAX_RETRIES 3
+#define MAX_RETRIES 5
 unsigned long last_retry = 0;
 uint8_t num_retries = 0;
 
@@ -94,7 +94,7 @@ uint8_t parent_address = 0; //Device that sent the token to this node. The data 
 static bool _switch_to_initiator_pending = false; //Used inside tokenHandoff. Checks if has to switch or not (need to send ack before switching)
 static bool device_is_initiator = false;
 unsigned long being_initiator_start = 0;
-const unsigned long INITIATOR_TIMEOUT = 3000;
+const unsigned long INITIATOR_TIMEOUT = 5000;
 
 /*state = WAIT_TOKEN_HANDOFF_ACK*/
 static bool _wait_token_handoff_ack = false;
@@ -110,7 +110,7 @@ unsigned long wait_return_to_parent_ack_start = 0;
 static bool _wait_for_return = false;
 static bool return_received = false; // To avoid processing the same report more than once in case it is received multiple times due to retries and ACK failures.
 unsigned long wait_for_return_start = 0;
-const unsigned long WAITING_RETURN_TIME = 2000;
+const unsigned long WAITING_RETURN_TIME = 5000;
 
 
 /*Function prototypes*/
@@ -142,7 +142,6 @@ void attachCallbacks(){
     DW1000Ranging.attachNewRange(newRange);
     DW1000Ranging.attachNewDevice(newDevice);
     DW1000Ranging.atttachDiscoveredDevice(discoveredDevice);
-    DW1000Ranging.attachBlinkDevice(newDevice);
     DW1000Ranging.attachInactiveDevice(inactiveDevice);   
 
     DW1000Ranging.attachTokenHandoff(tokenHandoff);
@@ -166,6 +165,7 @@ void newDevice(DW1000Device *device){
     Serial.print(device->getShortAddressHeader(), HEX);
     Serial.print("]\tType --> ");
     uint8_t board_type = device->getBoardType();
+    
     switch(board_type){
         case 1:
             Serial.println("COORDINATOR");
@@ -202,12 +202,18 @@ void discoveredDevice(DW1000Device *device){
         if(!nodes_discovered) nodes_discovered = true;
     }
 
+    for(int i = 0; i < amount_devices;i++){
+        if(Existing_devices[i].short_addr == short_addr_origin){
+            if(Existing_devices[i].active == false) Existing_devices[i].active = true;
+            if(incoming_board_type == NODE) Existing_devices[i].is_node = true;
+        }
+    }
+
     if(DEBUG_SLAVE){
         Serial.print("Device discovered: ["); 
         Serial.print(short_addr_origin,HEX); Serial.println("]");
     }
 
-    registerDevice(device); //registerDevice takes control on reactivating and counting nodes.
 }
 
 void registerDevice(DW1000Device *device){
@@ -641,6 +647,8 @@ void transmitUnicast(uint8_t message_type,DW1000Device* explicit_target){
 
         DW1000Device* parent = explicit_target ? explicit_target : DW1000Ranging.searchDeviceByShortAddHeader(parent_address);
 
+        parent_address = parent->getShortAddressHeader(); //updates parent address in case it receives an explicit target different from the parent previously saved.
+
         if(parent){
 
             if(DEBUG_SLAVE){
@@ -687,17 +695,18 @@ void transmitUnicast(uint8_t message_type,DW1000Device* explicit_target){
     }
     else if(message_type == MSG_DATA_REPORT_ACK){
 
-        DW1000Device* token_target_device = DW1000Ranging.searchDeviceByShortAddHeader(token_target_address);
+        DW1000Device* target = explicit_target ? explicit_target : DW1000Ranging.searchDeviceByShortAddHeader(token_target_address);
+        uint8_t data_report_target_address = target->getShortAddressHeader();
 
-        if(token_target_device){
+        if(target){
 
             if(DEBUG_SLAVE){
                     Serial.print("Data report ACK transmitted to: [");
-                    Serial.print(token_target_address,HEX);
+                    Serial.print(data_report_target_address,HEX);
                     Serial.println("] via unicast");
                 }
 
-            DW1000Ranging.transmitDataReportAck(token_target_device);
+            DW1000Ranging.transmitDataReportAck(target);
                     
         }
 
@@ -949,7 +958,7 @@ void loop(){
 
     if(device_is_initiator && current_time - being_initiator_start > INITIATOR_TIMEOUT){
 
-        if(DEBUG_SLAVE){Serial.println("Initiator timeout. Forcing node back to responder.");}
+        if(DEBUG_SLAVE){Serial.print("INITIATOR TIMEOUT!!. ");}
         switchToResponder();
     }
     if(state == IDLE){
@@ -1040,21 +1049,23 @@ void loop(){
         if(ranging_device_index < amount_devices){
             // There still are devices to poll
 
+
+            if(DEBUG_SLAVE){
+                Serial.print("\nUnicast Polling with device: ");
+                Serial.print(ranging_device_index+1); 
+                Serial.print("/"); Serial.print(amount_devices); Serial.print(" --> ");
+            }
+
             //1st, checks if ranging device is parent. If so, skips it
             //This shouldn't happen, as parent does stopRanging(), but just in case
 
             if(Existing_devices[ranging_device_index].short_addr == parent_address){
 
                 if(DEBUG_SLAVE){
-                    Serial.print("Skipped ranging with my parent [");
+                    Serial.print("It's my parent! Skipping ranging with [");
                     Serial.print(Existing_devices[ranging_device_index].short_addr,HEX);Serial.println("]");
                 }
                 return; //Exits. Next loop, ranging_device_index is increased, aiming at the next device.
-            }
-            if(DEBUG_SLAVE){
-                Serial.print("\nUnicast Polling with device: ");
-                Serial.print(ranging_device_index+1); 
-                Serial.print("/"); Serial.print(amount_devices); Serial.print(" --> ");
             }
 
             if(Existing_devices[ranging_device_index].active == true){
