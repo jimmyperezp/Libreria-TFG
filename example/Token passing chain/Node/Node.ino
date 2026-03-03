@@ -60,14 +60,14 @@ unsigned long current_time = 0;
 const unsigned long WAITING_TIME = 800;
 
 /*Retry messages management*/
-#define MAX_RETRIES 5
+#define MAX_RETRIES 2
 unsigned long last_retry = 0;
 uint8_t num_retries = 0;
 
 /*state = DISCOVERY*/
 static bool _discovery = false;
 unsigned long discovery_start = 0;
-const unsigned long DISCOVERY_PERIOD = 500;
+const unsigned long DISCOVERY_PERIOD = 700;
 
 //To only re-discovery after a certain number of cycles: 
 #define UPDATE_DISCOVERY_ATTEMPTS 2
@@ -178,8 +178,7 @@ void newDevice(DW1000Device *device){
             break;
 
         default:
-            Serial.print(board_type);
-            Serial.println(" Not Known");
+            Serial.println("Pending (discovered via blink)");
             break;
 
     }
@@ -202,12 +201,7 @@ void discoveredDevice(DW1000Device *device){
         if(!nodes_discovered) nodes_discovered = true;
     }
 
-    for(int i = 0; i < amount_devices;i++){
-        if(Existing_devices[i].short_addr == short_addr_origin){
-            if(Existing_devices[i].active == false) Existing_devices[i].active = true;
-            if(incoming_board_type == NODE) Existing_devices[i].is_node = true;
-        }
-    }
+    registerDevice(device);
 
     if(DEBUG_SLAVE){
         Serial.print("Device discovered: ["); 
@@ -222,24 +216,16 @@ void registerDevice(DW1000Device *device){
     uint8_t incoming_board_type = device->getBoardType();
 
     for(int i=0;i<amount_devices;i++){
+
         if(Existing_devices[i].short_addr == incoming_short_addr){
             //Device already registered. Update its info but don't increase amount_devices.
 
             if(Existing_devices[i].active == false){
-
                 Existing_devices[i].active = true;
-
                 if(incoming_board_type == NODE){
-            
                     Existing_devices[i].is_node = true;
-                    
-                    
-                    if(DEBUG_SLAVE){ 
-                        Serial.print("Device ["); Serial.print(incoming_short_addr, HEX);   Serial.println("] re-activated as a NODE!"); }
-                }   
-
+                }  
                 else{ Existing_devices[i].is_node = false;}
-
             }
             return;
         }
@@ -499,7 +485,10 @@ void newRange(){
     uint8_t incoming_board_type = DW1000Ranging.getDistantDevice()->getBoardType();
     
     if (Existing_devices[ranging_device_index].short_addr == short_addr_origin && Existing_devices[ranging_device_index].range_pending == true){
+        Existing_devices[ranging_device_index].active = true;
         Existing_devices[ranging_device_index].range_pending = false;
+        Existing_devices[ranging_device_index].is_node = (incoming_board_type == NODE);
+
         _wait_for_range = false;  // To restart the timer next time state is state = WAIT_FOR_RANGE.
         state = RANGING;
     }
@@ -1001,6 +990,11 @@ void loop(){
         if(!_discovery){
             Serial.println("DISCOVERING:\n");
 
+            //Marks all devices as inactive (except the parent) to only range with the discovered (active) ones.
+            for(int i = 0; i<amount_devices ; i++){ 
+                if(Existing_devices[i].short_addr != parent_address) Existing_devices[i].active = false; 
+            }
+
             _discovery = true;
             DW1000Ranging.setRangingMode(DW1000RangingClass::DISCOVERY); //Discovery is done via broadcast.
             activateRanging();
@@ -1070,6 +1064,7 @@ void loop(){
 
             if(Existing_devices[ranging_device_index].active == true){
                 Existing_devices[ranging_device_index].range_pending = true;
+                num_retries = 0;
                 transmitUnicast(MSG_POLL_UNICAST); 
                 state = WAIT_FOR_RANGE;
             }

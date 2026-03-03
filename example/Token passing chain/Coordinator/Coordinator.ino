@@ -30,23 +30,18 @@ uint8_t amount_nodes = 0;
 uint8_t amount_active_nodes = 0;
 
 
-/*Ranging Mode --> Broadcast or Unicast*/
-DW1000RangingClass::RangingMode ranging_mode = DW1000RangingClass::UNICAST;
-//DW1000RangingClass::RangingMode ranging_mode = DW1000RangingClass::BROADCAST;
-
-
 /*Time management*/
 unsigned long current_time = 0;
 const unsigned long WAITING_TIME = 1000; 
 
 /*Retry messages management*/
-#define MAX_RETRIES 5
+#define MAX_RETRIES 2
 unsigned long last_retry = 0;
 uint8_t num_retries = 0;
 
 
 /*state = DISCOVERY*/
-const unsigned long DISCOVERY_PERIOD = 500;
+const unsigned long DISCOVERY_PERIOD = 700;
 static bool _discovery = false;
 static bool nodes_discovered = false;
 unsigned long discovery_start = 0;
@@ -100,6 +95,11 @@ enum UnicastMessageType{
     MSG_TOKEN_HANDOFF,
     MSG_DATA_REPORT_ACK
 };
+
+
+/*Function prototypes*/
+//transmitUnicast presents errors as one of the parameters is set as null
+void transmitUnicast(uint8_t message_type, DW1000Device* explicit_target = nullptr);
 
 
 /*CODE*/
@@ -162,8 +162,7 @@ void newDevice(DW1000Device *device){
             break;
 
         default:
-            Serial.print(board_type);
-            Serial.println(" Not Known");
+            Serial.println("PENDING (discovered via blink)");
             break;
 
     }
@@ -187,12 +186,13 @@ void discoveredDevice(DW1000Device *device){
         if(!nodes_discovered) nodes_discovered = true;
     }
 
+    registerDevice(device);
+
     if(DEBUG_COORDINATOR){
         Serial.print("Device discovered: ["); 
         Serial.print(short_addr_origin,HEX); Serial.println("]");
     }
 
-    registerDevice(device); //registerDevice takes control on reactivating and counting nodes.
 }
 
 
@@ -325,7 +325,7 @@ int16_t getClosestNodeAddress(){
                     }
                 }
             }       
-    }
+        }
     if(min_distance_updated) return closest_node_short_addr_header;
     else return -1;
 
@@ -370,6 +370,8 @@ void newRange(){
     
     if (Existing_devices[ranging_device_index].short_addr == short_addr_origin && Existing_devices[ranging_device_index].range_pending == true){
         Existing_devices[ranging_device_index].range_pending = false;
+        Existing_devices[ranging_device_index].is_node = (incoming_board_type == NODE);
+        
         _wait_unicast_range = false;  // To restart the timer next time state is state = WAIT_UNICAST_RANGE.
         state = COORDINATOR_RANGING;
     }
@@ -466,7 +468,7 @@ void stopRanging(){
 
 /*UNICAST TRANSMISSIONS*/
 
-void transmitUnicast(uint8_t message_type){
+void transmitUnicast(uint8_t message_type, DW1000Device* explicit_target){
 
     if(message_type == MSG_POLL_UNICAST){
 
@@ -510,35 +512,29 @@ void transmitUnicast(uint8_t message_type){
                     Serial.print(token_target_address,HEX);
                     Serial.print("] via unicast. ");
                 }
-
             DW1000Ranging.transmitTokenHandoff(target);
-            
         }
 
         else{
-
-        
             if(DEBUG_COORDINATOR) Serial.println("Target Not found. Token handoff not sent");
-            
-            // Simply prints the transmission was not sent. the retryTransmission logic handles the retries and, in case of failure, moving on to the next closest node.
-
+            // Simply prints the transmission was not sent. the retryTransmission logic handles the retries and, in case of failure, moving on to the next closest node
         }
     }
 
     else if(message_type == MSG_DATA_REPORT_ACK){
 
-        DW1000Device* token_target_device = DW1000Ranging.searchDeviceByShortAddHeader(token_target_address);
+        DW1000Device* target = explicit_target ? explicit_target : DW1000Ranging.searchDeviceByShortAddHeader(token_target_address);
+        uint8_t data_report_target_address = target->getShortAddressHeader();
 
-        if(token_target_device){
+        if(target){
 
             if(DEBUG_COORDINATOR){
                     Serial.print("Data report ACK sent to: [");
-                    Serial.print(token_target_address,HEX);
+                    Serial.print(data_report_target_address,HEX);
                     Serial.println("] via unicast");
                 }
 
-            DW1000Ranging.transmitDataReportAck(token_target_device);
-            
+            DW1000Ranging.transmitDataReportAck(target);
         }
 
         else{
@@ -561,9 +557,7 @@ void retryTransmission(uint8_t message_type){
 
         num_retries = 0;
                                                  
-
         if(message_type == MSG_POLL_UNICAST){
-            
             PollUnicastFailed();
         }
         
@@ -584,6 +578,7 @@ void PollUnicastFailed(){
         Serial.print(Existing_devices[ranging_device_index].short_addr,HEX); Serial.println("] FAILED. Moving on to next device. Back to unicast ranging.");
         
     }
+    Existing_devices[ranging_device_index].active = false;
     Existing_devices[ranging_device_index].range_pending = false;
     _wait_unicast_range = false; 
     num_retries = 0;
@@ -658,7 +653,7 @@ void aggregatedDataReport(byte* data){
         else if(return_received == true){ //The device is valid + I was waiting for the report
              
             if(DEBUG_COORDINATOR) Serial.println(" but already received before. Only need to send ACK");
-            transmitUnicast(MSG_DATA_REPORT_ACK);
+            transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
             delay(50);
             return;
 
@@ -666,12 +661,12 @@ void aggregatedDataReport(byte* data){
 
         else if(_wait_for_return == false){
             if(DEBUG_COORDINATOR) Serial.print(" but I wasn't waiting for it anymore. Sending ack of reception but ignoring data\n");
-            transmitUnicast(MSG_DATA_REPORT_ACK);
+            transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
             delay(50);
             return;
         }
 
-        transmitUnicast(MSG_DATA_REPORT_ACK);
+        transmitUnicast(MSG_DATA_REPORT_ACK, reporting_device);
         delay(50); //To make sure ack is sent correctly. 5ms is too small. 10 works fine.
 
         return_received = true; //To avoid processing the same report more than once in case it is received multiple times due to retries and ACK failures.
