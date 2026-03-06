@@ -19,6 +19,9 @@ int16_t      DW1000RangingClass::_type;
 //board type (master, anchor or tag)
 uint8_t DW1000RangingClass::_myBoardType = 99;
 
+//Ranging Mode (broadcast or unicast)
+DW1000RangingClass::RangingMode DW1000RangingClass::_ranging_mode = DW1000RangingClass::BROADCAST;
+
 //To enable/disable ranging. Starts enabled.
 bool DW1000RangingClass:: ranging_enabled = true;
 bool DW1000RangingClass:: stop_ranging = false;
@@ -35,17 +38,18 @@ volatile bool DW1000RangingClass::_sentAck     = false;
 volatile bool DW1000RangingClass::_receivedAck = false;
 
 // protocol error state
-bool          DW1000RangingClass::_protocolFailed = false;
+bool DW1000RangingClass::_protocolFailed = false;
 
 // Check if last frame was long: 
 bool DW1000RangingClass::_lastFrameWasLong = false;
 
 // timestamps to remember
-int32_t            DW1000RangingClass::timer           = 0;
-int16_t            DW1000RangingClass::counterForBlink = 0; // TODO 8 bit?
+int32_t DW1000RangingClass::timer           = 0;
+int16_t DW1000RangingClass::counterForBlink = 0; // TODO 8 bit?
+int8_t  DW1000RangingClass::check_inactive_devices_count = 0;
 
 // data buffer
-byte          DW1000RangingClass::data[LEN_DATA];
+byte DW1000RangingClass::data[LEN_DATA];
 // reset line to the chip
 uint8_t   DW1000RangingClass::_RST;
 uint8_t   DW1000RangingClass::_SS;
@@ -64,7 +68,7 @@ void (* DW1000RangingClass::_handleNewRange)(void) = 0;
 void (* DW1000RangingClass::_handleBlinkDevice)(DW1000Device*) = 0;
 void (* DW1000RangingClass::_handleNewDevice)(DW1000Device*) = 0;
 void (* DW1000RangingClass::_handleInactiveDevice)(DW1000Device*) = 0;
-void (* DW1000RangingClass::_handleModeSwitchRequest)(byte*, bool toInitiator) = 0;
+void (* DW1000RangingClass::_handleModeSwitchRequest)(bool toInitiator,bool _broadcast_ranging) = 0;
 void (* DW1000RangingClass::_handleModeSwitchAck)(bool isInitiator) = 0;
 void (* DW1000RangingClass::_handleDataRequest)(byte*) = 0;
 void (* DW1000RangingClass::_handleDataReport)(byte*) = 0;
@@ -387,18 +391,17 @@ int16_t DW1000RangingClass::detectMessageType(byte datas[]) {
 }
 
 void DW1000RangingClass::loop() {
-	//we check if needed to reset !
+	
 	checkForReset();
-	uint32_t time = millis(); // TODO other name - too close to "timer"
-	if(time-timer > _timerDelay) {
-		timer = time;
+	uint32_t current_time = millis();
+	if(current_time-timer > _timerDelay) {
+		timer = current_time;
 		timerTick();
 	}
 	
 	if(_sentAck) {
 		_sentAck = false;
-		
-		// TODO cc
+
 		int messageType = detectMessageType(data);
 		
 		if(messageType == MODE_SWITCH || messageType == REQUEST_DATA || messageType == STOP_RANGING) {
@@ -438,6 +441,11 @@ void DW1000RangingClass::loop() {
 						myDistantDevice->timePollSent = timePollSent;
 					}
 				}
+				_expectedMsgId = POLL_ACK;
+				if(DEBUG){
+					Serial.print("Poll sent. Waiting for Ack..."); Serial.print("Ranging Mode --> "); Serial.println((_ranging_mode == DW1000RangingClass::BROADCAST) ? "BROADCAST" : "UNICAST");
+				}
+				receiver();
 			}
 			else if(messageType == RANGE) {
 				DW1000Time timeRangeSent;
@@ -463,18 +471,16 @@ void DW1000RangingClass::loop() {
 		
 	}
 	
-	//check for new received message
+	//Checks for received messages:
 	if(_receivedAck) {
 
 		_receivedAck = false;
+
+		DW1000.getData(data, LEN_DATA); //getData returns the valuable info + its length
 		
-		//we read the datas from the modules:
-		// get message and parse
-		DW1000.getData(data, LEN_DATA);
+		int messageType = detectMessageType(data); //Extracts message type from the data buffer.
 		
-		int messageType = detectMessageType(data);
-		
-		if (messageType == MODE_SWITCH || messageType == REQUEST_DATA ||messageType == DATA_REPORT || messageType == STOP_RANGING) {
+		if (messageType == MODE_SWITCH || messageType == REQUEST_DATA ||messageType == DATA_REPORT || messageType == STOP_RANGING || messageType == POLL || messageType == RANGE) {
 
 			bool is_broadcast = (data[5] == 0xFF && data[6] == 0xFF);
             bool is_for_me = (data[6] == _currentShortAddress[0] && data[5] == _currentShortAddress[1]);
@@ -511,11 +517,11 @@ void DW1000RangingClass::loop() {
             }
 
 			int headerLen = _lastFrameWasLong ? LONG_MAC_LEN : SHORT_MAC_LEN;
-			bool toInitiator = (data[headerLen + 1] == 1);
-
+			bool toInitiator =  (data[headerLen + 1] == 1);
+			bool _range_via_broadcast = (data[headerLen + 2] == 1 );
 			if (_handleModeSwitchRequest) {
 				
-				(*_handleModeSwitchRequest)(shortAddress,toInitiator);
+				(*_handleModeSwitchRequest)(toInitiator,_range_via_broadcast);
 			}
 
 			return;
@@ -539,7 +545,6 @@ void DW1000RangingClass::loop() {
 			return;
 
         }
-		
 		else if(messageType == STOP_RANGING){
 
 			byte shortAddress[2]; //Creates 2 bytes to save 'shortAddress' from the requester.
@@ -600,190 +605,172 @@ void DW1000RangingClass::loop() {
 		}
 
 		if(ranging_enabled){
-				if(messageType == BLINK && _type == RESPONDER) {
-					byte address[8];
-					byte shortAddress[2];
-					_globalMac.decodeBlinkFrame(data, address, shortAddress);
-					//we create a new device with the initiator
-					DW1000Device myInitiator(address, shortAddress);
-					bool isNewDevice = addNetworkDevices(&myInitiator);
-				
-					if(isNewDevice && _handleBlinkDevice != 0) {
-						(*_handleBlinkDevice)(&myInitiator);
-					}
-					//we reply by the transmit ranging init message
-					transmitRangingInit(&myInitiator);
-					noteActivity();
-				
-				_expectedMsgId = POLL;
-				//Serial.println("Blink Recibido");
-				}
-				else if(messageType == RANGING_INIT && _type == INITIATOR) {
 
+			if(messageType == BLINK && _type == RESPONDER) { //If I'm a responder and I receive a BLINK (discovery) message:
+				
+				byte address[8];
+				byte shortAddress[2];
+				_globalMac.decodeBlinkFrame(data, address, shortAddress);
+				//we create a new device with the initiator
+				DW1000Device myInitiator(address, shortAddress);
+				bool isNewDevice = addNetworkDevices(&myInitiator);
+			
+				if(isNewDevice && _handleBlinkDevice != 0) {
+					(*_handleBlinkDevice)(&myInitiator);
+				}
+				
+				transmitRangingInit(&myInitiator); //Respond to the BLINK with a RANGING INIT message.
+				noteActivity();
+			
+				_expectedMsgId = POLL;	//Next expected message is POLL from the initiator.
+				
+			}
+
+			else if(messageType == RANGING_INIT && _type == INITIATOR) { //If I'm an initiator and receive a RANGING INIT (response to blink) message:
+				
 				byte address[2];
 				_globalMac.decodeLongMACFrame(data, address);
-
-				//we create a new device with the responder, specifying its address & 	indicating it's a short  one.
-				DW1000Device myResponder(address, true);
-
+				
+				DW1000Device myResponder(address, true); //Parameter "true" indicates it's a short address.
 				uint8_t responderboardType = data[LONG_MAC_LEN+1];
-
-                if(addNetworkDevices(&myResponder, true)) {
-                    // Store board type on the persisted network device entry
-                    _networkDevices[_networkDevicesNumber-1].setBoardType(responderboardType);
-
-                    // Notify using the stored device (ensures boardType and state are accurate)
-                    if(_handleNewDevice != 0) {
-                        (*_handleNewDevice)(&_networkDevices[_networkDevicesNumber-1]);
-                    }
-                }
-
+            	
+				if(addNetworkDevices(&myResponder, true)) {
+            	    
+            	    _networkDevices[_networkDevicesNumber-1].setBoardType(responderboardType); //Sets the responder's board type. 
+            	    
+            	    if(_handleNewDevice != 0) {
+            	        (*_handleNewDevice)(&_networkDevices[_networkDevicesNumber-1]);
+            	    }
+            	}
 				noteActivity();
 			}
-				else{
-				//we have a short mac layer frame !
+			
+			else{
+				
+				//When reaching this point, both the responder and initiator have been logged in the networkDevices array
+
 				byte address[2];
 				_globalMac.decodeShortMACFrame(data, address);
+				DW1000Device* myDistantDevice = searchDistantDevice(address); //Searches for the device that sent the message
 
-
-
-				//we get the device which correspond to the message which was sent (need 	to be filtered by MAC address)
-				DW1000Device* myDistantDevice = searchDistantDevice(address);
-
-
-				if((_networkDevicesNumber == 0) || (myDistantDevice == nullptr)) {
-					//we don't have the short address of the device in memory
+				if((_networkDevicesNumber == 0) || (myDistantDevice == nullptr)) { //Sender not found
+					
 					if (DEBUG) {
-						Serial.println("Not found");
-
+						Serial.println("404 - Sender not found");
 					}
 					return;
 				}
 
 
-				//then we proceed to range protocole
+				//(Code reaches here only if the sender was found)
 				if(_type == RESPONDER) {
-
 					if (messageType == POLL_ACK || messageType == RANGE_REPORT || messageType == RANGE_FAILED) {
-                    	//This filter prevents non-initiators to responding and "interacting" with messages that are not directed towards them.
+						//Filters messages that are not for responders.
 						return; 
-                	}
+            		}
 					if(messageType != _expectedMsgId) {
-						// unexpected message, start over again (except if already POLL)
+						
 						_protocolFailed = true;
 						if(DEBUG){
 							Serial.println("PROTOCOL FAILED --> Received a non expected message");
 						}
 					}
 					if(messageType == POLL) {
-
-						//we receive a POLL which is a broacast message
-						//we need to grab info about it
+						
+						
 						int16_t numberDevices = 0;
 						memcpy(&numberDevices, data+SHORT_MAC_LEN+1, 1);
 
 						for(uint16_t i = 0; i < numberDevices; i++) {
-							//we need to test if this value is for us:
-							//we grab the mac address of each devices:
-							byte shortAddress[2];
-							memcpy(shortAddress, data+SHORT_MAC_LEN+2+i*4, 2);
 
-							//we test if the short address is our address
-							if(shortAddress[0] == _currentShortAddress[0] && shortAddress	[1] == _currentShortAddress[1]) {
-								//we grab the replytime wich is for us
+							//Poll message can be broadcast or unicast. Responders need to check if the poll is for them. 
+							// If it is for them, they need to get the replyTime, update the timestamps, and respond with POLL_ACK.
+
+							byte shortAddress[2];
+							memcpy(shortAddress, data+SHORT_MAC_LEN+2+i*4, 2); //Extracts each short address from the POLL message.
+						
+							if(shortAddress[0] == _currentShortAddress[0] && shortAddress[1] == _currentShortAddress[1]) { //If the short address matches mine:
+								
 								uint16_t replyTime;
 								memcpy(&replyTime, data+SHORT_MAC_LEN+2+i*4+2, 2);
-								//we configure our replyTime;
-								_replyDelayTimeUS = replyTime;
+								_replyDelayTimeUS = replyTime; //Extracts the replyTime and sets it.
 
-								// on POLL we (re-)start, so no protocol failure
 								_protocolFailed = false;
-
 								DW1000.getReceiveTimestamp	(myDistantDevice->timePollReceived);
-								//we note activity for our device:
+								
 								myDistantDevice->noteActivity();
-								//we indicate our next receive message for our ranging 	protocole
+								
 								uint8_t initiatorType = data[SHORT_MAC_LEN + 2 + 4*numberDevices];
-    							myDistantDevice->setBoardType(initiatorType);
-								_expectedMsgId = RANGE;
-								transmitPollAck(myDistantDevice);
-								noteActivity();
+    							myDistantDevice->setBoardType(initiatorType); //Sets the initiator's board type.
 
+								_expectedMsgId = RANGE; //Next message expected is RANGE from the initiator.
+								transmitPollAck(myDistantDevice); //But first, respond with POLL_ACK.
+								noteActivity();
 								return;
 							}
-
 						}
-
 					}
-					else if(messageType == RANGE) {
-						//we receive a RANGE which is a broacast message
-						//we need to grab info about it
+					else if(messageType == RANGE) { //Last TWR message received from the initiator
+						
+						//Same as the POLL message reception. Need to check if the RANGE message is for me (responder). If so, extract the needed values.
+
 						uint8_t numberDevices = 0;
 						memcpy(&numberDevices, data+SHORT_MAC_LEN+1, 1);
 
-
 						for(uint8_t i = 0; i < numberDevices; i++) {
-							//we need to test if this value is for us:
-							//we grab the mac address of each devices:
+							
 							byte shortAddress[2];
 							memcpy(shortAddress, data+SHORT_MAC_LEN+2+i*17, 2);
-
-							//we test if the short address is our address
-							if(shortAddress[0] == _currentShortAddress[0] && shortAddress[1] == _currentShortAddress[1]) {
-								//we grab the replytime wich is for us
-								DW1000.getReceiveTimestamp(myDistantDevice->timeRangeReceived);
+							
+							if(shortAddress[0] == _currentShortAddress[0] && shortAddress[1] == _currentShortAddress[1]) { //If the short address matches mine:
+								
+								
+								DW1000.getReceiveTimestamp(myDistantDevice->timeRangeReceived); //Saves received time in timeRangeReceived
 								noteActivity();
-								_expectedMsgId = POLL;
+								_expectedMsgId = POLL; //TWR is done. Next expected message is a new POLL from the initiator.
 
 								if(!_protocolFailed) {
 
+									//Sets all the timestamps to calculate the distance between devices
 									myDistantDevice->timePollSent.setTimestamp(data	+SHORT_MAC_LEN+4+17*i);
-									myDistantDevice->timePollAckReceived.setTimestamp(data	+SHORT_MAC_LEN+9+17*i);
-									myDistantDevice->timeRangeSent.setTimestamp(data	+SHORT_MAC_LEN+14+17*i);
-
-									// (re-)compute range as two-way ranging is done
+									myDistantDevice->timePollAckReceived.setTimestamp(data+SHORT_MAC_LEN+9+17*i);
+									myDistantDevice->timeRangeSent.setTimestamp(data+SHORT_MAC_LEN+14+17*i);
+									
 									DW1000Time myTOF;
-									computeRangeAsymmetric(myDistantDevice, &myTOF); // CHOSEN RANGING ALGORITHM
-
+									computeRangeAsymmetric(myDistantDevice, &myTOF); // Calculations done here. 
 									float distance = myTOF.getAsMeters();
-
 									if (_useRangeFilter) {
 										//Skip first range
 										if (myDistantDevice->getRange() != 0.0f) {
-											distance = filterValue(distance, myDistantDevice->getRange(), _rangeFilterValue);
+											distance = filterValue(distance, myDistantDevice->getRange(),_rangeFilterValue);
 										}
 									}
-
+									
+									//After calculations, saves all results in the initiator's device instance:
 									myDistantDevice->setRXPower(DW1000.getReceivePower());
 									myDistantDevice->setRange(distance);
-
 									myDistantDevice->setFPPower(DW1000.getFirstPathPower());
 									myDistantDevice->setQuality(DW1000.getReceiveQuality());
+									
+									
+									transmitRangeReport(myDistantDevice); //And "sends" the results back to the initiator.
 
-									//we send the range to INITIATOR
-									transmitRangeReport(myDistantDevice);
-
-									//we have finished our range computation. We send the corresponding handler
+									
 									_lastDistantDevice = myDistantDevice->getIndex();
 									if(_handleNewRange != 0) {
-										(*_handleNewRange)();
+										(*_handleNewRange)(); //Range is finished. Calls the newRange Handler.
 									}
-
 								}
 								else {
 									transmitRangeFailed(myDistantDevice);
 								}
-
-
 								return;
 							}
-
 						}
-
 					}
 				}
 				else if(_type == INITIATOR) {
-					// get message and parse
+					
 					if(messageType != _expectedMsgId) {
 						// unexpected message, start over again
 						//not needed ?
@@ -792,40 +779,53 @@ void DW1000RangingClass::loop() {
 						return;
 					}
 					if(messageType == POLL_ACK) {
-						DW1000.getReceiveTimestamp(myDistantDevice->timePollAckReceived);
-						//we note activity for our device:
-						myDistantDevice->noteActivity();
 
-						//in the case the message come from our last device:
-						if(myDistantDevice->getIndex() == _networkDevicesNumber-1) {
+						DW1000.getReceiveTimestamp(myDistantDevice->timePollAckReceived); //Saves the timestamp of the received POLL_ACK
+						
+						myDistantDevice->noteActivity(); //notes the responder's activity (last seen moment).
+
+						//If the poll was sent via unicast:
+
+						if(_ranging_mode ==  DW1000RangingClass::UNICAST){
+
+							//Poll was only sent once. Only 1 poll_ack expected.
+							if(DEBUG){
+
+								Serial.println("POLL ACK RECEIVED. SENDING RANGE MESSAGE");
+							}
+							
+							transmitRange(myDistantDevice); //Directly send range to the responder.
+							_expectedMsgId = RANGE_REPORT; //Next expected message is RANGE_REPORT from the responder.
+							
+							return;
+							
+						}
+						
+						//If the poll was sent bia broadcast: Initiator needs to "wait" for all the poll_acks from all responders. (waits until poll_ack from the device placed last in the networkDevices array)
+
+						else if(myDistantDevice->getIndex() == _networkDevicesNumber-1) {
 							_expectedMsgId = RANGE_REPORT;
-							//and transmit the next message (range) of the ranging 	protocole (in broadcast)
-							transmitRange(nullptr);
+							
+							transmitRange(nullptr); //If the poll was broadcast, the range message will be broadcast too.
 						}
 					}
 					else if(messageType == RANGE_REPORT) {
-
 						float curRange;
 						memcpy(&curRange, data+1+SHORT_MAC_LEN, 4);
 						float curRXPower;
 						memcpy(&curRXPower, data+5+SHORT_MAC_LEN, 4);
-
 						if (_useRangeFilter) {
 							//Skip first range
 							if (myDistantDevice->getRange() != 0.0f) {
 								curRange = filterValue(curRange, myDistantDevice->getRange(), _rangeFilterValue);
 								myDistantDevice->noteActivity();
-
 							}
 						}
-
 						//we have a new range to save !
 						myDistantDevice->setRange(curRange);
 						myDistantDevice->setRXPower(curRXPower);
-
-
-						//We can call our handler !
-						//we have finished our range computation. We send the 	corresponding handler
+						
+						//Ranging protocol finished and calculations received by the initiator. Now, it can launch the newRange callback:
 						_lastDistantDevice = myDistantDevice->getIndex();
 						if(_handleNewRange != 0) {
 							(*_handleNewRange)();
@@ -833,15 +833,12 @@ void DW1000RangingClass::loop() {
 						if(stop_ranging){
 							ranging_enabled = false;
 						}
-						
+
 					}
 					else if(messageType == RANGE_FAILED) {
-						//not needed as we have a timer;
+
 						return;
 						_expectedMsgId = POLL_ACK;
-						
-						//checks if has to do another ranging loop:
-						
 					}
 				}
 			}
@@ -893,35 +890,40 @@ void DW1000RangingClass::timerTick() {
 
 	if(ranging_enabled && !stop_ranging){
 
-	if(_networkDevicesNumber > 0 && counterForBlink != 0) {
-		if(_type == INITIATOR) {
-			_expectedMsgId = POLL_ACK;
-			//send a prodcast poll
-			
+		if(_ranging_mode == DW1000RangingClass::BROADCAST){ //Only ticks "automatically" in broadcast mode.
 
-				transmitPoll(nullptr);
+			if(_networkDevicesNumber > 0 && counterForBlink != 0) {
+				if(_type == INITIATOR) {
+					_expectedMsgId = POLL_ACK;
+					transmitPoll(nullptr);  //broadcast poll
+				}
+			}
 			
-			
+			else if(counterForBlink == 0) {
+				if(_type == INITIATOR) {
+					transmitBlink();	
+				}	
+    	   	 	checkForInactiveDevices(); //check for inactive devices if we are a INITIATOR or RESPONDER
+			}
+
+			counterForBlink++;
+			if(counterForBlink > 6) {
+				counterForBlink = 0;
+			}
+		}
+	
+	
+		else if(_ranging_mode == DW1000RangingClass::UNICAST){
+
+			if(check_inactive_devices_count ==0) checkForInactiveDevices();
+			check_inactive_devices_count++;
+			if(check_inactive_devices_count >6){
+				check_inactive_devices_count = 0;
+
+			}
 		}
 	}
-	else if(counterForBlink == 0) {
-		if(_type == INITIATOR) {
-			
-				transmitBlink();
-			
-			
-		}
-		//check for inactive devices if we are a INITIATOR or RESPONDER
-		
-        checkForInactiveDevices();
-    	
-		
-	}
-	counterForBlink++;
-	if(counterForBlink > 6) {
-		counterForBlink = 0;
-	}
-	}
+	
 }
 
 void DW1000RangingClass::copyShortAddress(byte address1[], byte address2[]) {
@@ -974,9 +976,9 @@ void DW1000RangingClass::transmitPoll(DW1000Device* myDistantDevice) {
 	
 	transmitInit();
 	
-	if(myDistantDevice == nullptr) { //If the polling is done via broadcast
-		//Right now, it is always sent via broadcast.
-
+	if(myDistantDevice == nullptr) { //Polling via broadcast.
+		
+		_ranging_mode = DW1000RangingClass::BROADCAST;
 		//we need to set our timerDelay:
 		_timerDelay = DEFAULT_TIMER_DELAY+(uint16_t)(_networkDevicesNumber*3*DEFAULT_REPLY_DELAY_TIME/1000);
 		
@@ -1005,21 +1007,36 @@ void DW1000RangingClass::transmitPoll(DW1000Device* myDistantDevice) {
 			//These go in the pending freed up 2 bytes from before
 			
 		}
+		
 		data[SHORT_MAC_LEN+2+4*_networkDevicesNumber] = _myBoardType;
 		copyShortAddress(_lastSentToShortAddress, shortBroadcast);
 		
 	}
+	
 	else { //Polling via unicast.
-		//we redefine our default_timer_delay for just 1 device;
-		_timerDelay = DEFAULT_TIMER_DELAY;
 		
+		_ranging_mode = DW1000RangingClass::UNICAST;
+		_timerDelay = DEFAULT_TIMER_DELAY; //Only 1 device --> timer delay is OK as default.
+		
+		//1 Generate MAC frame
 		_globalMac.generateShortMACFrame(data, _currentShortAddress, myDistantDevice->getByteShortAddress());
 		
-		data[SHORT_MAC_LEN]   = POLL;
-		data[SHORT_MAC_LEN+1] = 1;
-		uint16_t replyTime = myDistantDevice->getReplyTime();
-		memcpy(data+SHORT_MAC_LEN+2, &replyTime, sizeof(uint16_t)); // todo is code correct?
-		data[SHORT_MAC_LEN+2 + sizeof(uint16_t)] = _myBoardType;
+		//2 Add message type and number of devices (1 here)
+		data[SHORT_MAC_LEN] = POLL;
+		data[SHORT_MAC_LEN+1] = 1; //number of devices = 1
+
+		//3 Add the receiver's short address
+		memcpy(data+SHORT_MAC_LEN+2, myDistantDevice->getByteShortAddress(), 2);
+		
+		//4 --> Add the reply time for the targeted device
+		uint16_t replyTime = DEFAULT_REPLY_DELAY_TIME;
+		myDistantDevice->setReplyTime(replyTime);
+		memcpy(data+SHORT_MAC_LEN+4, &replyTime, sizeof(uint16_t));
+
+		//5 --> Add the boardType of the initiator
+		data[SHORT_MAC_LEN+6] = _myBoardType;
+
+		//6 --> Save last sent to address for future reference
 		copyShortAddress(_lastSentToShortAddress, myDistantDevice->getByteShortAddress());
 	}
 	
@@ -1037,30 +1054,32 @@ void DW1000RangingClass::transmitPollAck(DW1000Device* myDistantDevice) {
 }
 
 void DW1000RangingClass::transmitRange(DW1000Device* myDistantDevice) {
-	//transmit range need to accept broadcast for multiple responder
+
 	transmitInit();
-	
-	
-	if(myDistantDevice == nullptr) {
-		//we need to set our timerDelay:
+
+	if(myDistantDevice == nullptr) { //Range via broadcast.
+
+		//1st --> Set the timer delay:
 		_timerDelay = DEFAULT_TIMER_DELAY+(uint16_t)(_networkDevicesNumber*3*DEFAULT_REPLY_DELAY_TIME/1000);
 		
+		//2 --> Generate MAC frame (current address + broadcast (FF:FF))
 		byte shortBroadcast[2] = {0xFF, 0xFF};
 		_globalMac.generateShortMACFrame(data, _currentShortAddress, shortBroadcast);
-		data[SHORT_MAC_LEN]   = RANGE;
-		//we enter the number of devices
+		
+		//3 --> Message Type & number of devices
+		data[SHORT_MAC_LEN]= RANGE;
 		data[SHORT_MAC_LEN+1] = _networkDevicesNumber;
 		
-		// delay sending the message and remember expected future sent timestamp
-		DW1000Time deltaTime     = DW1000Time(DEFAULT_REPLY_DELAY_TIME, DW1000Time::MICROSECONDS);
+		//4 --> delay sending the message and remember expected future sent timestamp
+		DW1000Time deltaTime = DW1000Time(DEFAULT_REPLY_DELAY_TIME, DW1000Time::MICROSECONDS);
 		DW1000Time timeRangeSent = DW1000.setDelay(deltaTime);
 		
 		for(uint8_t i = 0; i < _networkDevicesNumber; i++) {
-			//we write the short address of our device:
+			
+			//5 --> ShortAddress of each device
 			memcpy(data+SHORT_MAC_LEN+2+17*i, _networkDevices[i].getByteShortAddress(), 2);
 			
-			
-			//we get the device which correspond to the message which was sent (need to be filtered by MAC address)
+			//6 --> Saves all the timestamps into the message for each device:
 			_networkDevices[i].timeRangeSent = timeRangeSent;
 			_networkDevices[i].timePollSent.getTimestamp(data+SHORT_MAC_LEN+4+17*i);
 			_networkDevices[i].timePollAckReceived.getTimestamp(data+SHORT_MAC_LEN+9+17*i);
@@ -1068,19 +1087,40 @@ void DW1000RangingClass::transmitRange(DW1000Device* myDistantDevice) {
 			
 		}
 		
+		//7 --> Save last sent to address for future reference
 		copyShortAddress(_lastSentToShortAddress, shortBroadcast);
 		
 	}
-	else {
+	else { //Unicast Range 
+
+		//Same steps as broadcast, but only for one device:
+
+		//1st --> Set the timer delay:
+		_timerDelay = DEFAULT_TIMER_DELAY;
+
+		//2 --> Generate MAC frame (current address + targeted device)
+
 		_globalMac.generateShortMACFrame(data, _currentShortAddress, myDistantDevice->getByteShortAddress());
+
+		//3 --> Message Type & number of devices
 		data[SHORT_MAC_LEN] = RANGE;
-		// delay sending the message and remember expected future sent timestamp
+		data[SHORT_MAC_LEN+1] = 1; //number of devices = 1
+
+
+		//4 --> delay sending the message and remember expected future sent timestamp
 		DW1000Time deltaTime = DW1000Time(_replyDelayTimeUS, DW1000Time::MICROSECONDS);
-		//we get the device which correspond to the message which was sent (need to be filtered by MAC address)
 		myDistantDevice->timeRangeSent = DW1000.setDelay(deltaTime);
-		myDistantDevice->timePollSent.getTimestamp(data+1+SHORT_MAC_LEN);
-		myDistantDevice->timePollAckReceived.getTimestamp(data+6+SHORT_MAC_LEN);
-		myDistantDevice->timeRangeSent.getTimestamp(data+11+SHORT_MAC_LEN);
+
+		//5 --> ShortAddress of the device
+		memcpy(data+SHORT_MAC_LEN+2, myDistantDevice->getByteShortAddress(), 2);
+
+		//6 --> Saves all the timestamps into the message for the device:
+		myDistantDevice->timePollSent.getTimestamp(data+SHORT_MAC_LEN+4);
+		myDistantDevice->timePollAckReceived.getTimestamp(data+SHORT_MAC_LEN+9);
+		myDistantDevice->timeRangeSent.getTimestamp(data+SHORT_MAC_LEN+14);
+
+		//7 --> Save last sent to address for future reference
+		
 		copyShortAddress(_lastSentToShortAddress, myDistantDevice->getByteShortAddress());
 	}
 	
@@ -1171,7 +1211,7 @@ void DW1000RangingClass::transmitStopRangingAck(DW1000Device* device){
 }
 
 
-void DW1000RangingClass::transmitModeSwitch(bool toInitiator, DW1000Device* device){
+void DW1000RangingClass::transmitModeSwitch(bool toInitiator, DW1000Device* device, bool _is_ranging_done_via_broadcast){
 
 	//1: Prepare for new transmission:
 	transmitInit(); //Resets ack flag and sets default parameters (power, bit rate, preamble)
@@ -1208,29 +1248,9 @@ void DW1000RangingClass::transmitModeSwitch(bool toInitiator, DW1000Device* devi
 	uint16_t index = SHORT_MAC_LEN;
 	data[index++] = MODE_SWITCH;
 	data[index++] = toInitiator ? 1:0;
+	data[index++] = _is_ranging_done_via_broadcast ? 1:0; // The receiver must do the ranging the same way as the sender.
 	data[index++] = sent_by_broadcast ? 1:0;
-
-	if(sent_by_broadcast){
-
-		//If sent by broadcast, I set a reply time to avoid colissions.
-		
-		data[index++] = _networkDevicesNumber;
-		for(uint8_t i = 0; i < _networkDevicesNumber; i++) {
-
-			const byte* add = _networkDevices[i].getByteShortAddress();
-			data[index++] = add[0];
-			data[index++] = add[1];
-
-
-			_networkDevices[i].setReplyTime((2*i+1)*DEFAULT_REPLY_DELAY_TIME);
-			uint16_t replyTime = _networkDevices[i].getReplyTime();
-			memcpy(data+index, &replyTime, sizeof(uint16_t));
-			index += sizeof(uint16_t);
-
-			//TODO: 
-			//Right now, if i>5, the uint16_t overflows. I should switch the _replyTime definitions everywhere to uint32_t
-		}
-	}
+	
 
 	if(index>LEN_DATA){
 		//TODO - Clip the exceeding length, instead of not sending it
