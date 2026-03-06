@@ -1,4 +1,5 @@
 #include <SPI.h>
+#include <ArduinoJson.h>
 #include "DW1000Ranging.h"
 #include "DW1000.h"
 
@@ -11,6 +12,7 @@ const uint8_t PIN_IRQ = 34; // irq pin
 const uint8_t PIN_SS = 4;   // spi select pin
 
 #define DEBUG_COORDINATOR true
+#define PLOTTING true
 #define IS_MASTER true
 
 #define DEVICE_ADDR "C1:00:5B:D5:A9:9A:E2:9C" 
@@ -76,6 +78,7 @@ const unsigned long WAIT_FOR_RETURN_TIMEOUT = 15000;
 
 /*Used to print results*/
 unsigned long last_shown_data_timestamp = 0;
+unsigned long last_plot_timestamp = 0;
 
 /*States used in the FSM*/
 enum State{
@@ -762,6 +765,71 @@ void showData(){
     
 }
 
+void showPlottingData(){
+    //Converts data to a JSON format. This way, the python app reads the serial monitor and plots the results.
+
+    StaticJsonDocument<1024> json_doc; //Saves up 1024 Bytes of the stack to show the JSON
+
+    //The JSON will have the next structure: 
+    /*
+    
+    {
+        "time_between_cycles": (indicates the number of ms it took to complete the current cycle)
+        "measure":[ ("[ indicates the value of this field is a list of other fields")
+            {
+                "from": (origin short address header)
+                "to":   (destiny short address header)
+                "dist": (distance value)
+                "rxpwr": (measured RX power in each measure)
+            },
+            {
+                "from":
+                "to":  
+                "dist":
+                "rxpwr":
+            }      
+        ]
+    }
+    
+    */
+
+    //1 I save the elapsed time between prints
+    unsigned long time_between_prints = current_time - last_plot_timestamp;
+    json_doc["time_between_cycles"] = time_between_prints;
+    last_plot_timestamp = current_time;
+
+    //2: I create the field "measures":
+    JsonArray measures_array = json_doc.createNestedArray("measures");
+
+    for(int i = 0; i<amount_measurements;i++){
+        if(measurements[i].active){
+            
+            //3: I save each valid measure in a new object inside the "measures" field
+
+            JsonObject measure = measures_array.createNestedObject();
+
+            // To save the short addresses: 1 char for each character, and 1 for the ending value (\0)
+            char origin[3];
+            char destiny[3];
+
+            sprintf(origin,"%02X", measurements[i].short_addr_origin);
+            sprintf(destiny,"%02X", measurements[i].short_addr_dest);
+
+            measure["from"] = origin;
+            measure["to"] = destiny;
+            measure["dist"] = measurements[i].distance;
+            measure["rxpwr"] = measurements[i].rxPower;
+
+        }
+    }
+
+    Serial.print("JSON_DATA:");
+    serializeJson(json_doc,Serial);
+    Serial.println();
+
+}
+
+
 void resetMeasures(){ 
     for(int i = 0;i<amount_measurements;i++){
         measurements[i].active = false; //This way, only prints active measures next time showData() is called
@@ -945,7 +1013,9 @@ void loop(){
 
     else if(state == END_CYCLE){
 
+        if(PLOTTING) showPlottingData();
         showData();
+
         num_retries = 0;
         if(DEBUG_COORDINATOR){
             Serial.print("\nEnd of cycle. Restarting process... ");
