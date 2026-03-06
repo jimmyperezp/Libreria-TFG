@@ -78,6 +78,7 @@ const unsigned long WAIT_FOR_RETURN_TIMEOUT = 15000;
 
 /*Used to print results*/
 unsigned long last_shown_data_timestamp = 0;
+unsigned long last_plot_timestamp = 0;
 
 /*States used in the FSM*/
 enum State{
@@ -773,29 +774,37 @@ void showPlottingData(){
     /*
     
     {
+        "time_between_cycles": (indicates the number of ms it took to complete the current cycle)
         "measure":[ ("[ indicates the value of this field is a list of other fields")
             {
                 "from": (origin short address header)
                 "to":   (destiny short address header)
                 "dist": (distance value)
+                "rxpwr": (measured RX power in each measure)
             },
             {
                 "from":
                 "to":  
                 "dist":
+                "rxpwr":
             }      
         ]
     }
     
     */
 
-    //1: I create the field "measures":
+    //1 I save the elapsed time between prints
+    unsigned long time_between_prints = current_time - last_plot_timestamp;
+    json_doc["time_between_cycles"] = time_between_prints;
+    last_plot_timestamp = current_time;
+
+    //2: I create the field "measures":
     JsonArray measures_array = json_doc.createNestedArray("measures");
 
     for(int i = 0; i<amount_measurements;i++){
         if(measurements[i].active){
             
-            //2: I save each valid measure in a new object inside the "measures" field
+            //3: I save each valid measure in a new object inside the "measures" field
 
             JsonObject measure = measures_array.createNestedObject();
 
@@ -806,9 +815,10 @@ void showPlottingData(){
             sprintf(origin,"%02X", measurements[i].short_addr_origin);
             sprintf(destiny,"%02X", measurements[i].short_addr_dest);
 
-            measures["from"] = origin;
-            measures["to"] = destiny;
-            measures["dist"] = measurements[i].distance;
+            measure["from"] = origin;
+            measure["to"] = destiny;
+            measure["dist"] = measurements[i].distance;
+            measure["rxpwr"] = measurements[i].rxPower;
 
         }
     }
@@ -1003,10 +1013,9 @@ void loop(){
 
     else if(state == END_CYCLE){
 
+        if(PLOTTING) showPlottingData();
         showData();
 
-        if(PLOTTING) showPlottingData();
-        
         num_retries = 0;
         if(DEBUG_COORDINATOR){
             Serial.print("\nEnd of cycle. Restarting process... ");
