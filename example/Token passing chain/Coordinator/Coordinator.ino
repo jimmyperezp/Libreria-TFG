@@ -322,7 +322,7 @@ int16_t getNextHop(){
             examined_node_short_addr_header = measurements[i].short_addr_dest;
             if(examined_node_short_addr_header == parent_address) continue; 
 
-            if((Existing_devices[searchDevice(examined_node_short_addr_header)].cycle_id) == DW1000RangingClass.getOwnCycleId()){
+            if((Existing_devices[searchDevice(examined_node_short_addr_header)].cycle_id) == DW1000Ranging.getOwnCycleId()){
                 //If the examined node has the same cycle ID as me, then it has received the token from someone else. I skip it.
                 continue;
             }
@@ -381,6 +381,8 @@ void tokenHandoffAck(){
 
 void TokenHandoffNack(){
 
+    if(state != WAIT_TOKEN_HANDOFF_ACK) return;
+    
     DW1000Device* origin_device = DW1000Ranging.getDistantDevice();
     uint8_t origin_short_addr = origin_device->getShortAddressHeader();
     uint8_t origin_cycle_id = origin_device->getCycleId();
@@ -399,13 +401,13 @@ void TokenHandoffNack(){
     uint8_t own_cycle_id = DW1000RangingClass.getOwnCycleId();
     if(DEBUG_COORDINATOR){
         Serial.print("Token passed to ["); Serial.print(origin_short_addr,HEX); Serial.print("] REJECTED. "); 
-        Serial.print("Node currently in cycle: "); Serial.print(origin_cycle_id); Serial.print("& Coordinator in cycle: ");Serial.print(own_cycle_id);
     }
+
     Existing_devices[searchDevice(origin_short_addr)].token_handoff_pending = false;
     Existing_devices[searchDevice(origin_short_addr)].cycle_id = own_cycle_id;
     origin_device->setCycleId(own_cycle_id); //To keep both lists updated with same values
 
-    
+    state = TOKEN_HANDOFF_STATE; //If this one was rejected, then I evaluate next
 }
 
 /*RANGES & LOGGING*/
@@ -1093,7 +1095,7 @@ void loop(){
             cycle_id = 0;
         }
 
-        DW1000RangingClass.setNetworkCycleId(cycle_id);
+        DW1000RangingClass.setOwnCycleId(cycle_id);
        
         _discovery = false;
         state = DISCOVERY;
