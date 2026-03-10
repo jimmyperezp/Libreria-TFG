@@ -602,15 +602,17 @@ void DW1000RangingClass::loop() {
 				ackDevice ->setCycleId(incoming_cycle_id);
 			}
 
-
+			/* In the future, this section directly sends the NACK without calling the tokenHandoff Callback.
+			As of now, I still call it to debug & see in the serial monitor how this is handled. 
 			if(incoming_cycle_id == _own_cycle_id){
 
 				if(DEBUG){
-					Serial.print("Token ignored. Network cycle received: "); Serial.print(incoming_cycle_id);
-					Serial.print(" and already in cycle "); Serial.println(_own_cycle_id);
+					Serial.print("Token ignored. Cycle received: "); Serial.print(incoming_cycle_id);
+					Serial.print(" and already in cycle "); Serial.print(_own_cycle_id);
+					Serial.println("Sending token Handoff Nack")
 				}
 
-				if(_handleTokenHandoffNack){ (*_handleTokenHandoffNack();)}
+				transmitTokenHandoffNack(ackDevice);
 				return;
 			}
 
@@ -618,6 +620,13 @@ void DW1000RangingClass::loop() {
 				if(_handleTokenHandoff){(*_handleTokenHandoff)(incoming_cycle_id);}
 				return;
 			}
+			*/
+
+			if(_handleTokenHandoff){(*_handleTokenHandoff)(incoming_cycle_id);
+				return;
+			}
+				
+			
 		}
 		else if(messageType == TOKEN_HANDOFF_ACK){
 			
