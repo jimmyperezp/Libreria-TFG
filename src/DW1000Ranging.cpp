@@ -14,7 +14,7 @@ int16_t      DW1000RangingClass::_lastDistantDevice    = 0; // TODO short, 8bit?
 DW1000Mac    DW1000RangingClass::_globalMac;
 
 //module type (responder or initiator)
-int16_t      DW1000RangingClass::_type; 
+int16_t DW1000RangingClass::_type; 
 
 //board type (master, anchor or tag)
 uint8_t DW1000RangingClass::_myBoardType = 99;
@@ -25,6 +25,8 @@ DW1000RangingClass::RangingMode DW1000RangingClass::_ranging_mode = DW1000Rangin
 //To enable/disable ranging. Starts enabled.
 bool DW1000RangingClass:: ranging_enabled = true;
 bool DW1000RangingClass:: stop_ranging = false;
+
+uint8_t DW1000RangingClass::_own_cycle_id = 0; 
 
 // message flow state
 volatile byte    DW1000RangingClass::_expectedMsgId;
@@ -1177,7 +1179,7 @@ void DW1000RangingClass::transmitPollAck(DW1000Device* myDistantDevice) {
 	transmitInit();
 	_globalMac.generateShortMACFrame(data, _currentShortAddress, myDistantDevice->getByteShortAddress());
 	data[SHORT_MAC_LEN] = POLL_ACK;
-	data[SHORT_MAC_LEN] = _own_cycle_id; //Used in token passing. Controls all of the device's cycle, so that all of them receive the token in each one
+	data[SHORT_MAC_LEN+1] = _own_cycle_id; //Used in token passing. Controls all of the device's cycle, so that all of them receive the token in each one
 
 	// delay the same amount as ranging initiator
 	DW1000Time deltaTime = DW1000Time(_replyDelayTimeUS, DW1000Time::MICROSECONDS);
