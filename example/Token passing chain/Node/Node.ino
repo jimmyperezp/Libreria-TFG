@@ -36,6 +36,7 @@ enum UnicastMessageType{
     MSG_POLL_UNICAST,
     MSG_TOKEN_HANDOFF,
     MSG_TOKEN_HANDOFF_ACK,
+    MSG_TOKEN_HANDOFF_NACK,
     MSG_RETURN_TO_PARENT,
     MSG_DATA_REPORT_ACK
 };
@@ -146,6 +147,7 @@ void attachCallbacks(){
 
     DW1000Ranging.attachTokenHandoff(tokenHandoff);
     DW1000Ranging.attachTokenHandoffAck(tokenHandoffAck);
+    DW1000Ranging.attachTokenHandoffNack(tokenHandoffNack);
 
     DW1000Ranging.attachAggregatedDataReport(aggregatedDataReport);  
     DW1000Ranging.attachDataReportAck(dataReportAck);
@@ -156,6 +158,19 @@ uint8_t getOwnShortAddress() {
     return (uint8_t)sa[0];
 }
 
+void resetFSMVariables(){
+
+    /*In case a cycle is aborted or a initiator timeout happens*/
+    num_retries = 0;
+    _discovery = false;
+    _ranging = false; 
+    _wait_for_range = false;
+    _wait_token_handoff_ack = false;
+    _wait_for_return = false;
+    return_received = false;
+    _wait_return_to_parent_ack = false;
+    
+}
 
 /*DEVICE DISCOVERY*/
 
@@ -352,52 +367,68 @@ void tokenHandoff(uint8_t incoming_cycle_id){
     DW1000Device* requesting_device = DW1000Ranging.getDistantDevice();
     if(requesting_device) requesting_address = requesting_device->getShortAddressHeader();
     else requesting_address = 0;
-
+    uint8_t own_cycle_id = DW1000Ranging.getOwnCycleId();
 
     if(DEBUG_SLAVE){
         Serial.print("\nTOKEN RECEIVED from: [");
         Serial.print(requesting_address,HEX);
-        Serial.print("]. ");
+        Serial.print("].Incoming Cycle: "); Serial.print(incoming_cycle_id);
+        Serial.print("Current Cycle: "); Serial.println(own_cycle_id);
+    }
+    
+
+    if(i_have_token){
+
+        //In case my ACK was lost before, i re-send a mercy Ack
+        if(DEBUG_SLAVE) Serial.print("But I already have the token. Sending mercy ACK... ");
+        transmitUnicast(MSG_TOKEN_HANDOFF_ACK,requesting_device);
+
     }
 
-    if(state != IDLE){
-        //Only accept the token if the node is in state IDLE. If it is doing any other task, it will reject the token and keep doing its current task.
+    if(incoming_cycle_id == own_cycle_id){
 
+        if(requesting_address == parent_address){
+
+            if(DEBUG_SLAVE) Serial.print("It's my parent retrying. Sending mercy ACK... ");
+            transmitUnicast(MSG_TOKEN_HANDOFF_ACK,requesting_device);
+            delay(50);
+            return;
+        }
+        
+        else{
+            if(DEBUG_SLAVE) Serial.print("Not my parent with same cycleID. Rejecting token... ");
+            transmitUnicast(MSG_TOKEN_HANDOFF_NACK,requesting_device);
+            delay(50);
+        }
+    }
+
+    /*Here, the cycle ID is different than mine. Must mean that the coordinator has started a new one. 
+    I stop whatever I'm doing and join this new cycle*/
+    
+
+    if(state != IDLE){
+        //If I was busy doing something else, i abort it and join the new Cycle
         if(DEBUG_SLAVE){
             Serial.print("But currently busy with state: "); 
             printState();
-            Serial.println(". Sending ACK but continuing with current task...");
+            Serial.println(". Aborting current task & joining new cycle...");
         }
-        transmitUnicast(MSG_TOKEN_HANDOFF_ACK,requesting_device);
-        delay(50);
-        return;
+        resetFSMVariables();
     }
 
-    //If code gets here, the token is valid. 
 
     parent_address = requesting_address; // I save the parent address to know where to send the return data when the time comes.
 
     DW1000RangingClass.setOwnCycleId(incoming_cycle_id);
     Existing_devices[searchDevice(requesting_address)].cycle_id = incoming_cycle_id;
 
-    
-    if(!(i_have_token)){
-        i_have_token = true;
-        _switch_to_initiator_pending = true;
-    }
-    else{
-        Serial.println("Already have the token. Only needs to send the ACK");
-    }
-
     transmitUnicast(MSG_TOKEN_HANDOFF_ACK,requesting_device);
     delay(50); //Time to send the token handoff ack. Without this, the parent rarely receives the ack. 5ms is too small. 10 works fine
-    
-    if(_switch_to_initiator_pending){
-        _switch_to_initiator_pending = false;
-        switchToInitiator();
-        state = DISCOVERY;
-    }
-    
+
+    if(!(i_have_token)) i_have_token = true;
+
+    switchToInitiator();
+    state = DISCOVERY;
     
    
 }
@@ -431,6 +462,37 @@ void tokenHandoffAck(){
     state = WAIT_FOR_RETURN;
 
     
+}
+
+void TokenHandoffNack(){
+
+    if(state != WAIT_TOKEN_HANDOFF_ACK) return;
+
+    DW1000Device* origin_device = DW1000Ranging.getDistantDevice();
+    uint8_t origin_short_addr = origin_device->getShortAddressHeader();
+    uint8_t origin_cycle_id = origin_device->getCycleId();
+
+    if(!(origin_short_addr == token_target_address)){ // If the NACK received is not from the target of the token handoff, it is ignored.
+
+        if(DEBUG_COORDINATOR){
+            Serial.print("Token Handoff NACK received from ["); Serial.print(origin_short_addr,HEX);
+            Serial.print("] but currently passing the token to: ["); Serial.print(token_target_address,HEX); Serial.println("]. NACK ignored");
+        }
+        return;
+    }
+
+    // If reaching here, the NACK is valid:
+
+    uint8_t own_cycle_id = DW1000RangingClass.getOwnCycleId();
+    if(DEBUG_COORDINATOR){
+        Serial.print("Token passed to ["); Serial.print(origin_short_addr,HEX); Serial.println("] REJECTED. "); 
+    
+    }
+    Existing_devices[searchDevice(origin_short_addr)].token_handoff_pending = false;
+    Existing_devices[searchDevice(origin_short_addr)].cycle_id = own_cycle_id;
+    origin_device->setCycleId(own_cycle_id); //To keep both lists updated with same values
+
+    state = TOKEN_HANDOFF_STATE; //If this one was rejected, then I evaluate next
 }
 
 void printState(){
@@ -674,6 +736,28 @@ void transmitUnicast(uint8_t message_type,DW1000Device* explicit_target){
         }
 
     }
+    else if(message_type == MSG_TOKEN_HANDOFF_NACK){
+
+        uint8_t target_address = explicit_target->getShortAddressHeader();
+        if(explicit_target){
+
+            if(DEBUG_SLAVE){
+                Serial.print("Token Handoff NACK sent to: ["); Serial.print(target_address,HEX);
+                Serial.printkn("] via unicast");
+            }
+
+            DW1000Ranging.transmitTokenHandoffNack(explicit_target);
+        }
+
+        else{
+
+            if(DEBUG_SLAVE) Serial.println("Target Not found. Sending Token handoff Nack via broadcast.");
+            DW1000Ranging.transmitTokenHandoffNack(nullptr);
+        }
+
+    }
+    
+    
     else if(message_type == MSG_RETURN_TO_PARENT){
 
         DW1000Device* parent = DW1000Ranging.searchDeviceByShortAddHeader(parent_address);
@@ -969,6 +1053,7 @@ void loop(){
 
         if(DEBUG_SLAVE){Serial.print("INITIATOR TIMEOUT!!. ");}
         switchToResponder();
+        resetFSMVariables();
     }
     if(state == IDLE){
         //Simply acts as responder. Answers to polls & waits for token
