@@ -63,7 +63,7 @@ static bool _wait_unicast_range = false;
 unsigned long wait_unicast_range_start = 0;
 
 /*state == TOKEN_HANDOFF_STATE*/
-uint8_t cycle_id = 0; // Sent "downwards" to all the devices. Used to make sure the token is sent to everyone in each cycle.
+uint8_t cycle_id = 1; // Sent "downwards" to all the devices. Used to make sure the token is sent to everyone in each cycle.
 int16_t token_target_address = -1;
 
 
@@ -127,6 +127,7 @@ void setup(){
     DW1000Ranging.startAsInitiator(DEVICE_ADDR,DW1000.MODE_1, false,COORDINATOR);
 
     own_short_addr = getOwnShortAddressHeader();
+    DW1000Ranging.setOwnCycleId(cycle_id); //Initializes cycle ID to avoid initial collisions (all nodes start on cycle 0)
 
     state = DISCOVERY;
     
@@ -201,7 +202,6 @@ void discoveredDevice(DW1000Device *device){
     }
 
 }
-
 
 void registerDevice(DW1000Device *device){
 
@@ -320,8 +320,7 @@ int16_t getNextHop(){
         if((measurements[i].active) && (measurements[i].short_addr_origin == own_short_addr)){
 
             examined_node_short_addr_header = measurements[i].short_addr_dest;
-            if(examined_node_short_addr_header == parent_address) continue; 
-
+            
             if((Existing_devices[searchDevice(examined_node_short_addr_header)].cycle_id) == DW1000Ranging.getOwnCycleId()){
                 //If the examined node has the same cycle ID as me, then it has received the token from someone else. I skip it.
                 continue;
@@ -364,7 +363,7 @@ void tokenHandoffAck(){
 
     // If code reaches here, the ACK received is valid.    
 
-    uint8_t own_cycle_id = DW1000RangingClass.getOwnCycleId();
+    uint8_t own_cycle_id = DW1000Ranging.getOwnCycleId();
     Existing_devices[searchDevice(origin_short_addr)].token_handoff_pending = false;
     Existing_devices[searchDevice(origin_short_addr)].cycle_id = own_cycle_id;
     origin_device->setCycleId(own_cycle_id); //To keep both lists updated with same values
@@ -379,7 +378,7 @@ void tokenHandoffAck(){
     }
 }
 
-void TokenHandoffNack(){
+void tokenHandoffNack(){
 
     if(state != WAIT_TOKEN_HANDOFF_ACK) return;
     
@@ -398,7 +397,7 @@ void TokenHandoffNack(){
 
     // If reaching here, the NACK is valid:
 
-    uint8_t own_cycle_id = DW1000RangingClass.getOwnCycleId();
+    uint8_t own_cycle_id = DW1000Ranging.getOwnCycleId();
     if(DEBUG_COORDINATOR){
         Serial.print("Token passed to ["); Serial.print(origin_short_addr,HEX); Serial.print("] REJECTED. "); 
     }
@@ -561,7 +560,7 @@ void transmitUnicast(uint8_t message_type, DW1000Device* explicit_target){
                 Serial.print(_token_target_address,HEX);
                 Serial.print("] via unicast. ");
         }
-        DW1000Ranging.transmitTokenHandoff(target);
+        DW1000Ranging.transmitTokenHandoff(explicit_target);
         
         }
 
@@ -756,7 +755,7 @@ void aggregatedDataReport(byte* data){
 
     _wait_for_return = false; // To restart the timer next time state is WAIT_FOR_RETURN.
     
-    state = TOKEN_HANDOFF;    // To send the token to any unvisited nodes 
+    state = TOKEN_HANDOFF_STATE;    // To send the token to any unvisited nodes 
     
 }
 
@@ -1034,7 +1033,7 @@ void loop(){
 
         else{
             DW1000Device* token_target_device = DW1000Ranging.searchDeviceByShortAddHeader(token_target_address);
-            transmitUnicast(MSG_TOKEN_HANDOFF);
+            transmitUnicast(MSG_TOKEN_HANDOFF,token_target_device);
             delay(50);
 
             state = WAIT_TOKEN_HANDOFF_ACK;
@@ -1095,7 +1094,7 @@ void loop(){
             cycle_id = 0;
         }
 
-        DW1000RangingClass.setOwnCycleId(cycle_id);
+        DW1000Ranging.setOwnCycleId(cycle_id);
        
         _discovery = false;
         state = DISCOVERY;
