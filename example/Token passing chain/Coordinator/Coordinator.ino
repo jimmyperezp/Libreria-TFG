@@ -63,7 +63,9 @@ static bool _wait_unicast_range = false;
 unsigned long wait_unicast_range_start = 0;
 
 /*state == TOKEN_HANDOFF_STATE*/
+uint8_t cycle_id = 0; // Sent "downwards" to all the devices. Used to make sure the token is sent to everyone in each cycle.
 int16_t token_target_address = -1;
+
 
 /*state = WAIT_TOKEN_HANDOFF_ACK*/
 static bool _wait_token_handoff_ack = false;
@@ -93,6 +95,7 @@ enum State{
 };
 State state = DISCOVERY;
 
+/*Message types to be sent via Unicast*/
 enum UnicastMessageType{
     MSG_POLL_UNICAST,
     MSG_TOKEN_HANDOFF,
@@ -103,6 +106,7 @@ enum UnicastMessageType{
 /*Function prototypes*/
 //transmitUnicast presents errors as one of the parameters is set as null
 void transmitUnicast(uint8_t message_type, DW1000Device* explicit_target = nullptr);
+
 
 
 /*CODE*/
@@ -140,8 +144,8 @@ void attachCallbacks(){
     DW1000Ranging.attachNewDevice(newDevice);
     DW1000Ranging.attachInactiveDevice(inactiveDevice); 
     DW1000Ranging.attachTokenHandoffAck(tokenHandoffAck); 
-    DW1000Ranging.attachAggregatedDataReport(aggregatedDataReport);
-    
+    DW1000Ranging.attachTokenHandoffNack(tokenHandoffNack);
+    DW1000Ranging.attachAggregatedDataReport(aggregatedDataReport);  
 }
 
 
@@ -301,18 +305,27 @@ void inactiveDevice(DW1000Device *device){
 
 /*TOKEN HANDOFF*/
 
-int16_t getClosestNodeAddress(){
+int16_t getNextHop(){
+
+    /*Returns the shortAddress of the closest node that isn't on the same cycle ID as me
+    This function is called when looking for a device to send the token to*/
     
     float min_distance = 9999999.9;
     uint8_t examined_node_short_addr_header = 0; 
     uint8_t closest_node_short_addr_header = 0;
     bool min_distance_updated = false;
 
-    for(int i = 0; i<amount_measurements; i++){
+    for(int i = 0; i<amount_measurements; i++){ //Uses measurements instead of devices. Token Handoff will only be sent to devices with which a ranging has been made this cycle
 
-        if(measurements[i].active && measurements[i].short_addr_origin == own_short_addr){
+        if((measurements[i].active) && (measurements[i].short_addr_origin == own_short_addr)){
 
             examined_node_short_addr_header = measurements[i].short_addr_dest;
+            if(examined_node_short_addr_header == parent_address) continue; 
+
+            if((Existing_devices[searchDevice(examined_node_short_addr_header)].cycle_id) == DW1000RangingClass.getOwnCycleId()){
+                //If the examined node has the same cycle ID as me, then it has received the token from someone else. I skip it.
+                continue;
+            }
 
                 for(int j = 0; j<amount_devices; j++){
                     if(Existing_devices[j].short_addr == examined_node_short_addr_header && Existing_devices[j].is_node && Existing_devices[j].active){
@@ -336,7 +349,8 @@ int16_t getClosestNodeAddress(){
 
 void tokenHandoffAck(){
 
-    uint8_t origin_short_addr = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
+    DW1000Device* origin_device = DW1000Ranging.getDistantDevice();
+    uint8_t origin_short_addr = origin_device->getShortAddressHeader();
 
     if(!(origin_short_addr == token_target_address)){ // If the ACK received is not from the target of the token handoff, it is ignored.
 
@@ -350,7 +364,12 @@ void tokenHandoffAck(){
 
     // If code reaches here, the ACK received is valid.    
 
+    uint8_t own_cycle_id = DW1000RangingClass.getOwnCycleId();
     Existing_devices[searchDevice(origin_short_addr)].token_handoff_pending = false;
+    Existing_devices[searchDevice(origin_short_addr)].cycle_id = own_cycle_id;
+    origin_device->setCycleId(own_cycle_id); //To keep both lists updated with same values
+
+
     state = WAIT_FOR_RETURN;
 
     if(DEBUG_COORDINATOR){
@@ -360,6 +379,34 @@ void tokenHandoffAck(){
     }
 }
 
+void TokenHandoffNack(){
+
+    DW1000Device* origin_device = DW1000Ranging.getDistantDevice();
+    uint8_t origin_short_addr = origin_device->getShortAddressHeader();
+    uint8_t origin_cycle_id = origin_device->getCycleId();
+
+    if(!(origin_short_addr == token_target_address)){ // If the NACK received is not from the target of the token handoff, it is ignored.
+
+        if(DEBUG_COORDINATOR){
+            Serial.print("Token Handoff NACK received from ["); Serial.print(origin_short_addr,HEX);
+            Serial.print("] but currently passing the token to: ["); Serial.print(token_target_address,HEX); Serial.println("]. NACK ignored");
+        }
+        return;
+    }
+
+    // If reaching here, the NACK is valid:
+
+    uint8_t own_cycle_id = DW1000RangingClass.getOwnCycleId();
+    if(DEBUG_COORDINATOR){
+        Serial.print("Token passed to ["); Serial.print(origin_short_addr,HEX); Serial.print("] REJECTED. "); 
+        Serial.print("Node currently in cycle: "); Serial.print(origin_cycle_id); Serial.print("& Coordinator in cycle: ");Serial.print(own_cycle_id);
+    }
+    Existing_devices[searchDevice(origin_short_addr)].token_handoff_pending = false;
+    Existing_devices[searchDevice(origin_short_addr)].cycle_id = own_cycle_id;
+    origin_device->setCycleId(own_cycle_id); //To keep both lists updated with same values
+
+    
+}
 
 /*RANGES & LOGGING*/
 
@@ -367,12 +414,15 @@ void newRange(){
 
     if(_coordinator_ranging == false) return; //If ranges arrive while not ranging, ignore them
 
-    uint8_t short_addr_origin = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
+    uint8_t short_addr_origin   = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
     uint8_t incoming_board_type = DW1000Ranging.getDistantDevice()->getBoardType();
+    uint8_t incoming_cycle_id   = DW1000Ranging.getDistantDevice()->getCycleId();
 
     
     if (Existing_devices[ranging_device_index].short_addr == short_addr_origin && Existing_devices[ranging_device_index].range_pending == true){
+        Existing_devices[ranging_device_index].active = true;
         Existing_devices[ranging_device_index].range_pending = false;
+        Existing_devices[ranging_device_index].cycle_id = incoming_cycle_id;
         Existing_devices[ranging_device_index].is_node = (incoming_board_type == NODE);
         
         _wait_unicast_range = false;  // To restart the timer next time state is state = WAIT_UNICAST_RANGE.
@@ -500,28 +550,24 @@ void transmitUnicast(uint8_t message_type, DW1000Device* explicit_target){
 
     else if(message_type == MSG_TOKEN_HANDOFF){
 
-        token_target_address = getClosestNodeAddress();
-        if(token_target_address == -1){
-            Serial.println("NO ACTIVE NODES. Token handoff not sent. Back to discovery\n\n");
-            state = DISCOVERY;
-            return;
+       if(explicit_target){
+
+        uint8_t _token_target_address = explicit_target->getShortAddressHeader(); //To make sure the explicit target is received correctly
+        
+        if(DEBUG_COORDINATOR){
+                Serial.print("Passing token to: [");
+                Serial.print(_token_target_address,HEX);
+                Serial.print("] via unicast. ");
         }
-        DW1000Device* target = DW1000Ranging.searchDeviceByShortAddHeader(token_target_address);
-
-        if(target){
-
-            if(DEBUG_COORDINATOR){
-                    Serial.print("Passing token to: [");
-                    Serial.print(token_target_address,HEX);
-                    Serial.print("] via unicast. ");
-                }
-            DW1000Ranging.transmitTokenHandoff(target);
+        DW1000Ranging.transmitTokenHandoff(target);
+        
         }
 
         else{
             if(DEBUG_COORDINATOR) Serial.println("Target Not found. Token handoff not sent");
             // Simply prints the transmission was not sent. the retryTransmission logic handles the retries and, in case of failure, moving on to the next closest node
         }
+    
     }
 
     else if(message_type == MSG_DATA_REPORT_ACK){
@@ -592,17 +638,17 @@ void TokenHandoffFailed(){
 
     if(DEBUG_COORDINATOR){
         Serial.print("Token handoff with [");
-        Serial.print(getClosestNodeAddress(),HEX); Serial.println("] FAILED. Retrying token handoff... ");
+        Serial.print(getNextHop(),HEX); Serial.println("] FAILED. Retrying token handoff... ");
         
     }
     
-    // Set both measure and device as inactive, so that it is not selected again when calling getClosestNodeAddress().
+    // Set both measure and device as inactive, so that it is not selected again when calling getNextHop().
     Existing_devices[searchDevice(token_target_address)].active = false;
     measurements[searchMeasure(own_short_addr,token_target_address)].active = false;
     
     
     num_retries = 0;
-    state = TOKEN_HANDOFF_STATE; // Goes back to handoff. When calling getClosestNodeAddress(), the failed node won't be selected (it is set as inactive), so token will go to the next closest node. 
+    state = TOKEN_HANDOFF_STATE; // Goes back to handoff. When calling getNextHop(), the failed node won't be selected (it is set as inactive), so token will go to the next closest node. 
 
 
 }
@@ -616,7 +662,7 @@ void aggregatedDataReport(byte* data){
 
     uint8_t reporting_node_short_addr = reporting_device->getShortAddressHeader();
 
-    if(!(reporting_node_short_addr == token_target_address)){
+    if(reporting_node_short_addr != token_target_address){
 
         // Only process reports received from the node to which the token was passed.
         if(DEBUG_COORDINATOR){
@@ -636,24 +682,29 @@ void aggregatedDataReport(byte* data){
 
         if(state == WAIT_TOKEN_HANDOFF_ACK){
 
-            //See explanation in node's code. 
+            /*This section is for the following case: the parent didn't receive the token Handoff ACK (THA) but the "son" did receive the TH. In this case, the "son" has finished its rangings and sent the data report back to its parent, but the parent was still busy retrying to get the THA
+            Receiving a data report from the son while expecting the THA carrys whithin an implicit reception of said THA.*/
+
 
             if(DEBUG_COORDINATOR) Serial.print("\nImplicit ACK! Received data report while waiting for Token Handoff ACK. Proceeding...");
             
             Existing_devices[searchDevice(reporting_node_short_addr)].token_handoff_pending = false;
-            
+
+            // Set the flags as if the ack was received correctly and the FSM had advanced to state = wait for return 
+            // This allows me to manage the report correctly (these flags are used in the next "if" conditions)
             state = WAIT_FOR_RETURN;
             _wait_for_return = true;
             return_received = false;
+
         }
         
-        if(_wait_for_return == true && return_received == false){ //The device is valid but I wasn't waiting for a report.
+        if(_wait_for_return == true && return_received == false){ //The device is valid + I was waiting for the report 
             return_received = true;
             _wait_for_return = false; // To restart the timer next time state is WAIT_FOR_RETURN.
             if(DEBUG_COORDINATOR) Serial.print("\nSending ACK and processing data... ");
         }
 
-        else if(return_received == true){ //The device is valid + I was waiting for the report
+        else if(return_received == true){ //The device is valid but the report was already received before
              
             if(DEBUG_COORDINATOR) Serial.println(" but already received before. Only need to send ACK");
             transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
@@ -702,7 +753,8 @@ void aggregatedDataReport(byte* data){
     }
 
     _wait_for_return = false; // To restart the timer next time state is WAIT_FOR_RETURN.
-    state = END_CYCLE;
+    
+    state = TOKEN_HANDOFF;    // To send the token to any unvisited nodes 
     
 }
 
@@ -766,7 +818,9 @@ void showData(){
 }
 
 void showPlottingData(){
-    //Converts data to a JSON format. This way, the python app reads the serial monitor and plots the results.
+    /*This is used to plot the distances in real time using a python app, which can be found inside the example's folder.
+    This function converts the data into a JSON format. Said python app reads the serial monitor & plots the results. */
+ 
 
     StaticJsonDocument<1024> json_doc; //Saves up 1024 Bytes of the stack to show the JSON
 
@@ -968,12 +1022,24 @@ void loop(){
         if(DEBUG_COORDINATOR) Serial.println("\n\nTOKEN HANDOFF starts:");
         stopRanging();
         
-        num_retries = 0; //To clear previous retry attempts.
-        state = WAIT_TOKEN_HANDOFF_ACK;
-        _wait_token_handoff_ack = false;
-        transmitUnicast(MSG_TOKEN_HANDOFF);
-        
+        token_target_address = getNextHop();
 
+        if(token_target_address == -1){
+            Serial.println("ALL NODES VISITED. Cycle finished. Moving on to END_CYCLE\n\n");
+            state = END_CYCLE;
+            return;
+        }
+
+        else{
+            DW1000Device* token_target_device = DW1000Ranging.searchDeviceByShortAddHeader(token_target_address);
+            transmitUnicast(MSG_TOKEN_HANDOFF);
+            delay(50);
+
+            state = WAIT_TOKEN_HANDOFF_ACK;
+            _wait_token_handoff_ack = false;
+            num_retries = 0; //To clear previous retry attempts.
+        }
+        
     }
 
     else if(state == WAIT_TOKEN_HANDOFF_ACK){
@@ -1020,6 +1086,15 @@ void loop(){
         if(DEBUG_COORDINATOR){
             Serial.print("\nEnd of cycle. Restarting process... ");
         }
+
+        cycle_id++;
+        if(cycle_id > 250){
+            //If the counter is about to overflow, restarts its value
+            cycle_id = 0;
+        }
+
+        DW1000RangingClass.setNetworkCycleId(cycle_id);
+       
         _discovery = false;
         state = DISCOVERY;
     }
