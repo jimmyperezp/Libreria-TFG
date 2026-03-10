@@ -9,7 +9,7 @@
 #include "DW1000Device.h" 
 #include "DW1000Mac.h"
 
-// messages used in the ranging protocol
+// Messages used in the ranging protocol (TWR)
 #define POLL 0
 #define POLL_ACK 1
 #define RANGE 2
@@ -18,7 +18,8 @@
 #define BLINK 4
 #define RANGING_INIT 5
 
-//Messages used to control the data flow: 
+// Messages to control de data flow: 
+
 #define MODE_SWITCH 6 // To request a switch in mode. From initiator to responder (or viceversa)
 #define MODE_SWITCH_ACK 7
 #define REQUEST_DATA 8 // The master anchor sends this message to request the slave anchors the data they've collected (this data includes the measurements from the slave to the rest of devices)
@@ -29,6 +30,8 @@
 #define STOP_RANGING_ACK 13
 #define TOKEN_HANDOFF 14
 #define TOKEN_HANDOFF_ACK 15
+#define TOKEN_HANDOFF_NACK 16
+
 
 //Length of tha payload in the sent messages.
 #define LEN_DATA 90
@@ -40,20 +43,18 @@
 #define DEFAULT_RST_PIN 9
 #define DEFAULT_SPI_SS_PIN 10
 
-//Default value
-//in ms
-#define DEFAULT_RESET_PERIOD 500
-//in us
-#define DEFAULT_REPLY_DELAY_TIME 7000
+//Default timers
+#define DEFAULT_RESET_PERIOD 500 //in ms
+#define DEFAULT_REPLY_DELAY_TIME 7000 //in us
 
-//sketch type (responder or Initiator)
+//Board's TWR type
 #define INITIATOR 0
 #define RESPONDER 1
 
 //default timer delay
 #define DEFAULT_TIMER_DELAY 80
 
-//debug mode
+//Debugging mode (to show prints via Serial monitor)
 #ifndef DEBUG
 #define DEBUG false
 #endif
@@ -67,7 +68,7 @@ struct Measurement {
     bool active;        // Checks if the destiny device is active. 
 };
 
-// Struct to know the existing devices of the system. Used to send messages via unicast.
+// Struct used to handle the "external memory" (the device list used in the .ino)
 struct ExistingDevice{
 	
 	uint8_t short_addr;
@@ -80,6 +81,8 @@ struct ExistingDevice{
 	bool token_handoff_pending;
 	bool mode_switch_pending;
 	bool data_report_pending;
+
+	uint8_t cycle_id;
 	
 };
 
@@ -112,11 +115,13 @@ class DW1000RangingClass {
 		static void setResetPeriod(uint32_t resetPeriod);
 		static void setStopRanging(bool stop_ranging_input);
 		static void setRangingMode(RangingMode mode){_ranging_mode = mode;};
+		static void setOwnCycleId(uint8_t own_cycle_id){_own_cycle_id = own_cycle_id;}
 
 		//getters
 		static byte*   getCurrentAddress() { return _currentAddress; };
 		static byte*   getCurrentShortAddress() { return _currentShortAddress; };
 		static uint8_t getNetworkDevicesNumber() { return _networkDevicesNumber; };
+		static uint8_t getOwnCycleId(){return _own_cycle_id;}
 
 
 		
@@ -154,7 +159,9 @@ class DW1000RangingClass {
 
 		static void attachTokenHandoffAck(void(*handleTokenHandoffAck)(void)){_handleTokenHandoffAck = handleTokenHandoffAck;}
 
-		static void attachTokenHandoff(void(*handleTokenHandoff)(void)){_handleTokenHandoff = handleTokenHandoff;}
+		static void attachTokenHandoffNack(void(*handleTokenHandoffNack)(void)){_handleTokenHandoffNack = handleTokenHandoffNack;}
+
+		static void attachTokenHandoff(void(*handleTokenHandoff)(uint8_t incoming_cycle_id)){_handleTokenHandoff = handleTokenHandoff;}
 
 
 		//search devices in the networkDevices array
@@ -185,6 +192,8 @@ class DW1000RangingClass {
 		void transmitTokenHandoff(DW1000Device* device = nullptr); //Token handoff. From coordinator to closest node.
 
 		void transmitTokenHandoffAck(DW1000Device* device = nullptr); 
+
+		void transmitTokenHandoffNack(DW1000Device* device = nullptr);
 
 		//For ranging protocol: transmitPoll has to be public so that the coordinator can tranmit it via unicast to certain target devices.
 		static void transmitPoll(DW1000Device* myDistantDevice);
@@ -226,6 +235,7 @@ class DW1000RangingClass {
 
 		static void (* _handleTokenHandoff)(void);
 		static void (* _handleTokenHandoffAck)(void);
+		static void (* _handleTokenHandoffNack)(void);
 
 		
 		//To select the mode of ranging (broadcast or unicast)
@@ -269,6 +279,9 @@ class DW1000RangingClass {
 		
 		static bool stop_ranging;
 		static bool ranging_enabled; 
+
+		static uint8_t _own_cycle_id; //(used in token passing) --> Saves my own cycleID. Used to make sure that all the devices receive the token during each coordinator's cycle
+		
 		
 		//methods
 		static void handleSent();
