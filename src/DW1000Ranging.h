@@ -233,7 +233,7 @@ class DW1000RangingClass {
 		static void (* _handleStopRanging)(byte* shortAddress);
 		static void (* _handleStopRangingAck)(void);
 
-		static void (* _handleTokenHandoff)(void);
+		static void (* _handleTokenHandoff)(uint8_t incoming_cycle_id);
 		static void (* _handleTokenHandoffAck)(void);
 		static void (* _handleTokenHandoffNack)(void);
 
