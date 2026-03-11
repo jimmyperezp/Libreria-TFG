@@ -320,9 +320,10 @@ int16_t getNextHop(){
         if((measurements[i].active) && (measurements[i].short_addr_origin == own_short_addr)){
 
             examined_node_short_addr_header = measurements[i].short_addr_dest;
-            
-            if((Existing_devices[searchDevice(examined_node_short_addr_header)].cycle_id) == DW1000Ranging.getOwnCycleId()){
-                //If the examined node has the same cycle ID as me, then it has received the token from someone else. I skip it.
+            int examined_idx = searchDevice(examined_node_short_addr_header);
+
+            if((examined_idx == -1)||(Existing_devices[examined_idx].cycle_id) == DW1000Ranging.getOwnCycleId()){
+                //If the examined node isn't found or it has the same cycleID as me, then it has received the token from someone else. I skip it
                 continue;
             }
 
@@ -361,11 +362,17 @@ void tokenHandoffAck(){
         return;
     }
 
-    // If code reaches here, the ACK received is valid.    
+    // If code reaches here, the ACK received is valid 
 
+    int dev_idx = searchDevice(origin_short_addr);
     uint8_t own_cycle_id = DW1000Ranging.getOwnCycleId();
-    Existing_devices[searchDevice(origin_short_addr)].token_handoff_pending = false;
-    Existing_devices[searchDevice(origin_short_addr)].cycle_id = own_cycle_id;
+    
+    
+    if(dev_idx != -1){
+        Existing_devices[dev_idx].token_handoff_pending = false;
+        Existing_devices[dev_idx].cycle_id = own_cycle_id;
+    }
+
     origin_device->setCycleId(own_cycle_id); //To keep both lists updated with same values
 
 
@@ -402,8 +409,12 @@ void tokenHandoffNack(){
         Serial.print("Token passed to ["); Serial.print(origin_short_addr,HEX); Serial.print("] REJECTED. "); 
     }
 
-    Existing_devices[searchDevice(origin_short_addr)].token_handoff_pending = false;
-    Existing_devices[searchDevice(origin_short_addr)].cycle_id = own_cycle_id;
+    int dev_idx = searchDevice(origin_short_addr);
+    if(dev_idx != -1){
+        Existing_devices[dev_idx].token_handoff_pending = false;
+        Existing_devices[dev_idx].cycle_id = own_cycle_id;
+    }
+    
     origin_device->setCycleId(own_cycle_id); //To keep both lists updated with same values
 
     state = TOKEN_HANDOFF_STATE; //If this one was rejected, then I evaluate next
@@ -454,16 +465,16 @@ void newRange(){
 void logMeasure(uint8_t own_sa,uint8_t dest_sa, float dist, float rx_pwr){
 
     // Firstly, checks if that communication has been logged before
-    int index = searchMeasure(own_sa,dest_sa);
+    int measure_idx = searchMeasure(own_sa,dest_sa);
     
     if(dist < 0){ dist = -dist;} //If the distance is <0, makes it >0
 
-    if (index != -1){ // This means: it was found.
+    if (measure_idx != -1){ // This means: it was found.
 
         // Only updates distance and rxPower.
-        measurements[index].distance = dist; 
-        measurements[index].rxPower = rx_pwr; 
-        measurements[index].active = true;
+        measurements[measure_idx].distance = dist; 
+        measurements[measure_idx].rxPower = rx_pwr; 
+        measurements[measure_idx].active = true;
 
     }
     else if (amount_measurements < MAX_MEASURES){
@@ -526,6 +537,8 @@ void transmitUnicast(uint8_t message_type, DW1000Device* explicit_target){
 
     if(message_type == MSG_POLL_UNICAST){
 
+        //This message type doesn't need an explicit device. It selects it according to the ranging_device_index value.
+
         DW1000Device* target = DW1000Ranging.searchDeviceByShortAddHeader(Existing_devices[ranging_device_index].short_addr);
 
         if(target){
@@ -548,19 +561,20 @@ void transmitUnicast(uint8_t message_type, DW1000Device* explicit_target){
         }
 
     }
-
     else if(message_type == MSG_TOKEN_HANDOFF){
 
-       if(explicit_target){
+        DW1000Device* target = explicit_target ? explicit_target : DW1000Ranging.searchDeviceByShortAddHeader(token_target_address);
 
-        uint8_t _token_target_address = explicit_target->getShortAddressHeader(); //To make sure the explicit target is received correctly
+       if(target){
+
+        uint8_t _token_target_address = target->getShortAddressHeader(); //To make sure the explicit target is received correctly
         
         if(DEBUG_COORDINATOR){
                 Serial.print("Passing token to: [");
                 Serial.print(_token_target_address,HEX);
                 Serial.print("] via unicast. ");
         }
-        DW1000Ranging.transmitTokenHandoff(explicit_target);
+        DW1000Ranging.transmitTokenHandoff(target);
         
         }
 
@@ -570,17 +584,16 @@ void transmitUnicast(uint8_t message_type, DW1000Device* explicit_target){
         }
     
     }
-
     else if(message_type == MSG_DATA_REPORT_ACK){
 
         DW1000Device* target = explicit_target ? explicit_target : DW1000Ranging.searchDeviceByShortAddHeader(token_target_address);
-        uint8_t data_report_target_address = target->getShortAddressHeader();
+        uint8_t _target_address = target->getShortAddressHeader();
 
         if(target){
 
             if(DEBUG_COORDINATOR){
                     Serial.print("Data report ACK sent to: [");
-                    Serial.print(data_report_target_address,HEX);
+                    Serial.print(_target_address,HEX);
                     Serial.println("] via unicast");
                 }
 
@@ -644,9 +657,12 @@ void TokenHandoffFailed(){
     }
     
     // Set both measure and device as inactive, so that it is not selected again when calling getNextHop().
-    Existing_devices[searchDevice(token_target_address)].active = false;
-    measurements[searchMeasure(own_short_addr,token_target_address)].active = false;
     
+    int dev_idx = searchDevice(token_target_address);
+    if(dev_idx != -1) Existing_devices[dev_idx].active = false;
+
+    int meas_idx = searchMeasure(own_short_addr,token_target_address);
+    if(meas_idx != -1) measurements[meas_idx].active = false;
     
     num_retries = 0;
     state = TOKEN_HANDOFF_STATE; // Goes back to handoff. When calling getNextHop(), the failed node won't be selected (it is set as inactive), so token will go to the next closest node. 
@@ -689,7 +705,8 @@ void aggregatedDataReport(byte* data){
 
             if(DEBUG_COORDINATOR) Serial.print("\nImplicit ACK! Received data report while waiting for Token Handoff ACK. Proceeding...");
             
-            Existing_devices[searchDevice(reporting_node_short_addr)].token_handoff_pending = false;
+            int dev_idx = searchDevice(reporting_node_short_addr);
+            if(dev_idx != -1) Existing_devices[dev_idx].token_handoff_pending = false;
 
             // Set the flags as if the ack was received correctly and the FSM had advanced to state = wait for return 
             // This allows me to manage the report correctly (these flags are used in the next "if" conditions)
@@ -1073,8 +1090,18 @@ void loop(){
 
         else if(current_time - wait_for_return_start >= WAIT_FOR_RETURN_TIMEOUT){
             _wait_for_return = false;
-            if(DEBUG_COORDINATOR){Serial.print("RETURN TIMEOUT... ");}
-            state = END_CYCLE;
+            if(DEBUG_COORDINATOR){
+                Serial.print("Return TIMEOUT. Child lost: ["); Serial.print(token_target_address,HEX);
+                Serial.println("] Trying on next one...");
+            }
+
+            // Sets the "lost child" as inactive and continues with next one:
+
+            int dev_idx = searchDevice(token_target_address);
+            if(dev_idx != -1) Existing_devices[dev_idx].active = false;
+
+
+            state = TOKEN_HANDOFF_STATE;
         }
     }   
 
