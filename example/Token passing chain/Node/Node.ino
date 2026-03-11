@@ -111,7 +111,7 @@ unsigned long wait_return_to_parent_ack_start = 0;
 static bool _wait_for_return = false;
 static bool return_received = false; // To avoid processing the same report more than once in case it is received multiple times due to retries and ACK failures.
 unsigned long wait_for_return_start = 0;
-const unsigned long WAITING_RETURN_TIME = 5000;
+const unsigned long WAIT_FOR_RETURN_TIMEOUT = 5000;
 
 
 /*Function prototypes*/
@@ -415,7 +415,8 @@ void tokenHandoff(uint8_t incoming_cycle_id){
     parent_address = requesting_address; // I save the parent address to know where to send the return data when the time comes.
 
     DW1000Ranging.setOwnCycleId(incoming_cycle_id);
-    Existing_devices[searchDevice(requesting_address)].cycle_id = incoming_cycle_id;
+    int dev_idx = searchDevice(requesting_address);
+    Existing_devices[dev_idx].cycle_id = incoming_cycle_id;
 
     transmitUnicast(MSG_TOKEN_HANDOFF_ACK,requesting_device);
     delay(50); //Time to send the token handoff ack. Without this, the parent rarely receives the ack. 5ms is too small. 10 works fine
@@ -451,7 +452,10 @@ void tokenHandoffAck(){
         Serial.println("]. Token handoff completed. ");
     }
 
-    Existing_devices[searchDevice(origin_short_addr)].token_handoff_pending = false;
+    int dev_idx = searchDevice(origin_short_addr); 
+    //Only set it false if the device is found. This way, I avoid writing on wrong indexes and messing up the memory
+    if(dev_idx != -1) Existing_devices[dev_idx].token_handoff_pending = false; 
+
     i_have_token = false; 
     switchToResponder();
     state = WAIT_FOR_RETURN;
@@ -483,8 +487,17 @@ void tokenHandoffNack(){
         Serial.print("Token passed to ["); Serial.print(origin_short_addr,HEX); Serial.println("] REJECTED. "); 
     
     }
-    Existing_devices[searchDevice(origin_short_addr)].token_handoff_pending = false;
-    Existing_devices[searchDevice(origin_short_addr)].cycle_id = own_cycle_id;
+    
+    int dev_idx = searchDevice(origin_short_addr);
+    if(dev_idx != -1){
+        
+        //This guard prevents writing on the index -1 in case the device isn't found.
+        //This way, I avoid messing up the memory if dev_idx = -1
+
+        Existing_devices[dev_idx].token_handoff_pending = false;
+        Existing_devices[dev_idx].cycle_id = own_cycle_id;
+    }
+    
     origin_device->setCycleId(own_cycle_id); //To keep both lists updated with same values
 
     state = TOKEN_HANDOFF_STATE; //If this one was rejected, then I evaluate next
@@ -666,6 +679,8 @@ void transmitUnicast(uint8_t message_type,DW1000Device* explicit_target){
     
     if(message_type == MSG_POLL_UNICAST){
 
+        //This message type doesn't need an explicit device. It selects it according to the ranging_device_index value.
+
         DW1000Device* target = DW1000Ranging.searchDeviceByShortAddHeader(Existing_devices[ranging_device_index].short_addr);
 
         if(target){
@@ -690,30 +705,33 @@ void transmitUnicast(uint8_t message_type,DW1000Device* explicit_target){
     }
     else if(message_type == MSG_TOKEN_HANDOFF){
 
-        DW1000Device* target = DW1000Ranging.searchDeviceByShortAddHeader(token_target_address);
+        DW1000Device* target = explicit_target ? explicit_target : DW1000Ranging.searchDeviceByShortAddHeader(token_target_address);
 
         if(target){
 
+            uint8_t _token_target_address = target->getShortAddressHeader(); //To make sure the explicit target is received correctly
+            
             if(DEBUG_NODE){
                     Serial.print("Passing token to: [");
-                    Serial.print(token_target_address,HEX);
+                    Serial.print(_token_target_address,HEX);
                     Serial.print("] via unicast. ");
                 }
-            DW1000Ranging.transmitTokenHandoff(target);
+            
+                DW1000Ranging.transmitTokenHandoff(target);
         }
 
         else{
-            if(DEBUG_NODE) Serial.print("Target Not found. Token handoff not sent");
             // Simply prints the transmission was not sent. the retryTransmission logic handles the retries and, in case of failure, moving on to the next closest node
+            if(DEBUG_NODE) Serial.print("Target Not found. Token handoff not sent");
         }
     }
     else if(message_type == MSG_TOKEN_HANDOFF_ACK){
 
-        DW1000Device* parent = explicit_target ? explicit_target : DW1000Ranging.searchDeviceByShortAddHeader(parent_address);
+        DW1000Device* target = explicit_target ? explicit_target : DW1000Ranging.searchDeviceByShortAddHeader(parent_address);
 
-        parent_address = parent->getShortAddressHeader(); //updates parent address in case it receives an explicit target different from the parent previously saved.
+        parent_address = target->getShortAddressHeader(); //updates parent address in case it receives an explicit target different from the parent previously saved.
 
-        if(parent){
+        if(target){
 
             if(DEBUG_NODE){
                     Serial.print("Token Handoff ACK sent to: [");
@@ -721,23 +739,28 @@ void transmitUnicast(uint8_t message_type,DW1000Device* explicit_target){
                     Serial.println("] via unicast");
                 }
 
-            DW1000Ranging.transmitTokenHandoffAck(parent);
+            
+            DW1000Ranging.transmitTokenHandoffAck(target);
                     
         }
 
         else{
             if(DEBUG_NODE) Serial.println("Parent device not found. Sending token handoff ACK via broadcast.");
+            
             DW1000Ranging.transmitTokenHandoffAck(nullptr);
         }
 
     }
     else if(message_type == MSG_TOKEN_HANDOFF_NACK){
 
-        uint8_t target_address = explicit_target->getShortAddressHeader();
+        /*I never do a retryTransmission for this kind of message. The only time I enter here, I have sent an explicit_device
+        Therefore, I don't need to keep track of the requesting device. I simply use the explicit_device and its address*/
+        uint8_t _target_address = explicit_target->getShortAddressHeader();
+        
         if(explicit_target){
 
             if(DEBUG_NODE){
-                Serial.print("Token Handoff NACK sent to: ["); Serial.print(target_address,HEX);
+                Serial.print("Token Handoff NACK sent to: ["); Serial.print(_target_address,HEX);
                 Serial.println("] via unicast");
             }
 
@@ -747,22 +770,24 @@ void transmitUnicast(uint8_t message_type,DW1000Device* explicit_target){
         else{
 
             if(DEBUG_NODE) Serial.println("Target Not found. Sending Token handoff Nack via broadcast.");
+            
             DW1000Ranging.transmitTokenHandoffNack(nullptr);
         }
 
     }
     else if(message_type == MSG_RETURN_TO_PARENT){
 
-        DW1000Device* parent = DW1000Ranging.searchDeviceByShortAddHeader(parent_address);
+        DW1000Device* target = explicit_target ? explicit_target : DW1000Ranging.searchDeviceByShortAddHeader(parent_address);
 
-        if(parent){
+        if(target){
 
             if(DEBUG_NODE){
                     Serial.print("Data report sent to parent: [");
                     Serial.print(parent_address,HEX);
                     Serial.print("] via unicast");
                 }
-            DW1000Ranging.transmitAggregatedDataReport((Measurement*)measurements, amount_measurements,parent);
+            
+                DW1000Ranging.transmitAggregatedDataReport((Measurement*)measurements, amount_measurements,target);
         }
 
 
@@ -772,6 +797,7 @@ void transmitUnicast(uint8_t message_type,DW1000Device* explicit_target){
                 Serial.print(parent_address,HEX); 
                 Serial.println("] not found. Data report sent via broadcast. ");
             }
+            
             DW1000Ranging.transmitAggregatedDataReport((Measurement*)measurements, amount_measurements, nullptr);
         }
 
@@ -780,13 +806,13 @@ void transmitUnicast(uint8_t message_type,DW1000Device* explicit_target){
     else if(message_type == MSG_DATA_REPORT_ACK){
 
         DW1000Device* target = explicit_target ? explicit_target : DW1000Ranging.searchDeviceByShortAddHeader(token_target_address);
-        uint8_t data_report_target_address = target->getShortAddressHeader();
+        uint8_t _target_address = target->getShortAddressHeader();
 
         if(target){
 
             if(DEBUG_NODE){
                     Serial.print("Data report ACK transmitted to: [");
-                    Serial.print(data_report_target_address,HEX);
+                    Serial.print(_target_address,HEX);
                     Serial.println("] via unicast");
                 }
 
@@ -853,11 +879,15 @@ void TokenHandoffFailed(){
         Serial.print(getNextHop(),HEX); Serial.println("] FAILED. Retrying token handoff... ");
         
     }
-    
-    Existing_devices[searchDevice(token_target_address)].active = false;
-    measurements[searchMeasure(own_short_addr,getNextHop())].active = false;
-    
+
     // Set both measure and device as inactive, so that it is not selected again when calling getNextHop().
+
+    int dev_idx = searchDevice(token_target_address);
+    if(dev_idx != -1) Existing_devices[searchDevice(token_target_address)].active = false;
+    
+    int measure_idx = searchMeasure(own_short_addr,token_target_address);
+    if(measure_idx != -1) measurements[measure_idx].active = false;
+    
 
     state = TOKEN_HANDOFF_STATE; // Goes back to handoff. When calling getNextHop(), the failed node won't be selected (it is set as inactive), so token will go to the next closest node. 
 
@@ -925,7 +955,8 @@ void aggregatedDataReport(byte* data){
 
             }
             //1) Manages tokenHandoffAck flags as if it was received
-            Existing_devices[searchDevice(reporting_node_short_addr)].token_handoff_pending = false;
+            int dev_idx = searchDevice(reporting_node_short_addr);
+            Existing_devices[dev_idx].token_handoff_pending = false;
             i_have_token = false; 
             switchToResponder();
 
@@ -1204,7 +1235,6 @@ void loop(){
     else if(state == TOKEN_HANDOFF_STATE){
 
         if(DEBUG_NODE) Serial.println("\n\nTOKEN HANDOFF starts: ");
-
         stopRanging();
 
         token_target_address = getNextHop();
@@ -1214,11 +1244,15 @@ void loop(){
             state = RETURN_TO_PARENT;
         }
         else{
+            
+            DW1000Device* token_target_device = DW1000Ranging.searchDeviceByShortAddHeader(token_target_address);
+            transmitUnicast(MSG_TOKEN_HANDOFF,token_target_device);
+            delay(50);
+
             state = WAIT_TOKEN_HANDOFF_ACK;
             _wait_token_handoff_ack = false;
-            num_retries = 0;
-            transmitUnicast(MSG_TOKEN_HANDOFF); 
-            delay(50);
+            num_retries = 0; //To clear previous retry attempts
+            
         }
          
     }
@@ -1253,11 +1287,14 @@ void loop(){
             }
         }
 
-        else if(current_time - wait_for_return_start >= WAITING_RETURN_TIME){
+        else if(current_time - wait_for_return_start >= WAIT_FOR_RETURN_TIMEOUT){
             
             _wait_for_return = false; // To restart the timer next time state is WAIT_FOR_RETURN.
-            if(DEBUG_NODE){Serial.print("WAIT FOR RETURN TIMEOUT. Sending my report to my parent: ["); Serial.print(parent_address,HEX); Serial.println("]\n ");}
-            state = RETURN_TO_PARENT;
+            if(DEBUG_NODE){
+                Serial.print("WAIT FOR RETURN TIMEOUT. Child lost: [");
+                Serial.print(token_target_address,HEX); Serial.println("] Trying next one...");
+            }
+            state = TOKEN_HANDOFF_STATE;
         }
     }
     else if(state == RETURN_TO_PARENT){
