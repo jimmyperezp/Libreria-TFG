@@ -334,28 +334,30 @@ int16_t getNextHop(){
         if((measurements[i].active) && (measurements[i].short_addr_origin == own_short_addr)){
 
             examined_node_short_addr_header = measurements[i].short_addr_dest;
-            if(examined_node_short_addr_header == parent_address) continue; 
-
-            if((Existing_devices[searchDevice(examined_node_short_addr_header)].cycle_id) == DW1000Ranging.getOwnCycleId()){
-                //If the examined node has the same cycle ID as me, then it has received the token from someone else. I skip it.
-                continue;
+            int examined_idx = searchDevice(examined_node_short_addr_header);
+            
+            //If the device isn't found, or it is my parent, or it has the same ID as me, then skip it.
+            if((examined_idx == -1) || 
+               (examined_node_short_addr_header == parent_address) || 
+               (Existing_devices[examined_idx].cycle_id == DW1000Ranging.getOwnCycleId())){
+                continue; 
             }
 
-                for(int j = 0; j<amount_devices; j++){
-                    if(Existing_devices[j].short_addr == examined_node_short_addr_header && Existing_devices[j].is_node && Existing_devices[j].active){
-                        // In order to examine a device, it must: 
-                        // 1) be a node 2) Be active 3) have an existing & active measure with the coordinator.
+            if(Existing_devices[examined_idx].is_node && Existing_devices[examined_idx].active){
+                // In order to examine a device, it must: 
+                // 1) be a node 
+                // 2) Be active 
+                // 3) have an existing & active measure with the coordinator.
 
-                        if(measurements[i].distance < min_distance){
-                            min_distance_updated = true;
-                            min_distance = measurements[i].distance;
-                            closest_node_short_addr_header = examined_node_short_addr_header;
-                        }
-                        
-                    }
+                if(measurements[i].distance < min_distance){
+                    min_distance_updated = true;
+                    min_distance = measurements[i].distance;
+                    closest_node_short_addr_header = examined_node_short_addr_header;
                 }
-            }       
+            }                
         }
+    }
+
     if(min_distance_updated) return closest_node_short_addr_header;
     else return -1;
 
@@ -416,7 +418,7 @@ void tokenHandoff(uint8_t incoming_cycle_id){
 
     DW1000Ranging.setOwnCycleId(incoming_cycle_id);
     int dev_idx = searchDevice(requesting_address);
-    Existing_devices[dev_idx].cycle_id = incoming_cycle_id;
+    if(dev_idx != -1) Existing_devices[dev_idx].cycle_id = incoming_cycle_id;
 
     transmitUnicast(MSG_TOKEN_HANDOFF_ACK,requesting_device);
     delay(50); //Time to send the token handoff ack. Without this, the parent rarely receives the ack. 5ms is too small. 10 works fine
@@ -432,7 +434,8 @@ void tokenHandoff(uint8_t incoming_cycle_id){
 void tokenHandoffAck(){
 
     if(!(state == WAIT_TOKEN_HANDOFF_ACK)) return;
-    uint8_t origin_short_addr = DW1000Ranging.getDistantDevice()->getShortAddressHeader();
+    DW1000Device* origin_device = DW1000Ranging.getDistantDevice();
+    uint8_t origin_short_addr = origin_device->getShortAddressHeader();
 
     if(!(origin_short_addr == token_target_address)){ // If the ACK received is not from the target of the token handoff, it is ignored.
 
@@ -444,7 +447,24 @@ void tokenHandoffAck(){
         return;
     }
 
-    // If code reaches here, the ACK received is valid.    
+    // If code reaches here, the ACK received is valid.
+    // Updates the incomind device's cycleID and marks the handoff pending as false:
+
+    int dev_idx = searchDevice(origin_short_addr);
+    uint8_t own_cycle_id = DW1000Ranging.getOwnCycleId();
+
+    if(dev_idx != -1){
+        //Only if the device is found. This way, I avoid writing on wrong indexes and messing up the memory
+
+        Existing_devices[dev_idx].token_handoff_pending = false;
+        Existing_devices[dev_idx].cycle_id = own_cycle_id;
+        origin_device->setCycleId(own_cycle_id);
+    }
+
+    state = WAIT_FOR_RETURN;
+    i_have_token = false;
+    switchToResponder();
+
 
     if(DEBUG_NODE){
         Serial.print("Token handoff ACK received from: [");
@@ -452,15 +472,6 @@ void tokenHandoffAck(){
         Serial.println("]. Token handoff completed. ");
     }
 
-    int dev_idx = searchDevice(origin_short_addr); 
-    //Only set it false if the device is found. This way, I avoid writing on wrong indexes and messing up the memory
-    if(dev_idx != -1) Existing_devices[dev_idx].token_handoff_pending = false; 
-
-    i_have_token = false; 
-    switchToResponder();
-    state = WAIT_FOR_RETURN;
-
-    
 }
 
 void tokenHandoffNack(){
@@ -956,7 +967,7 @@ void aggregatedDataReport(byte* data){
             }
             //1) Manages tokenHandoffAck flags as if it was received
             int dev_idx = searchDevice(reporting_node_short_addr);
-            Existing_devices[dev_idx].token_handoff_pending = false;
+            if(dev_idx != -1) Existing_devices[dev_idx].token_handoff_pending = false;
             i_have_token = false; 
             switchToResponder();
 

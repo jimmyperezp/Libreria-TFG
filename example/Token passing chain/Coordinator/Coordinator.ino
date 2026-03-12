@@ -322,26 +322,27 @@ int16_t getNextHop(){
             examined_node_short_addr_header = measurements[i].short_addr_dest;
             int examined_idx = searchDevice(examined_node_short_addr_header);
 
-            if((examined_idx == -1)||(Existing_devices[examined_idx].cycle_id) == DW1000Ranging.getOwnCycleId()){
-                //If the examined node isn't found or it has the same cycleID as me, then it has received the token from someone else. I skip it
+            //If the examined node isn't found or it has the same cycleID as me, then it has received the token from someone else. I skip it
+            if((examined_idx == -1) || 
+               (Existing_devices[examined_idx].cycle_id) == DW1000Ranging.getOwnCycleId()){
                 continue;
             }
 
-                for(int j = 0; j<amount_devices; j++){
-                    if(Existing_devices[j].short_addr == examined_node_short_addr_header && Existing_devices[j].is_node && Existing_devices[j].active){
-                        // In order to examine a device, it must: 
-                        // 1) be a node 2) Be active 3) have an existing & active measure with the coordinator.
+            if((Existing_devices[examined_idx].is_node)&&(Existing_devices[examined_idx].active))
 
-                        if(measurements[i].distance < min_distance){
-                            min_distance_updated = true;
-                            min_distance = measurements[i].distance;
-                            closest_node_short_addr_header = examined_node_short_addr_header;
-                        }
-                        
-                    }
-                }
+                // In order to examine a device, it must: 
+                // 1) be a node 
+                // 2) Be active
+                // 3) have an existing & active measure with the coordinator.
+
+                if(measurements[i].distance < min_distance){
+                    min_distance_updated = true;
+                    min_distance = measurements[i].distance;
+                    closest_node_short_addr_header = examined_node_short_addr_header;
+                }      
             }       
         }
+        
     if(min_distance_updated) return closest_node_short_addr_header;
     else return -1;
 
