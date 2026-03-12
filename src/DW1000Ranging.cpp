@@ -647,6 +647,20 @@ void DW1000RangingClass::loop() {
 			}
 			return;
 		}
+		else if(messageType == TOKEN_HANDOFF_NACK){
+			byte shortAddress[2];
+			_globalMac.decodeShortMACFrame(data, shortAddress);
+			DW1000Device* ackDevice = searchDistantDevice(shortAddress);
+			if (ackDevice) {
+				_lastDistantDevice = ackDevice->getIndex();
+				ackDevice ->noteActivity();
+			}
+
+			if(_handleTokenHandoffNack){
+				(*_handleTokenHandoffNack)();
+			}
+			return;
+		}
 		else if(messageType == REQUEST_DATA){
 
 			byte shortAddress[2]; //Creates 2 bytes to save 'shortAddress'
