@@ -387,6 +387,8 @@ void DW1000RangingClass::checkForInactiveDevices() {
 			//we need to delete the device from the array:
 			removeNetworkDevices(i);
 			
+			i--; //If a device was removed, all the indexes move left. 
+			//By doing i--, i also check the position that was just occupied in the shifting
 		}
 	}
 }
