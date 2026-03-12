@@ -158,7 +158,7 @@ uint8_t getOwnShortAddress() {
     return (uint8_t)sa[0];
 }
 
-void resetFSMVariables(){
+void resetFSM(){
 
     /*In case a cycle is aborted or a initiator timeout happens*/
     num_retries = 0;
@@ -392,7 +392,7 @@ void tokenHandoff(uint8_t incoming_cycle_id){
         }
         
         else{
-            if(DEBUG_NODE) Serial.print("Not my parent with same cycleID. Rejecting token... ");
+            if(DEBUG_NODE) Serial.print("Not my parent with same cycle_ID. Rejecting token... ");
             transmitUnicast(MSG_TOKEN_HANDOFF_NACK,requesting_device);
             delay(50);
             return;
@@ -410,7 +410,8 @@ void tokenHandoff(uint8_t incoming_cycle_id){
             printState();
             Serial.println(". Aborting current task & joining new cycle...");
         }
-        resetFSMVariables();
+        resetFSM();
+        state = RANGING;
     }
 
 
@@ -1088,7 +1089,8 @@ void loop(){
 
         if(DEBUG_NODE){Serial.print("INITIATOR TIMEOUT!!. ");}
         switchToResponder();
-        resetFSMVariables();
+        resetFSM();
+        state = IDLE;
     }
     if(state == IDLE){
         //Simply acts as responder. Answers to polls & waits for token
