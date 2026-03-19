@@ -38,6 +38,7 @@ volatile bool DW1000RangingClass::_sentAck     = false;
 volatile bool DW1000RangingClass::_receivedAck = false;
 
 volatile bool DW1000RangingClass::_is_transmitting = false;
+uint32_t DW1000RangingClass::_tx_start_time = 0;
 
 // protocol error state
 bool DW1000RangingClass::_protocolFailed = false;
@@ -415,7 +416,12 @@ void DW1000RangingClass::loop() {
 		timer = current_time;
 		timerTick();
 	}
-	
+	if(_is_transmitting){
+		if(current_time - _tx_start_time > 150){
+			_is_transmitting = false;
+			DW1000.idle();
+		}
+	}
 	if(_sentAck) {
 		_sentAck = false;
 		_is_transmitting = false;
@@ -1052,6 +1058,7 @@ void DW1000RangingClass::transmitInit() {
 void DW1000RangingClass::transmit(byte datas[]) {
 	DW1000.setData(data, LEN_DATA);
 	_is_transmitting = true;
+	_tx_start_time = millis();
 	DW1000.startTransmit();
 }
 
@@ -1059,6 +1066,7 @@ void DW1000RangingClass::transmit(byte datas[], DW1000Time time) {
 	DW1000.setDelay(time);
 	DW1000.setData(data, LEN_DATA);
 	_is_transmitting = true;
+	_tx_start_time = millis(); 
 	DW1000.startTransmit();
 }
 

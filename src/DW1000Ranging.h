@@ -44,7 +44,7 @@
 //in ms
 #define DEFAULT_RESET_PERIOD 500
 //in us
-#define DEFAULT_REPLY_DELAY_TIME 7000
+#define DEFAULT_REPLY_DELAY_TIME 8000
 
 //sketch type (responder or Initiator)
 #define INITIATOR 0
@@ -241,6 +241,7 @@ class DW1000RangingClass {
 		static volatile bool _receivedAck;
 
 		static volatile bool _is_transmitting;
+		static uint32_t _tx_start_time; //To avoid leaving _is_transmitting stuck
 
 		// protocol error state
 		static bool          _protocolFailed;
