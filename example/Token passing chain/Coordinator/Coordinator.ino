@@ -11,9 +11,8 @@ const uint8_t PIN_RST = 27; // reset pin
 const uint8_t PIN_IRQ = 34; // irq pin
 const uint8_t PIN_SS = 4;   // spi select pin
 
-#define DEBUG_COORDINATOR true
-#define PLOTTING true
-#define IS_MASTER true
+#define DEBUG_COORDINATOR false
+#define PLOTTING false
 
 #define DEVICE_ADDR "C1:00:5B:D5:A9:9A:E2:9C" 
 uint8_t own_short_addr = 0; 
@@ -657,7 +656,7 @@ void aggregatedDataReport(byte* data){
              
             if(DEBUG_COORDINATOR) Serial.println(" but already received before. Only need to send ACK");
             transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
-            DW1000Ranging.waitForTxDone(10);
+            
             return;
 
         }
@@ -665,12 +664,12 @@ void aggregatedDataReport(byte* data){
         else if(_wait_for_return == false){
             if(DEBUG_COORDINATOR) Serial.print(" but I wasn't waiting for it anymore. Sending ack of reception but ignoring data\n");
             transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
-            DW1000Ranging.waitForTxDone(10);
+            
             return;
         }
 
         transmitUnicast(MSG_DATA_REPORT_ACK, reporting_device);
-        DW1000Ranging.waitForTxDone(10); //To make sure ack is sent correctly. 5ms is too small. 10 works fine.
+        
 
         return_received = true; //To avoid processing the same report more than once in case it is received multiple times due to retries and ACK failures.
         uint8_t index = SHORT_MAC_LEN+1; // Variable "index" is used to go through all the payload.
@@ -842,6 +841,11 @@ void loop(){
 
     DW1000Ranging.loop();
     current_time = millis();
+
+    if(DW1000Ranging.getIsTransmitting()){
+        //if(DEBUG_COORDINATOR) Serial.print("Ongoing transmission. Skipping loop");
+        return;
+    } //If there's an ongoing transmission, let the board finish that first
 
     if(state == DISCOVERY){
         

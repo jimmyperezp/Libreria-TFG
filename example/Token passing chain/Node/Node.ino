@@ -942,6 +942,8 @@ void loop(){
     DW1000Ranging.loop();
     current_time = millis();
 
+    if(DW1000Ranging.getIsTransmitting()) return; //If there's an ongoing transmission, let the board finish that first
+    
     if(device_is_initiator && current_time - being_initiator_start > INITIATOR_TIMEOUT){
 
         if(DEBUG_SLAVE){Serial.print("INITIATOR TIMEOUT!!. ");}

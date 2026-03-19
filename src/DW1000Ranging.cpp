@@ -37,6 +37,8 @@ uint16_t DW1000RangingClass::_rangeFilterValue = 15;
 volatile bool DW1000RangingClass::_sentAck     = false;
 volatile bool DW1000RangingClass::_receivedAck = false;
 
+volatile bool DW1000RangingClass::_is_transmitting = false;
+
 // protocol error state
 bool DW1000RangingClass::_protocolFailed = false;
 
@@ -352,13 +354,13 @@ DW1000Device* DW1000RangingClass::searchDeviceByShortAddHeader(uint8_t short_add
 	return nullptr; // Not found.
 }
 
-
 DW1000Device* DW1000RangingClass::getDistantDevice() {
 	//we get the device which correspond to the message which was sent (need to be filtered by MAC address)
 	
 	return &_networkDevices[_lastDistantDevice];
 	
 }
+
 
 /* ###########################################################################
  * #### Public methods #######################################################
@@ -416,6 +418,7 @@ void DW1000RangingClass::loop() {
 	
 	if(_sentAck) {
 		_sentAck = false;
+		_is_transmitting = false;
 
 		int messageType = detectMessageType(data);
 		
@@ -1048,14 +1051,14 @@ void DW1000RangingClass::transmitInit() {
 
 void DW1000RangingClass::transmit(byte datas[]) {
 	DW1000.setData(data, LEN_DATA);
-	//DW1000.setData(datas, LEN_DATA);
+	_is_transmitting = true;
 	DW1000.startTransmit();
 }
 
 void DW1000RangingClass::transmit(byte datas[], DW1000Time time) {
 	DW1000.setDelay(time);
 	DW1000.setData(data, LEN_DATA);
-	//DW1000.setData(datas, LEN_DATA);
+	_is_transmitting = true;
 	DW1000.startTransmit();
 }
 
@@ -1256,6 +1259,7 @@ void DW1000RangingClass::transmitRangeFailed(DW1000Device* myDistantDevice) {
 	copyShortAddress(_lastSentToShortAddress, myDistantDevice->getByteShortAddress());
 	transmit(data);
 }
+
 
 void DW1000RangingClass::receiver() {
 	DW1000.newReceive();

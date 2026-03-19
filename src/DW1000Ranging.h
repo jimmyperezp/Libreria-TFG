@@ -118,7 +118,7 @@ class DW1000RangingClass {
 		static byte*   getCurrentShortAddress() { return _currentShortAddress; };
 		static uint8_t getNetworkDevicesNumber() { return _networkDevicesNumber; };
 
-
+		static bool getIsTransmitting(){return _is_transmitting;}
 		
 
 
@@ -239,6 +239,9 @@ class DW1000RangingClass {
 		// message sent/received state
 		static volatile bool _sentAck;
 		static volatile bool _receivedAck;
+
+		static volatile bool _is_transmitting;
+
 		// protocol error state
 		static bool          _protocolFailed;
 		// reset line to the chip
