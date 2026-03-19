@@ -49,7 +49,7 @@ static bool nodes_discovered = false;
 unsigned long discovery_start = 0;
 
 //To only re-discover after certain number of cycles:
-#define UPDATE_DISCOVERY_ATTEMPTS 2
+#define UPDATE_DISCOVERY_ATTEMPTS 15
 static bool discovery_previously_done = false;
 uint8_t discovery_attempts = 0;
 
@@ -74,7 +74,7 @@ unsigned long wait_token_handoff_ack_start = 0;
 static bool _wait_for_return = false;
 static bool return_received = false; // To avoid processing the same report more than once in case it is received multiple times due to retries and ACK failures.
 unsigned long wait_for_return_start = 0;
-const unsigned long WAIT_FOR_RETURN_TIMEOUT = 15000;
+const unsigned long WAIT_FOR_RETURN_TIMEOUT = 3000;
 
 /*Used to print results*/
 unsigned long last_shown_data_timestamp = 0;
@@ -657,7 +657,7 @@ void aggregatedDataReport(byte* data){
              
             if(DEBUG_COORDINATOR) Serial.println(" but already received before. Only need to send ACK");
             transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
-            delay(50);
+            DW1000Ranging.waitForTxDone(10);
             return;
 
         }
@@ -665,12 +665,12 @@ void aggregatedDataReport(byte* data){
         else if(_wait_for_return == false){
             if(DEBUG_COORDINATOR) Serial.print(" but I wasn't waiting for it anymore. Sending ack of reception but ignoring data\n");
             transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
-            delay(50);
+            DW1000Ranging.waitForTxDone(10);
             return;
         }
 
         transmitUnicast(MSG_DATA_REPORT_ACK, reporting_device);
-        delay(50); //To make sure ack is sent correctly. 5ms is too small. 10 works fine.
+        DW1000Ranging.waitForTxDone(10); //To make sure ack is sent correctly. 5ms is too small. 10 works fine.
 
         return_received = true; //To avoid processing the same report more than once in case it is received multiple times due to retries and ACK failures.
         uint8_t index = SHORT_MAC_LEN+1; // Variable "index" is used to go through all the payload.
