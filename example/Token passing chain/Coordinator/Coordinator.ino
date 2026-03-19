@@ -111,6 +111,8 @@ void transmitUnicast(uint8_t message_type, DW1000Device* explicit_target = nullp
 void setup(){
 
     Serial.begin(115200);
+    randomSeed((uint32_t)ESP.getEfuseMac());
+    
     delay(1000);
     SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI); 
     DW1000Ranging.initCommunication(PIN_RST, PIN_SS, PIN_IRQ); // DW1000 Start
@@ -713,6 +715,7 @@ void showData(){
     
     unsigned long time_between_prints = current_time - last_shown_data_timestamp;
     last_shown_data_timestamp = current_time;
+    Serial.print("                             Cycle ");Serial.print(discovery_attempts);Serial.print("/");Serial.println(UPDATE_DISCOVERY_ATTEMPTS);
     Serial.print("                   Time since last print --> ");
     Serial.print(time_between_prints);
     Serial.println(" ms\n");

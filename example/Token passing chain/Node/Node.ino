@@ -122,6 +122,8 @@ void transmitUnicast(uint8_t message_type, DW1000Device* explicit_target = nullp
 void setup(){
 
     Serial.begin(115200);
+    randomSeed((uint32_t)ESP.getEfuseMac());
+    
     delay(1000); // 1 sec to launch the serial monitor
 
     SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI); // SPI bus start
@@ -358,7 +360,7 @@ void tokenHandoff(){
             Serial.println(". Sending ACK but continuing with current task...");
         }
         transmitUnicast(MSG_TOKEN_HANDOFF_ACK,requesting_device);
-        delay(20);
+        delay(15);
         return;
     }
 
@@ -376,7 +378,7 @@ void tokenHandoff(){
     }
 
     transmitUnicast(MSG_TOKEN_HANDOFF_ACK,requesting_device);
-    delay(20);
+    delay(15);
     
     if(_switch_to_initiator_pending){
         _switch_to_initiator_pending = false;
@@ -804,7 +806,7 @@ void aggregatedDataReport(byte* data){
             }
         }
         transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
-        delay(20);
+        delay(15);
         return;
     }
 
@@ -844,9 +846,9 @@ void aggregatedDataReport(byte* data){
 
         else if(return_received == true){ //The device is valid + I was waiting for the report
              
-            if(DEBUG_SLAVE) Serial.print(" but already received before. Only need to send ACK");
+            if(DEBUG_SLAVE) Serial.print(" but already received before. Only need to send ACK...");
             transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
-            delay(20);
+            delay(15);
             return;
 
         }
@@ -854,12 +856,12 @@ void aggregatedDataReport(byte* data){
         else if(_wait_for_return == false){
             if(DEBUG_SLAVE) Serial.print(" but I wasn't waiting for it anymore. Sending ack of reception but ignoring data");
             transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
-            delay(20);
+            delay(15);
             return;
         }
 
         transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
-        delay(20);
+        delay(15);
 
         return_received = true; //To avoid processing the same report more than once in case it is received multiple times due to retries and ACK failures.
         
@@ -1119,7 +1121,7 @@ void loop(){
             _wait_token_handoff_ack = false;
             num_retries = 0;
             transmitUnicast(MSG_TOKEN_HANDOFF);
-            delay(20); 
+            delay(15); 
             
         }
          
@@ -1168,7 +1170,7 @@ void loop(){
         _wait_return_to_parent_ack = false;
         num_retries = 0;
         transmitUnicast(MSG_RETURN_TO_PARENT);
-        delay(20);
+        delay(15);
         
     }     
     else if(state == WAIT_RETURN_TO_PARENT_ACK){
