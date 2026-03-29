@@ -33,16 +33,16 @@ uint8_t amount_active_nodes = 0;
 
 /*Time management*/
 unsigned long current_time = 0;
-const unsigned long WAITING_TIME = 1000; 
+const unsigned long WAITING_TIME = 50; 
 
 /*Retry messages management*/
-#define MAX_RETRIES 2
+#define MAX_RETRIES 5
 unsigned long last_retry = 0;
 uint8_t num_retries = 0;
 
 
 /*state = DISCOVERY*/
-const unsigned long DISCOVERY_PERIOD = 700;
+const unsigned long DISCOVERY_PERIOD = 300;
 static bool _discovery = false;
 static bool nodes_discovered = false;
 unsigned long discovery_start = 0;
@@ -73,7 +73,7 @@ unsigned long wait_token_handoff_ack_start = 0;
 static bool _wait_for_return = false;
 static bool return_received = false; // To avoid processing the same report more than once in case it is received multiple times due to retries and ACK failures.
 unsigned long wait_for_return_start = 0;
-const unsigned long WAIT_FOR_RETURN_TIMEOUT = 3000;
+const unsigned long WAIT_FOR_RETURN_TIMEOUT = 800;
 
 /*Used to print results*/
 unsigned long last_shown_data_timestamp = 0;

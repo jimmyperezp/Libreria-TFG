@@ -57,17 +57,17 @@ node_state state = IDLE;
 
 /*Time management*/
 unsigned long current_time = 0;
-const unsigned long WAITING_TIME = 800;
+const unsigned long WAITING_TIME = 50;
 
 /*Retry messages management*/
-#define MAX_RETRIES 2
+#define MAX_RETRIES 5
 unsigned long last_retry = 0;
 uint8_t num_retries = 0;
 
 /*state = DISCOVERY*/
 static bool _discovery = false;
 unsigned long discovery_start = 0;
-const unsigned long DISCOVERY_PERIOD = 500;
+const unsigned long DISCOVERY_PERIOD = 300;
 
 //To only re-discovery after a certain number of cycles: 
 #define UPDATE_DISCOVERY_ATTEMPTS 15
@@ -94,7 +94,7 @@ uint8_t parent_address = 0; //Device that sent the token to this node. The data 
 static bool _switch_to_initiator_pending = false; //Used inside tokenHandoff. Checks if has to switch or not (need to send ack before switching)
 static bool device_is_initiator = false;
 unsigned long being_initiator_start = 0;
-const unsigned long INITIATOR_TIMEOUT = 2000;
+const unsigned long INITIATOR_TIMEOUT = 500;
 
 /*state = WAIT_TOKEN_HANDOFF_ACK*/
 static bool _wait_token_handoff_ack = false;
@@ -110,7 +110,7 @@ unsigned long wait_return_to_parent_ack_start = 0;
 static bool _wait_for_return = false;
 static bool return_received = false; // To avoid processing the same report more than once in case it is received multiple times due to retries and ACK failures.
 unsigned long wait_for_return_start = 0;
-const unsigned long WAITING_RETURN_TIME = 5000;
+const unsigned long WAITING_RETURN_TIME = 400;
 
 
 /*Function prototypes*/
@@ -378,7 +378,7 @@ void tokenHandoff(){
     }
 
     transmitUnicast(MSG_TOKEN_HANDOFF_ACK,requesting_device);
-    delay(15);
+    while(DW1000Ranging.getIsTransmitting()) { DW1000Ranging.loop(); }
     
     if(_switch_to_initiator_pending){
         _switch_to_initiator_pending = false;
