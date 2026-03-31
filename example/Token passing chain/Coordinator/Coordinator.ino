@@ -767,7 +767,7 @@ void showData(){
     
 }
 
-void showPlottingData(){
+void showJSONData(){
     //Converts data to a JSON format. This way, the python app reads the serial monitor and plots the results.
 
     StaticJsonDocument<1024> json_doc; //Saves up 1024 Bytes of the stack to show the JSON
@@ -831,6 +831,22 @@ void showPlottingData(){
 
 }
 
+void showRXDistData(){
+
+    /*This function shows the RX Power & distance for each measurement
+    It is used to plot the RX Power - distance relationship in a graph.
+    The data is collected by a python script, which reads the Serial Monitor
+    and prepares a CSV file with the collected data.*/
+
+    Serial.print("RX_DIST_DATA:");
+    for(int i = 0; i<amount_measurements;i++){
+        if(measurements[i].active){
+            Serial.print(measurements[i].distance); Serial.print(","); Serial.print(measurements[i].rxPower); Serial.print(";");
+        }
+    }
+    Serial.println();
+
+}
 
 void resetMeasures(){ 
     for(int i = 0;i<amount_measurements;i++){
@@ -1020,7 +1036,10 @@ void loop(){
 
     else if(state == END_CYCLE){
 
-        if(PLOTTING) showPlottingData();
+        if(PLOTTING){
+            showJSONData();
+            showRXDistData();
+        }
         showData();
 
         num_retries = 0;
