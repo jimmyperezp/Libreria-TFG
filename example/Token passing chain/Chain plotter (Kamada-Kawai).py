@@ -33,8 +33,8 @@ fig.canvas.manager.set_window_title('Train Integrity')
 
 def update_plot(json_string):
     """
-    Visualización en 'Arco' (Arcoíris técnico). 
-    Fuerza los arcos hacia ARRIBA y escala el dibujo para máxima claridad.
+    Plots the devices with arches between them showing the distance. 
+    These arches are drawn upwards.
     """
     axis.clear()
     
@@ -53,7 +53,7 @@ def update_plot(json_string):
             G.add_edge(m["from"], m["to"], weight=m["dist"],pwr = m.get("rxpwr",0))
             
     except Exception as e:
-        print(f"Error en JSON: {e}")
+        print(f"Error in JSON: {e}")
         return
 
     if len(G.nodes) < 2: return
@@ -164,7 +164,7 @@ try:
                 print(f"[ESP32] {line}")
                 
 except KeyboardInterrupt:
-    # Capturamos CTRL+C para un cierre limpio
+    
     print("\nClosing COM...")
     ser.close()
     plt.close('all')
