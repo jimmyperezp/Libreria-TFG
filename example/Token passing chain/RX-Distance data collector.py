@@ -2,9 +2,9 @@ import serial
 import csv
 
 # Serial monitor setup:
-SERIAL_PORT = 'COM3'      # Update with the coordinator's serial port
+SERIAL_PORT = 'COM9'      # Update with the coordinator's serial port
 BAUD_RATE = 115200        
-OUTPUT_FILE = 'rx_distance_data.csv'
+OUTPUT_FILE = 'example/Token passing chain/rx_distance_data.csv'
 
 
 def main():
@@ -35,7 +35,7 @@ def main():
                                     
                                     # --- SECCIÓN 5: ESCRITURA ---
                                     writer.writerow([distance, rx_power])
-                                    nuevos_datos += 1
+                                    
                                     
                             file.flush() # Forzar volcado a disco
                           
