@@ -503,8 +503,9 @@ void transmitUnicast(uint8_t message_type, DW1000Device* explicit_target){
 
         token_target_address = getClosestNodeAddress();
         if(token_target_address == -1){
-            Serial.println("NO ACTIVE NODES. Token handoff not sent. Back to discovery\n\n");
+            if(DEBUG_COORDINATOR) Serial.println("NO ACTIVE NODES. Token handoff not sent. Back to discovery\n\n");
             state = DISCOVERY;
+            discovery_attempts = UPDATE_DISCOVERY_ATTEMPTS; //To re-discover inmediately next loop, as no active nodes are available.
             return;
         }
         DW1000Device* target = DW1000Ranging.searchDeviceByShortAddHeader(token_target_address);
