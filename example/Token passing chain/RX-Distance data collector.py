@@ -1,6 +1,11 @@
 import serial
 import csv
 
+# This code accesses the serial port to read the measured distance & RX power data shown by the coordinator. 
+# The data is shown in the serial monitor as "RX_DIST_DATA:distance1,rx_power1;distance2,rx_power2;...".
+# The code writes the data to a CSV file with two columns: "Distance (m)" and "RX Power (dBm)". Each row corresponds to a single measurement.
+
+
 # Serial monitor setup:
 SERIAL_PORT = 'COM9'      # Update with the coordinator's serial port
 BAUD_RATE = 115200        
