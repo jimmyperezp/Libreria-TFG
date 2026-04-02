@@ -16,8 +16,10 @@ This results in a big distance limitation: The measured length was, at maximum, 
 
 <p align="center">
 <img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/images/Coordinator-centered%20topology.png" alt="Coordinator-centered topology" width="300" height="300"/>
-<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/images/Hub%20%26%20Spoke%20Topology.png" alt="Hub & Spoke topology" width="350" height="350"/>  
-(Both images show a coordinator-centered topologies. The right one shows a hub & spoke topology by definition)
+<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/images/Hub%20%26%20Spoke%20Topology.png" alt="Hub & Spoke topology" width="350" height="350"/>
+
+
+<p align="center"> (Both images show a coordinator-centered topologies. The right one shows a hub & spoke topology by definition)
 <p>
 
 
@@ -32,9 +34,9 @@ Every time the token is sent, the sender device "turns off" its ranging;  it won
 
 The token travels "downwards" the line of devices. Once it reaches a node that doesn't discover any more devices, then it has reached the end, and said device is the TAIL of the train.  
 The tail then starts building up the data report. It includes its measurements and passes them to the parent device. Afterwards, the parent adds up its measurements and keeps on the data cascade until it reaches the coordinator. 
-
+<br>
 <p align="center">
-<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/images/Token%20handoff%20%26%20report.png" alt="Token passing topology" width="700" height="500"/>
+<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/images/Token%20handoff%20%26%20report.png" alt="Token passing topology" width="800" height="600"/>
 
 
 
