@@ -18,27 +18,27 @@ This updated version:  [Changes made](#changes-made)
 ### Index:
 
  
-1. 🎯 [This project's goal](#goal-of-the-project)
-2. 📡 [UWB. Definitions and TWR](#previous-concepts-uwb-to-measure-distance-twr)
-3. 🚀 [Background and context](#background-and-context)
-4. 📝 [Changes made](#changes-made)
+1. [This project's goal](#goal-of-the-project)
+2. [UWB. Definitions and TWR](#previous-concepts-uwb-to-measure-distance-twr)
+3. [Background and context](#background-and-context)
+4. [Changes made](#changes-made)
     - [Renaming](#1-renaming)
     - [New Methods](#2-new-methods-in-dw1000rangingcpp)
     - [Slaves ignore messages directed to the master](#3-slaves-ignore-message-types-that-are-directed-towards-the-master)
     - [Reducing dataReport Payload](#4-reducing-datareport-payload-shortaddresses-distance-and-rx-power-lengths)
     - [Eliminating devices from own list](#5-slaves-dont-forget-the-master-or-the-tags)
     - [Board types control](#6-board-types-control)
-5. 📚 [Library's examples](#librarys-examples)
-6. 🔧 [Hardware](#hardware-used)
+5. [Library's examples](#librarys-examples)
+6. [Hardware](#hardware-used)
     - [ESP32 Wroom32](#esp32-wroom32)
     - [STM32 Nucleo F429ZI](#stm32-nucleo-f429zi)
     - [DW1000 module](#dw1000----uwb-chip)
     - [DWS1000](#dws1000)
-7. 🖥️ [Programming the boards](#programming-the-boards)
+7. [Programming the boards](#programming-the-boards)
     - [Arduino IDE](#arduino-ide)
     - [PlatformIO](#platformio)
         - [Coding the Nucleo F429ZI : Pin definitions](#coding-the-nucleo-f429zi)
-8. ⚡ [Project status](#project-status)
+8. [Project status](#project-status)
 
 <br><br>
 
@@ -219,13 +219,14 @@ To do so, I renamed some of the existing methods, cleaned and organized some seg
 
 The examples found in the library are: 
 
-1. *Medir distancias* (measures distance between anchor and tag (Initiator-Responder))
+1. [*Medir distancias*](/example/Medir%20distancias) (measures distance between anchor and tag (Initiator-Responder))
 
-2. *Posicionamiento 2D*: launches an app to plot the position of 2 anchors and 1 tag in real time
+2. [*Posicionamiento 2D*](/example/Posicionamiento%202D): launches an app to plot the position of 2 anchors and 1 tag in real time
 
-3. *Centralizar datos*: Centralizes all of the system's measures between its devices. This example is divided into two different sub-examples:
-    - 3.1: *Centralizar datos - 1 Slave*: Basically, works on 1 master, 1 slave and multiple tags.
-    - 3.2: *Centralizar datos - N slaves*: Scalates the previous system to detect as many slaves as possible, and works with all of them.
+3. [*Hub & Spoke Coordination*](/example/Hub%20&%20Spoke%20coordination). Centralizes the system's data in a coordinator, using a hub & spoke (or star) topology.
+
+4. [*Token Passing Chain*](/example/Token%20passing%20chain): Ampliation of previous example. It also centralizes the measurements in the coordinator, but using a token passing topology. 
+
 
 
 🚧 **PENDING** --> Add a readme file inside each example's folder explaining more on detail.
