@@ -9,7 +9,7 @@ import csv
 # Serial monitor setup:
 SERIAL_PORT = 'COM9'      # Update with the coordinator's serial port
 BAUD_RATE = 115200        
-OUTPUT_FILE = 'example/Token passing chain/rx_distance_data.csv'
+OUTPUT_FILE = 'extras/RX-Distance relation/rx_distance_data.csv'
 
 
 def main():
