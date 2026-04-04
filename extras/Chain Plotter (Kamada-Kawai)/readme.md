@@ -11,7 +11,7 @@ As mentioned in the previous summary, this Python script plots the relative posi
 The final result is the shown in the next image: 
 
 <p align="center">
-<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/images/Kamada-Kawai%20plots.png" alt="Kamada-Kawai plots" width="300" height="300"/>
+<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/images/Kamada-Kawai%20plots.png" alt="Kamada-Kawai plots" width="1500" height="1500"/>
 
 To achieve this functioning, the procedure is the following: 
 
