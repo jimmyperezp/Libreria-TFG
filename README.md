@@ -100,16 +100,20 @@ To see a brief summary of the main upgrades/modifications made to the previous v
 
 The examples found in the library are: 
 
-1. [*Medir distancias*](example/Medir%20distancias) : (measures distance between anchor and tag (Initiator-Responder))
+1. [*Medir distancias*](/example/Medir%20distancias) (measures distance between anchor and tag (Initiator-Responder))
 
-2. [*Posicionamiento 2D*](): launches an app to plot the position of 2 anchors and 1 tag in real time
+2. [*Posicionamiento 2D*](/example/Posicionamiento%202D): launches an app to plot the position of 2 anchors and 1 tag in real time
 
-3. [*Hub and Spoke Coordination*](): Coordinates & centralizes the measures between all the existing nodes inside the master's code, using a star-based topology (or a Hub & Spoke network)
-4. [*Linear token passing coordination*](eexample/)
-5. [*Mesh newtwork token passing coordination*]()
+3. [*Hub & Spoke Coordination*](/example/Hub%20&%20Spoke%20coordination). Centralizes the system's data in a coordinator, using a hub & spoke (or star) topology.
+
+4. [*Token Passing Chain*](/example/Token%20passing%20chain): Ampliation of previous example. It also centralizes the measurements in the coordinator, but using a token passing topology. 
+
 
 
 🚧 **PENDING** --> Add a readme file inside each example's folder explaining more on detail.
+<br><br>
+
+
 <br><br>
 
 ### Hardware used
