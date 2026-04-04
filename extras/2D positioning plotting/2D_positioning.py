@@ -11,7 +11,7 @@ print("***Local ip:" + str(UDP_IP) + "***")
 UDP_PORT = 80
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.bind((UDP_IP, UDP_PORT))
-sock.listen(1)  # 接收的连接数
+sock.listen(1)  
 data, addr = sock.accept()
 
 distance_a1_a2 = 3.0
