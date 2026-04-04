@@ -1,5 +1,4 @@
-//1 Tag y 1 Anchor: 
-// ANCHOR SETUP
+// 1 on 1 distance. Initiator code
 
 #include <SPI.h>
 #include "DW1000Ranging.h"

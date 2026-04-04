@@ -1,17 +1,3 @@
-// This program calibrates an ESP32_UWB module intended for use as a fixed anchor point
-// uses binary search to find anchor antenna delay to calibrate against a known distance
-//
-// modified version of Thomas Trojer's DW1000 library is required!
-
-// Remote tag (at origin) must be set up with default antenna delay (library default = 16384)
-
-// user input required, possibly unique to each tag:
-// 1) accurately measured distance from anchor to tag
-// 2) address of anchor
-//
-// output: antenna delay parameter for use in final anchor setup.
-// S. James Remington 2/20/2022
-
 #include <SPI.h>
 #include "DW1000Ranging.h"
 #include "DW1000.h"
@@ -31,7 +17,7 @@ const uint8_t PIN_SS = 4;   // spi select pin
 // Los 2 bytes de la izquierda son la short address
 // NOMENCLATURA: A para Anchors, B para Tags
 #define DEVICE_ADDR "84:00:22:EA:82:60:3B:9C"
-float this_anchor_target_distance = 1; //measured distance to anchor in m
+float boards_distance = 1; //measured distance to anchor in m
 
 uint16_t this_anchor_Adelay = 16600; //starting value
 uint16_t Adelay_delta = 100; //initial binary search step size
@@ -47,7 +33,7 @@ void setup()
 
 
   Serial.print("Starting Adelay "); Serial.println(this_anchor_Adelay);
-  Serial.print("Measured distance "); Serial.println(this_anchor_target_distance);
+  Serial.print("Measured distance "); Serial.println(boards_distance);
   
   DW1000.setAntennaDelay(this_anchor_Adelay);
 
@@ -84,7 +70,7 @@ void newRange()
     while(1);  //done calibrating
   }
 
-  float this_delta = dist - this_anchor_target_distance;  //error in measured distance
+  float this_delta = dist - boards_distance;  //error in measured distance
 
   if ( this_delta * last_delta < 0.0) Adelay_delta = Adelay_delta / 2; //sign changed, reduce step size
     last_delta = this_delta;
