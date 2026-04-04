@@ -37,8 +37,9 @@ Then, a python app is used to receive that data and plot the nodes' positions. T
 
 The plot displayed by the python script is the following: 
 
-<p align = center>
-<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/example/Posicionamiento%202D/foto%20app%20posicionamiento%202D.jpg" alt="2D positioning app image." width="700">
+<p align="center">
+<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/images/2D%20positioning%20app.jpg" alt="2D positioning app" width="500" height="500"/>
+
 
 
 The tag (plotted as a blue circle) will move as the tag board is moved too.  
