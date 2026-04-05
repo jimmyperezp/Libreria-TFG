@@ -338,8 +338,11 @@ int16_t getClosestNodeAddress(){
 
 }
 
-void tokenHandoff(){
+void tokenHandoff(uint8_t incoming_cycle_id){
 
+    // The incoming cycle ID parameter received isn't used in the token passing chain (this implementation). 
+    // It is used in the MESH token passing, to make sure all of the nodes are in the same cycle before moving onto next cycle.
+    
     uint8_t requesting_address = 0;
     DW1000Device* requesting_device = DW1000Ranging.getDistantDevice();
     if(requesting_device) requesting_address = requesting_device->getShortAddressHeader();
@@ -401,7 +404,6 @@ void tokenHandoffAck(){
             Serial.print("Token Handoff ACK received from ["); Serial.print(origin_short_addr,HEX);
             Serial.print("] but expected from ["); Serial.print(token_target_address,HEX); Serial.println("]. ACK ignored");
         }
-
         return;
     }
 

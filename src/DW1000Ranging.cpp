@@ -14,7 +14,7 @@ int16_t      DW1000RangingClass::_lastDistantDevice    = 0; // TODO short, 8bit?
 DW1000Mac    DW1000RangingClass::_globalMac;
 
 //module type (responder or initiator)
-int16_t      DW1000RangingClass::_type; 
+int16_t DW1000RangingClass::_type; 
 
 //board type (master, anchor or tag)
 uint8_t DW1000RangingClass::_myBoardType = 99;
@@ -25,6 +25,8 @@ DW1000RangingClass::RangingMode DW1000RangingClass::_ranging_mode = DW1000Rangin
 //To enable/disable ranging. Starts enabled.
 bool DW1000RangingClass:: ranging_enabled = true;
 bool DW1000RangingClass:: stop_ranging = false;
+
+uint8_t DW1000RangingClass::_own_cycle_id = 0; 
 
 // message flow state
 volatile byte    DW1000RangingClass::_expectedMsgId;
@@ -86,8 +88,9 @@ void (* DW1000RangingClass::_handleDataReportAck)(void) = 0;
 void (* DW1000RangingClass::_handleStopRanging)(byte*) = 0;
 void (* DW1000RangingClass::_handleStopRangingAck)(void) = 0;
 
-void (* DW1000RangingClass::_handleTokenHandoff)(void) = 0;
+void (* DW1000RangingClass::_handleTokenHandoff)(uint8_t) = 0;
 void (* DW1000RangingClass::_handleTokenHandoffAck)(void) = 0;
+void (* DW1000RangingClass::_handleTokenHandoffNack)(void) = 0;
 
 
 /* ###########################################################################
@@ -387,6 +390,8 @@ void DW1000RangingClass::checkForInactiveDevices() {
 			//we need to delete the device from the array:
 			removeNetworkDevices(i);
 			
+			i--; //If a device was removed, all the indexes move left. 
+			//By doing i--, i also check the position that was just occupied in the shifting
 		}
 	}
 }
@@ -601,16 +606,40 @@ void DW1000RangingClass::loop() {
 			
 			byte shortAddress[2];
 			_globalMac.decodeShortMACFrame(data, shortAddress);
+			uint8_t incoming_cycle_id = data[SHORT_MAC_LEN+1];
+
 			DW1000Device* ackDevice = searchDistantDevice(shortAddress);
 			if (ackDevice) {
 				_lastDistantDevice = ackDevice->getIndex();
 				ackDevice ->noteActivity();
+				ackDevice ->setCycleId(incoming_cycle_id);
 			}
 
-			if(_handleTokenHandoff){
-				(*_handleTokenHandoff)();
+			/* In the future, this section directly sends the NACK without calling the tokenHandoff Callback.
+			As of now, I still call it to debug & see in the serial monitor how this is handled. 
+			if(incoming_cycle_id == _own_cycle_id){
+
+				if(DEBUG){
+					Serial.print("Token ignored. Cycle received: "); Serial.print(incoming_cycle_id);
+					Serial.print(" and already in cycle "); Serial.print(_own_cycle_id);
+					Serial.println("Sending token Handoff Nack")
+				}
+
+				transmitTokenHandoffNack(ackDevice);
+				return;
 			}
-			return;
+
+			else{
+				if(_handleTokenHandoff){(*_handleTokenHandoff)(incoming_cycle_id);}
+				return;
+			}
+			*/
+
+			if(_handleTokenHandoff){(*_handleTokenHandoff)(incoming_cycle_id);
+				return;
+			}
+				
+			
 		}
 		else if(messageType == TOKEN_HANDOFF_ACK){
 			
@@ -624,6 +653,20 @@ void DW1000RangingClass::loop() {
 
 			if(_handleTokenHandoffAck){
 				(*_handleTokenHandoffAck)();
+			}
+			return;
+		}
+		else if(messageType == TOKEN_HANDOFF_NACK){
+			byte shortAddress[2];
+			_globalMac.decodeShortMACFrame(data, shortAddress);
+			DW1000Device* ackDevice = searchDistantDevice(shortAddress);
+			if (ackDevice) {
+				_lastDistantDevice = ackDevice->getIndex();
+				ackDevice ->noteActivity();
+			}
+
+			if(_handleTokenHandoffNack){
+				(*_handleTokenHandoffNack)();
 			}
 			return;
 		}
@@ -878,21 +921,20 @@ void DW1000RangingClass::loop() {
 						
 						myDistantDevice->noteActivity(); //notes the responder's activity (last seen moment).
 
-						//If the poll was sent via unicast:
+						myDistantDevice->setCycleId(data[SHORT_MAC_LEN+1]); //Saves the responder's cycle ID.
+
 
 						if(_ranging_mode ==  DW1000RangingClass::UNICAST){
 
+							//If the poll was sent via unicast, the TWR procotol continues (transmit Range and expect range report)
 							//Poll was only sent once. Only 1 poll_ack expected.
-							if(DEBUG){
 
-								Serial.println("POLL ACK RECEIVED. SENDING RANGE MESSAGE");
-							}
+							if(DEBUG) Serial.println("POLL ACK RECEIVED. SENDING RANGE MESSAGE"); 
 							
-							transmitRange(myDistantDevice); //Directly send range to the responder.
-							_expectedMsgId = RANGE_REPORT; //Next expected message is RANGE_REPORT from the responder.
-							
+							transmitRange(myDistantDevice); 
+							_expectedMsgId = RANGE_REPORT;  
+
 							return;
-							
 						}
 						
 						//If the poll was sent bia broadcast: Initiator needs to "wait" for all the poll_acks from all responders. (waits until poll_ack from the device placed last in the networkDevices array)
@@ -1164,6 +1206,8 @@ void DW1000RangingClass::transmitPollAck(DW1000Device* myDistantDevice) {
 	transmitInit();
 	_globalMac.generateShortMACFrame(data, _currentShortAddress, myDistantDevice->getByteShortAddress());
 	data[SHORT_MAC_LEN] = POLL_ACK;
+	data[SHORT_MAC_LEN+1] = _own_cycle_id; //Used in token passing. Controls all of the device's cycle, so that all of them receive the token in each one
+
 	// delay the same amount as ranging initiator
 	DW1000Time deltaTime = DW1000Time(_replyDelayTimeUS, DW1000Time::MICROSECONDS);
 	copyShortAddress(_lastSentToShortAddress, myDistantDevice->getByteShortAddress());
@@ -1583,6 +1627,7 @@ void DW1000RangingClass::transmitTokenHandoff(DW1000Device* device){
 	else memcpy(dest,device->getByteShortAddress(),2);
 	_globalMac.generateShortMACFrame(data, _currentShortAddress, dest);
 	data[SHORT_MAC_LEN] = TOKEN_HANDOFF;
+	data[SHORT_MAC_LEN+1] = _own_cycle_id;
 	transmit(data);
 }
 
@@ -1600,6 +1645,22 @@ void DW1000RangingClass::transmitTokenHandoffAck(DW1000Device* device){
 	data[SHORT_MAC_LEN] = TOKEN_HANDOFF_ACK;
 	transmit(data);
 }
+
+void DW1000RangingClass::transmitTokenHandoffNack(DW1000Device* device){
+
+	transmitInit();
+	byte dest[2];
+
+	if(device == nullptr){
+		dest[0] = 0xFF;
+		dest[1] = 0xFF;
+	}
+	else memcpy(dest,device->getByteShortAddress(),2);
+	_globalMac.generateShortMACFrame(data, _currentShortAddress, dest);
+	data[SHORT_MAC_LEN] = TOKEN_HANDOFF_NACK;
+	transmit(data);
+}
+
 
 /* ###########################################################################
  * #### Methods for range computation and corrections  #######################
