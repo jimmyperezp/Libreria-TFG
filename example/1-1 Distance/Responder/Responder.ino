@@ -1,5 +1,5 @@
-// 1 TAG - 1 ANCHOR
-// TAG
+/*1 Initiator - 1 Responder*/
+// This example measures the distance between 1 initiator and 1 responder. It does it by using the TWR (Two Way Ranging) protocol. 
 
 #include <SPI.h>
 #include "DW1000Ranging.h"
@@ -10,15 +10,15 @@
 #define SPI_MOSI 23
 #define DW_CS 4
 
-// connection pins
+// Board's pinout
 const uint8_t PIN_RST = 27; // reset pin
 const uint8_t PIN_IRQ = 34; // irq pin
 const uint8_t PIN_SS = 4;   // spi select pin
 
 // TAG antenna delay defaults to 16384
 
-// Los 2 bytes de la izquierda son la short address.
-// NOMENCLATURA: A para Anchors, B para Tags
+// Device naming: the two foremost left bytes are the 'shortAddressHeader'.
+// In this example, I'll use 'A1' for the initiator, and 'B1' for the responder. 
 #define DEVICE_ADDR "B1:00:22:EA:82:60:3B:9C"
 
 void setup()
@@ -26,7 +26,6 @@ void setup()
   Serial.begin(115200);
   delay(1000);
 
-  //init the configuration
   SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI);
   DW1000Ranging.initCommunication(PIN_RST, PIN_SS, PIN_IRQ); //Reset, CS, IRQ pin
 
@@ -34,9 +33,7 @@ void setup()
   DW1000Ranging.attachNewDevice(newDevice);
   DW1000Ranging.attachInactiveDevice(inactiveDevice);
 
-// start as tag, do not assign random short address
-
-  DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false,TAG);
+  DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, TAG);
 }
 
 void loop()
@@ -46,9 +43,9 @@ void loop()
 
 void newRange()
 {
-  Serial.print("Desde: ");
+  Serial.print("From: ");
   Serial.print(DW1000Ranging.getDistantDevice()->getShortAddress(), HEX);
-  Serial.print("\t Distancia: ");
+  Serial.print("\t Distance: ");
   Serial.print(DW1000Ranging.getDistantDevice()->getRange());
   Serial.print(" m");
   Serial.print("\t RX power: ");
