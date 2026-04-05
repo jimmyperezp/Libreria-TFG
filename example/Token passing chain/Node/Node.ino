@@ -133,7 +133,7 @@ void setup(){
 
     attachCallbacks();
 
-    DW1000Ranging.startAsResponder(DEVICE_ADDR,DW1000.MODE_1, false,NODE);
+    DW1000Ranging.startAsResponder(DEVICE_ADDR,DW1000.MODE_1, NODE);
 
     own_short_addr = getOwnShortAddress();
     // I save the own_short_addr after the device has been set up propperly
@@ -463,16 +463,16 @@ void switchToInitiator(){
     if(DEBUG_SLAVE) {Serial.print("MODE SWITCH --> now: Inititiator... ");}
     device_is_initiator = true; 
     being_initiator_start = current_time; 
-    DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_1, false, NODE);
-    //delay(50);
+    DW1000Ranging.startAsInitiator(DEVICE_ADDR, DW1000.MODE_1, NODE);
+    
 }
 
 void switchToResponder(){
 
     if(DEBUG_SLAVE){Serial.print("\nMODE SWITCH --> now: Responder...");}
     device_is_initiator = false;
-    DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, false, NODE);
-    //delay(50);
+    DW1000Ranging.startAsResponder(DEVICE_ADDR, DW1000.MODE_1, NODE);
+    
 }
 
 
@@ -572,13 +572,13 @@ int searchMeasure(uint8_t own_sa,uint8_t dest_sa){
 
 void activateRanging(){
 
-    DW1000Ranging.setStopRanging(false);
+    DW1000Ranging.setEnableRanging(false);
     
 }
 
 void stopRanging(){
       
-    DW1000Ranging.setStopRanging(true);
+    DW1000Ranging.setEnableRanging(true);
         
 }
 

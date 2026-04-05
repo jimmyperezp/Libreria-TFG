@@ -121,7 +121,7 @@ void setup(){
         
     attachCallbacks();
    
-    DW1000Ranging.startAsInitiator(DEVICE_ADDR,DW1000.MODE_1, false,COORDINATOR);
+    DW1000Ranging.startAsInitiator(DEVICE_ADDR,DW1000.MODE_1,COORDINATOR);
 
     own_short_addr = getOwnShortAddressHeader();
 
@@ -458,13 +458,13 @@ int searchMeasure(uint8_t own_sa,uint8_t dest_sa){
 
 void activateRanging(){
 
-    DW1000Ranging.setStopRanging(false);
+    DW1000Ranging.setEnableRanging(false);
     
 }
 
 void stopRanging(){
       
-    DW1000Ranging.setStopRanging(true);
+    DW1000Ranging.setEnableRanging(true);
         
 }
 
