@@ -110,3 +110,34 @@ Limitación de la distancia máxima posible de medir utilizando esta topología 
 Este desarrollo se ha basado en el ejemplo de hub & spoke coordination. Es muy probable que algún renaming o cambios para adaptarse a este ejemplo causen incongruencias o problemas sintácticos con ejemplos anteriores. Por ejemplo, el tipo de placa "MASTER" anteriormente era "MASTER_ANCHOR". Tal vez haya archivos anteriores que conserven esa nomenclatura.
 
 ---
+
+
+---
+
+
+## [v1.3.0] - 05/04/2026    
+
+Token Passing: lineal y en redes mesh + actualización de todo el repositorio
+
+### Unreleased 
+Working en hacer al sistema "smart", recopilando datos para generar un modelo de tinyML que me ayude a automatizar y detectar roturas de integridad. 
+
+### Added
+Dos nuevos ejemplos: Token passing chain y mesh token passing. Ver el readme explicando cada uno de ellos. 
+
+La principal novedad es el uso de variables para saber cuándo la placa está transmitiendo (pudiendo ahorrarme delays), como is_transmitting, y contadores para saber el ciclo en el que se encuentra cada dispositivo: cycle_id.
+
+### Fixed
+
+
+### Changed
+
+- Las funciones startAs ya no contemplan la opción de generar direcciones aleatorias.
+- Master y Slave se han renombrado en todos los archivos como coordinator y node.
+
+
+### Known Issues
+
+Como requisito del proyecto, las medidas del Chain token passing deben ser rapidísimas. Esto hace que en muchos ciclos no se realicen todas las que se deberian hacer, incluso si las placas están situadas todas encima de la mesa. Falta pulir eso.
+
+---
