@@ -8,8 +8,9 @@
 <br>
 
 ### Used Hardware
-1 Tag & 2 Anchors. The communication between them is made following the same protocol explained in the 'Measure Distance' example: [Measure Distance](link_to_measure_distance)
+1 Tag & 2 Anchors. They range the distance between them using the Two Way Ranging protocol.
 
+<br>
 
 ### Functionality 
 
@@ -28,13 +29,18 @@ WiFiClient client;
 ```
 
 After connected, the functions declared in *link.h* and *link.cpp* are used. In each loop cycle, the measured data is send via WiFi to the PC. 
-Finally, using the Pyhton's app, that data is read and decodified to obtain the measured distances between devices.
+
+Then, a python app is used to receive that data and plot the nodes' positions. Said script can be found in the 'extras' folder of the repo. See: [*2D positioning script*](/extras/2D%20positioning%20plotting)
+
+
 
 ### Results
 
-The Python's app plots the results, displaying them as it can be seen in this image:
+The plot displayed by the python script is the following: 
 
-<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/example/Posicionamiento%202D/foto%20app%20posicionamiento%202D.jpg" alt="2D positioning app image." width="700">
+<p align="center">
+<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/images/2D%20positioning%20app.jpg" alt="2D positioning app" width="500" height="500"/>
+
 
 
 The tag (plotted as a blue circle) will move as the tag board is moved too.  
@@ -51,5 +57,7 @@ To get better results, the following considerations must be taken into account:
 
 
 -------------
-Autor: Jaime Pérez  
-Última modificación: 31/08/2025  
+Author: Jaime Pérez  
+Last modified: 31/08/2025  
+
+<img src="https://github.com/jimmyperezp/Programacion_de_sistemas/blob/main/logo%20escuela.png" align="right" alt="logo industriales" width="300" height="80"/> 

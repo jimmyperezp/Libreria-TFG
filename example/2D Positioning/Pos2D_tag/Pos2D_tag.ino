@@ -1,13 +1,13 @@
-/* POSICIONAMIENTO 2D: TAG
+/* 2D POSITIONING */
 
-Este código necesita ser modificado: líneas 22-24
-    1) Introducir SSID
-    2) Introducir contraseña del wifi
-    3) Ir a la terminal -> lanzar ipconfig -> copiar el IPv4
+/* This code has to be modified in order to work: lines 27-29
+    1) Introduce SSID
+    2) Introduce wifi password
+    3) Go to terminal -> launch ipconfig -> copy IPv4
 
-Una vez subidos los códigos de los anchors y el tag, ejecutar el display (archivo python). Se quedará esperando hasta que pulsemos el botón de "reset" de la placa del tag, para comenzar la comunicación. 
+After both anchors and the tag codes have been uploaded, execute the display (python file). It will be waiting until we press the "reset" button of the tag board, to start the communication */
 
-*/
+
 #include <SPI.h>
 #include <DW1000Ranging.h>
 #include <WiFi.h>
@@ -20,11 +20,9 @@ Una vez subidos los códigos de los anchors y el tag, ejecutar el display (archi
 #define PIN_RST 27
 #define PIN_IRQ 34
 
-// Los 2 bytes de la izquierda son la short address.
-// NOMENCLATURA: A para Anchors, B para Tags
+// Device naming: the two foremost left bytes are the 'shortAddressHeader'.
+// In this example, I'll use 'A' for anchors and 'B' for tags
 #define DEVICE_ADDR "B1:00:22:EA:82:60:3B:9C"
-
-
 
 const char *ssid = "ssid"; 
 const char *password = "password";  
@@ -91,7 +89,7 @@ void newRange()
 {
     char c[30];
 
-    Serial.print("from: ");
+    Serial.print("From: ");
     Serial.print(DW1000Ranging.getDistantDevice()->getShortAddress(), HEX);
     Serial.print("\t Range: ");
     Serial.print(DW1000Ranging.getDistantDevice()->getRange());

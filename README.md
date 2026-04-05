@@ -18,22 +18,27 @@ This updated version:  [Changes made](#changes-made)
 ### Index:
 
  
-1. 🎯 [This project's goal](#goal-of-the-project)
-2. 📡 [UWB. Definitions and TWR](#previous-concepts-uwb-to-measure-distance-twr)
-3. 🚀 [Background and context](#background-and-context)
-4. 📝 [Changes made](#major-changes-made-on-this-librarys-version)
-    
-5. 📚 [Library's examples](#librarys-examples)
-6. 🔧 [Hardware](#hardware-used)
+1. [This project's goal](#goal-of-the-project)
+2. [UWB. Definitions and TWR](#previous-concepts-uwb-to-measure-distance-twr)
+3. [Background and context](#background-and-context)
+4. [Changes made](#changes-made)
+    - [Renaming](#1-renaming)
+    - [New Methods](#2-new-methods-in-dw1000rangingcpp)
+    - [Slaves ignore messages directed to the master](#3-slaves-ignore-message-types-that-are-directed-towards-the-master)
+    - [Reducing dataReport Payload](#4-reducing-datareport-payload-shortaddresses-distance-and-rx-power-lengths)
+    - [Eliminating devices from own list](#5-slaves-dont-forget-the-master-or-the-tags)
+    - [Board types control](#6-board-types-control)
+5. [Library's examples](#librarys-examples)
+6. [Hardware](#hardware-used)
     - [ESP32 Wroom32](#esp32-wroom32)
     - [STM32 Nucleo F429ZI](#stm32-nucleo-f429zi)
     - [DW1000 module](#dw1000----uwb-chip)
     - [DWS1000](#dws1000)
-7. 🖥️ [Programming the boards](#programming-the-boards)
+7. [Programming the boards](#programming-the-boards)
     - [Arduino IDE](#arduino-ide)
     - [PlatformIO](#platformio)
         - [Coding the Nucleo F429ZI : Pin definitions](#coding-the-nucleo-f429zi)
-8. ⚡ [Project status](#project-status)
+8. [Project status](#project-status)
 
 <br><br>
 
@@ -123,12 +128,14 @@ During the development of this project, different boards have been used. The rea
 #### DW1000 --> UWB Chip
 <img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/images/Chip%20DW1000.jpeg" alt="DW1000" width="300" height="200" align ="right"/>
 
-This chip is the "brain" behind the UWB communications. All the boards used carry or have access to a DW1000.
+1. [*Medir distancias*](/example/Medir%20distancias) (measures distance between anchor and tag (Initiator-Responder))
 
+2. [*Posicionamiento 2D*](/example/Posicionamiento%202D): launches an app to plot the position of 2 anchors and 1 tag in real time
 
-- [DW1000 Datasheet](https://www.qorvo.com/products/d/da007946)
-- [DW1000 User Manual](https://www.decawave.com/sites/default/files/resources/dw1000_user_manual_2.11.pdf)
-- [DW1000 Antenna Delay Calibration](https://www.decawave.com/wp-content/uploads/2018/10/APS014_Antennna-Delay-Calibration_V1.2.pdf)
+3. [*Hub & Spoke Coordination*](/example/Hub%20&%20Spoke%20coordination). Centralizes the system's data in a coordinator, using a hub & spoke (or star) topology.
+
+4. [*Token Passing Chain*](/example/Token%20passing%20chain): Ampliation of previous example. It also centralizes the measurements in the coordinator, but using a token passing topology. 
+
 
 
  

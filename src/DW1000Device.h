@@ -1,33 +1,9 @@
-/*
- * Copyright (c) 2015 by Thomas Trojer <thomas@trojer.net> and Leopold Sayous <leosayous@gmail.com>
- * Decawave DW1000 library for arduino.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
- * @file DW1000Device.h
- * Arduino global library (header file) working with the DW1000 library
- * for the Decawave DW1000 UWB transceiver IC.
- * 
- * @todo complete this class
- */
 
+#define INACTIVITY_TIME 15000
 
-#define INACTIVITY_TIME 5000
-
-#define MASTER 1
-#define SLAVE 2
+#define COORDINATOR 1
+#define NODE 2
 #define TAG 3
-
 
 #ifndef _DW1000Device_H_INCLUDED
 #define _DW1000Device_H_INCLUDED
@@ -62,6 +38,7 @@ public:
 	void setBoardType(uint8_t boardType) {_boardType = boardType;}
 	void setIndex(int8_t index) { _index = index; }
 
+	void setCycleId(uint8_t cycle_id){_cycle_id = cycle_id;}
 	
 	
 	//getters
@@ -73,6 +50,7 @@ public:
 	
 	int8_t getIndex() { return _index; }
 	
+	uint8_t getCycleId(){return _cycle_id;}
 
 	byte* getByteShortAddress();
 	uint16_t getShortAddress();
@@ -107,6 +85,7 @@ private:
 	int32_t      _activity;
 	uint16_t     _replyDelayTimeUS;
 	int8_t       _index; // not used
+	uint8_t 	 _cycle_id; // Used to ensure all of the devices receive the token in each coordinator's cycle.
 	
 	uint16_t _boardType;
 	int16_t _range;
