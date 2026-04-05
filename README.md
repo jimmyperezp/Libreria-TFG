@@ -1,5 +1,5 @@
 ># Library "TFG Jaime Pérez"
-<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/extras/images/tfg-banner.png" alt="" width="600" height="300"/> 
+<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/extras/images/tfg-banner.png" alt="" width="1000" height="800"/> 
 
 
 
