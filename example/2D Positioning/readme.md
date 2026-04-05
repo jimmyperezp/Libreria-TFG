@@ -10,6 +10,7 @@
 ### Used Hardware
 1 Tag & 2 Anchors. They range the distance between them using the Two Way Ranging protocol.
 
+<br>
 
 ### Functionality 
 
@@ -29,7 +30,7 @@ WiFiClient client;
 
 After connected, the functions declared in *link.h* and *link.cpp* are used. In each loop cycle, the measured data is send via WiFi to the PC. 
 
-Then, a python app is used to receive that data and plot the nodes' positions. To see that script, go to: [*2D positioning script*](/extras/2D%20positioning%20plotting)
+Then, a python app is used to receive that data and plot the nodes' positions. Said script can be found in the 'extras' folder of the repo. See: [*2D positioning script*](/extras/2D%20positioning%20plotting)
 
 
 
