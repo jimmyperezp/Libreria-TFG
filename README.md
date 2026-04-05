@@ -13,7 +13,7 @@ Original Library (MakerFabs): [DW1000 Library](https://github.com/jremington/UWB
 
 Previous library version : [Update by @Pizzo00](https://github.com/jremington/UWB-Indoor-Localization_Arduino/tree/main/DW1000_library_pizzo00)
 
-This updated version:  [Changes made](#changes-made)
+This updated version:  [Changes made](#major-changes-made-on-this-librarys-version)
 
 ### Index:
 
@@ -123,8 +123,11 @@ The examples found in the library are:
 ### Hardware used
 During the development of this project, different boards have been used. The reason behind using multiple different boards was to maximize the system's ability to work cross-platform, as well as to check the code ran in different "ecosystems", all while using the same UWB chip (DW1000).  
 
+<br>
 
-#### DW1000 --> UWB Chip
+#### DW1000 (UWB Chip)
+
+
 <img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/extras/images/Chip%20DW1000.jpeg" alt="DW1000" width="300" height="200" align ="right"/>
 
 This chip is the brain behind all of this project. It is in charge of transmitting and receiving UWB messages. The main documents to work with are the following: 
@@ -157,6 +160,7 @@ These boards run using an ESP32 microcontroller.
 
 #### STM32: Nucleo F429ZI
 
+
 <img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/extras/images/STM32%20Nucleo-F429ZI.png" alt="NUCLEO F429ZI" width="400" height="200" align ="right"/>
 
 I have also used some STM32 Nucleo-F429ZI boards. These however don't have their own DW1000 chip. Therefore, a shield that had said chip was neccesary. The option used was the [DWS1000](#dws1000)
@@ -164,11 +168,7 @@ I have also used some STM32 Nucleo-F429ZI boards. These however don't have their
 
 [STM32 NUCLEO F429ZI](https://www.st.com/en/evaluation-tools/nucleo-f429zi.html)
 
-
-
 <br><br>
-
-
 
 
 #### DWS1000
