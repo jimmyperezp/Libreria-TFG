@@ -37,7 +37,7 @@ The tail then starts building up the data report. It includes its measurements a
 
 <br><br>
 <p align="center">
-<img src="" alt="Token passing topology" width="800" height="600"/>
+<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/extras/images/Token%20handoff%20%26%20report.png" alt="Token passing topology" width="800" height="600"/>
 
 
 
@@ -47,7 +47,7 @@ The tail then starts building up the data report. It includes its measurements a
 This example's functioning is the previously described. The FSM follows the steps shown in the following diagram:  
 
 <p align="center">
-<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/extras/images/Token%20handoff%20%26%20report.png" alt="Token passing topology" width="300" height="400"/>
+<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/extras/images/Token%20passing%20FSM%20(1).png" alt="Token passing FSM" width="300" height="400"/>
 
 This is a simple diagram showing the main, common states for both types of boards (coordinator and nodes). However, it is important to understand a few key concepts: 
 - The token handoff is made to the closest node. This is decided by comparing the measurements previously done in the ranging state. 
