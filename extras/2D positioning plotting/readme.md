@@ -34,7 +34,7 @@ ef tag_pos(a, b, c):
 The plot shown by the python app is: 
 
 <p align="center">
-<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/images/2D%20positioning%20app.jpg" alt="2D positioning app" width="500" height="500"/>
+<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/extras/images/2D%20positioning%20app.jpg" alt="2D positioning app" width="500" height="500"/>
 
 
 

@@ -14,8 +14,8 @@ This is the topology used in this example:
 
 
 <p align="center">
-<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/images/Coordinator-centered%20topology.png" alt="Coordinator-centered topology" width="300" height="300"/>
-<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/images/Hub%20%26%20Spoke%20Topology.png" alt="Hub & Spoke topology" width="350" height="350"/>
+<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/extras/images/Coordinator-centered%20topology.png" alt="Coordinator-centered topology" width="300" height="300"/>
+<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/extras/images/Hub%20%26%20Spoke%20Topology.png" alt="Hub & Spoke topology" width="350" height="350"/>
 
 
 <p align="center"> (Both images show a coordinator-centered topologies. The right one shows a hub & spoke topology by definition)

@@ -39,7 +39,7 @@ Then, a python app is used to receive that data and plot the nodes' positions. S
 The plot displayed by the python script is the following: 
 
 <p align="center">
-<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/images/2D%20positioning%20app.jpg" alt="2D positioning app" width="500" height="500"/>
+<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/extras/images/2D%20positioning%20app.jpg" alt="2D positioning app" width="500" height="500"/>
 
 
 

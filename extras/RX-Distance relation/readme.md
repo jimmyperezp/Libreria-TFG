@@ -132,7 +132,7 @@ plot(ideal_distances,ideal_rx_powers,'r','LineWidth',1.5,'DisplayName',' Ideal (
 ### Results
 
 <p align="center">
-<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/images/RX%20Power%20-%20distance%20correlation.png" alt="RX Power - Distance relation" width="1000" height="1500"/>
+<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/extras/images/RX%20Power%20-%20distance%20correlation.png" alt="RX Power - Distance relation" width="1000" height="1500"/>
 
 
 

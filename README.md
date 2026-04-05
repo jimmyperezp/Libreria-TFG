@@ -1,5 +1,5 @@
 ># Library "TFG Jaime Pérez"
-<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/images/tfg-banner.png" alt="" width="600" height="300"/> 
+<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/extras/images/tfg-banner.png" alt="" width="600" height="300"/> 
 
 
 
@@ -61,7 +61,7 @@ There is a few key concepts to be familiar with before advancing onto the code:
 
 In order to measure the distance between 2 UWB devices, this library uses the Two Way Ranging protocole, which can be seen in the following image:
 <p align="center">
-<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/images/Protocolo%20TWR.%20Mensajes.png" alt="Imagen explicativa TWR" width="400" height="400"/>
+<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/extras/images/Protocolo%20TWR.%20Mensajes.png" alt="Imagen explicativa TWR" width="800" height="800"/>
 <p/>
 
 This method consists in one of the devices starting the communication (doing the *polling*), while the other limits to answer to this call. 
@@ -105,17 +105,16 @@ To see a brief summary of the main upgrades/modifications made to the previous v
 
 The examples found in the library are: 
 
-1. [*Medir distancias*](/example/Medir%20distancias) (measures distance between anchor and tag (Initiator-Responder))
+1. [*1-1 Distance*](/example/1-1%20Distance) (measures distance between two boards (Initiator-Responder) using TWR)
 
-2. [*Posicionamiento 2D*](/example/Posicionamiento%202D): launches an app to plot the position of 2 anchors and 1 tag in real time
+2. [*2D Positioning*](/example/2D%20Positioning/): launches a python app to plot the position of 2 anchors and 1 tag in real time
 
 3. [*Hub & Spoke Coordination*](/example/Hub%20&%20Spoke%20coordination). Centralizes the system's data in a coordinator, using a hub & spoke (or star) topology.
 
-4. [*Token Passing Chain*](/example/Token%20passing%20chain): Ampliation of previous example. It also centralizes the measurements in the coordinator, but using a token passing topology. 
+4. [*Chain Token Passing*](/example/Chain%20token%20passing/): Ampliation of previous example. It also centralizes the measurements in the coordinator, but using a token passing topology. 
 
+5. [*Mesh network Token Passing*](/example/Mesh%20token%20passing). Upgrade of previous example. Set to explore mesh networks, not only linear-layout systems.
 
-
-🚧 **PENDING** --> Add a readme file inside each example's folder explaining more on detail.
 <br><br>
 
 
@@ -126,20 +125,8 @@ During the development of this project, different boards have been used. The rea
 
 
 #### DW1000 --> UWB Chip
-<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/images/Chip%20DW1000.jpeg" alt="DW1000" width="300" height="200" align ="right"/>
+<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/extras/images/Chip%20DW1000.jpeg" alt="DW1000" width="300" height="200" align ="right"/>
 
-1. [*Medir distancias*](/example/Medir%20distancias) (measures distance between anchor and tag (Initiator-Responder))
-
-2. [*Posicionamiento 2D*](/example/Posicionamiento%202D): launches an app to plot the position of 2 anchors and 1 tag in real time
-
-3. [*Hub & Spoke Coordination*](/example/Hub%20&%20Spoke%20coordination). Centralizes the system's data in a coordinator, using a hub & spoke (or star) topology.
-
-4. [*Token Passing Chain*](/example/Token%20passing%20chain): Ampliation of previous example. It also centralizes the measurements in the coordinator, but using a token passing topology. 
-
-
-
- 
-In order to use this chip, and perform the UWB communications, the DWS1000 "shield" was the chosen solution.
 
 <br>
 
@@ -160,7 +147,7 @@ These boards run using an ESP32 microcontroller.
 
 #### STM32: Nucleo F429ZI
 
-<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/images/STM32%20Nucleo-F429ZI.png" alt="NUCLEO F429ZI" width="400" height="200" align ="right"/>
+<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/extras/images/STM32%20Nucleo-F429ZI.png" alt="NUCLEO F429ZI" width="400" height="200" align ="right"/>
 
 I have also used some STM32 Nucleo-F429ZI boards. These however don't have their own DW1000 chip. Therefore, a shield that had said chip was neccesary. The option used was the [DWS1000](#dws1000)
 
@@ -176,7 +163,7 @@ I have also used some STM32 Nucleo-F429ZI boards. These however don't have their
 
 #### DWS1000
 
-<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/images/DWS1000.png" alt="DWS1000" width="200" height="300" align ="right"/>
+<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/extras/images/DWS1000.png" alt="DWS1000" width="200" height="300" align ="right"/>
 
 This is an Arduino form-factor shileld that can be connected into the Nucleo boards using their 'Zio' connectors, which are Arduino prepared
 
