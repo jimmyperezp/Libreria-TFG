@@ -4,6 +4,12 @@
 
 <br>
 
+### Images
+
+The [*Images*](/extras/images) folder contains all of the pictures & images used in the 'readme' files all across the repo.
+
+<br>
+
 ### Files
 
 1. [*2D Positioning*](../example/2D%20Positioning): This python app receives via Wi-Fi the relative positions between 1 tag & 2 anchors and plots them in real time.  
@@ -17,6 +23,6 @@
 <br><br>
 -----
 Author: Jaime Pérez  
-Last modified: 04/04/2026  
+Last modified: 05/04/2026  
 
 <img src="https://github.com/jimmyperezp/Programacion_de_sistemas/blob/main/logo%20escuela.png" align="right" alt="logo industriales" width="300" height="80"/> 
