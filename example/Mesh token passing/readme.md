@@ -13,7 +13,7 @@ Let's imagine a node layout like the seen in the following image:
 
 
 <p align="center">
-<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/extras/images/Mesh%20Network%20layout.png" alt="Mesh Network node layout" width="300" height="300"/>
+<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/extras/images/Mesh%20Network%20layout.png" alt="Mesh Network node layout" width="600" height="600"/>
 
 If the same logic is applied, the coordinator could pass the token to B1 (let's imagine that is the closest node), but instead of following that yellow branch, B1 might have B5 closer, therefore passing the token to that other branch. The nodes B2 and B3 would not receive the token in this situation.  
 
