@@ -127,8 +127,18 @@ During the development of this project, different boards have been used. The rea
 #### DW1000 --> UWB Chip
 <img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/extras/images/Chip%20DW1000.jpeg" alt="DW1000" width="300" height="200" align ="right"/>
 
+This chip is the brain behind all of this project. It is in charge of transmitting and receiving UWB messages. The main documents to work with are the following: 
 
-<br>
+- [*DW1000 User Manual*](https://www.qorvo.com/products/d/da007967)
+- [*DW1000 Datasheet*](https://www.qorvo.com/products/d/da007946)
+- [*Transmit Power calibration and management*](https://www.qorvo.com/products/d/da008453)
+- [*Antenna delay calibration for the DW1000 & similar products*](https://www.qorvo.com/products/d/da008449)
+- [*Channel effects on comunication range*](https://www.qorvo.com/products/d/da008440)
+- [*Maximizing range in DW1000 based products*](https://www.qorvo.com/products/d/da008450)
+
+
+To see all available documents, visit [Qorvo: DW1000 documentation](https://www.qorvo.com/products/p/DW1000#documents)
+<br><br>
 
 #### ESP32 Wroom32
 <img src="https://github.com/Makerfabs/Makerfabs-ESP32-UWB/blob/main/md_pic/front.jpg?raw=true" alt="esp32 wroom32" width="300" height="200" align="right"/> 
