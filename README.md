@@ -44,11 +44,11 @@ This updated version:  [Changes made](#changes-made)
 
 ### Goal of the project
 
-This is a 'Trabajo Final de Grado'. It's main focus is to study the UWB (**Ultra Wide Band**) technology for its use in railway systems.  
-With its use, it is pretended to know all of the wagon's distances among one another in one (or a few) "coordinator" devices, which will be named "master anchors" from now on.  
-These measurements allow to know the train's integrity and prevent possible dangers. 
+This is a 'Trabajo Final de grado (TFG)'. It focuses on the possible use of UWB (**Ultra Wide Band**) technology in railway systems.    
 
-Specifically, this repository contains the library developed to achieve the UWB communications required to meet the explained goal. 
+The code developed aims to achieve a coordination between multiple devices in the same network. The ultimate goal is that a 'coordinator' device knows all of the needed distances to guarantee it knows the complete train length, its composition and integrity.
+ 
+Specifically, this repository contains a library developed in C++ used to perform said tasks. 
 
 
 <br></br>
@@ -61,7 +61,7 @@ There is a few key concepts to be familiar with before advancing onto the code:
 
 In order to measure the distance between 2 UWB devices, this library uses the Two Way Ranging protocole, which can be seen in the following image:
 <p align="center">
-<img src="https://cdn.sewio.net/wp-content/uploads/2016/04/TWR-Scheme.jpg" alt="Imagen explicativa TWR" width="400" height="400"/>
+<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/images/Protocolo%20TWR.%20Mensajes.png" alt="Imagen explicativa TWR" width="400" height="400"/>
 <p/>
 
 This method consists in one of the devices starting the communication (doing the *polling*), while the other limits to answer to this call. 
@@ -84,133 +84,19 @@ Clearly, the library is prepared to range with more than one device simultaneous
 
 When working on ESP32-UWB modules, I found that the communication options among these devices was limited while using the original library. 
 
-One of my goals when using said devices was to centralize the data collected in one master anchor. This way, I could have access to all of the system's data while having to check multiple modules.  
+One of my goals when using said devices was to centralize the data collected in one coordinator device. This way, I could have access to all of the system's data while having to check multiple modules.  
 The applications this had were endless. In my case, my primary goal was to develop a system based on UWB communication to monitor and check the state of trains that use this technology. By centralizing the data, all of the information could be easily accesed by any point in the train desired, or even sent via WiFi to a remote controlling station. 
 
 With this objective in mind, I started working on adding this functionality to the previous version of the library.  
-To do so, I renamed some of the existing methods, cleaned and organized some segments of code, and most importantly, added the neccessary bits to make this work. 
+
 
 <br><br>
 
-### Changes made
+### Major changes made on this library's version
 
-#### 1: **Renaming**:  
+To see a brief summary of the main upgrades/modifications made to the previous version, see the [Main upgrades made to the library](pending)
 
- - Why?:
-    - In the previous version, the library assumed that tags were in charge of starting the communication proccess. They were the ones in charge of doing the *polling*.  
-    However, this could not be the desired behavior. For example, I wanted the master anchor to be in charge of doing said task, so that it could control the rest of the system's devices. 
-- What?
-     - startAsTag is now "startAsInitiator"
-     - startAsAnchor is now"startAsResponder"
-
-
-
-#### 2: New methods (in DW1000Ranging.cpp):
-- Why?
-    - To centralize the data, firstly the master had to change the mode of operation of the slave anchors from responders to initiators. This way, All of the measurements betweeen all of the system's devices could be known.  
-    Not only from the master to the rest of the modules, but also from the rest of the slave anchors to the tags. 
-
-    - Once all of the measurements were obtained, they needed to be sent back to the master anchor.
-- What?
-    - 3 new message modes were added:  
-        - *Mode Switch*: it indicates the targeted device to switch its behavior from initiator to responder (or viceversa)
-        - *Data Request*: The master asks the slaves for their calculated measurements.
-        - *Data Report*: The slaves send the master their measurements.
-        - To send these messages, the methods included are: 
-            - transmitModeSwitch
-            - transmitDataRequest
-            - transmitDataReport
-    
-    - The master needs to know if the slaves have done the mode switch correctly. To do so, the slave sends back an acknowledgement message.
-        - transmitModeSwitchAck
-
-    - In case there's ever the need to turn the ranging off of a device, the library now uses this new method, which has it's own *ack* message as well.
-    
-        - transmitStopRanging  
-        - transmitStopRangingAck
-    
-    
-        
-
-
-#### 3: Slaves ignore message types that are directed towards the master.  
-- Why?
-    - The previous version of the library wasn't prepared to handle multiple devices ranging at the same time.  
-    This was seen in erratic behaviors and messages not getting through. The reason behind this problem was that the slaves didn't filter the messages that weren's sent to them. Therefore, their ranging sequence failed in every single cycle.
-
-- What? 
-    - Simple. Inside the function that handles the received messages, a new "filter" was established inside the "responder" section: (in dw1000Ranging.cpp). 
-    Located inside the loop >> received messages >> board type = responder.
-    The actual code is:
-
-    ```c++
-    if(ranging_enabled){
-        if(_type == RESPONDER) {
-            if (messageType == POLL_ACK || messageType == RANGE_REPORT || messageType == RANGE_FAILED) {
-						return; 
-                	}
-        (...)
-        }
-    }
-    
-    ```
-
-#### 4: Reducing *dataReport* Payload. (ShortAddresses, distance and RX power lengths).
-- Why?
-    - These variables took up way too much space to be sent across multiple devices. Every one of them needed mutiple bytes. Short Addresses took up 2 bytes, and distance & RX Power needed 4 bytes.
-    Sending such a big amount of bytes could mean missing some communications, or making others weaker. This translates to having problems in the maximum distance measured between connected devices.
-
-- What?
-    - Firstly, I reduced the shortAddress from 2 bytes to a uint8_t (1 byte). This is seen mainly in the code uploaded to the boards.
-    When receiving a communication from another device, the new method:
-        - searchDeviceByShortAddHeader  
-    Allows to save only 1 byte to identify the distant device. This unique byte is then used to build up the *dataReport*, to log measures, etc.
-
-    - The distance sent was a float, occupying 4 bytes. I switched it to a uint16:t (2 Bytes). Currently, it sends the distance in cm and unsigned. The receiver then "decodifies" the message, switching it back to meters if needed.
-
-    - Same thing happened with the RX Power. I switched it to only 2 bytes. The receiver has to decodify and make transformation back.
-
-
-#### 5. Slaves don't "forget" the master or the tags.
-- Why?
-    - To guarantee the system keeps working, appart from reducing the blinking time, the slaves don't eliminate the master or the tags from their known list.
-    This way, no matter the slave's state (responder/initiator), I guarantee that it keeps all the device's in its list.
-
-    
-- What? 
-    - I added a filter to avoid this problem. It is located inside DW1000Device.cpp >> method "isInactive". The actual code is:
-
-    ```c++
-
-        if(_boardType == MASTER_ANCHOR || _boardType == TAG) {
-    		return false;
-    	}
-    ```
-
-#### 6. Board types control. 
-
-- Why?
-    - In order to work the FSM code correctly, it is key that the master (and all the devices) know what board type is each of the know devices. 
-    To do so, I added a uint8_t that registers the board type:
-- What? 
-
-    ```c++
-    //Definitions in: "DW1000Device.h"
-    #define MASTER_ANCHOR 1
-    #define SLAVE_ANCHOR 2
-    #define TAG 3
-    ```
-
-    - During the blinking period, the message *transmitRangingInit* includes the board's type in the following way:
-
-    ```c++
-    
-    data[LONG_MAC_LEN + 1] = _myBoardType;
-    ```
-
-    - This way, the master knows what devices to include in its FSM and ranging protocol.
-
-#### 7. Minor changes have been made in order to debug and optimize the library's functionality. They are not as relevant as the previous ones. 
+🚧 **PENDING** --> Link this doc to a document inside the repo explaining the biggest upgrades I've made.
 
 <br><br>
 
@@ -232,13 +118,35 @@ The examples found in the library are:
 🚧 **PENDING** --> Add a readme file inside each example's folder explaining more on detail.
 <br><br>
 
+
+<br><br>
+
 ### Hardware used
-To develop the project, two different boards have been used. The reason behind using multiple different boards was to maximize the system's ability to work cross-platform, as well as to check the code ran in different "ecosystems", all while using the same UWB chip (DW1000).  
+During the development of this project, different boards have been used. The reason behind using multiple different boards was to maximize the system's ability to work cross-platform, as well as to check the code ran in different "ecosystems", all while using the same UWB chip (DW1000).  
+
+
+#### DW1000 --> UWB Chip
+<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/images/Chip%20DW1000.jpeg" alt="DW1000" width="300" height="200" align ="right"/>
+
+1. [*Medir distancias*](/example/Medir%20distancias) (measures distance between anchor and tag (Initiator-Responder))
+
+2. [*Posicionamiento 2D*](/example/Posicionamiento%202D): launches an app to plot the position of 2 anchors and 1 tag in real time
+
+3. [*Hub & Spoke Coordination*](/example/Hub%20&%20Spoke%20coordination). Centralizes the system's data in a coordinator, using a hub & spoke (or star) topology.
+
+4. [*Token Passing Chain*](/example/Token%20passing%20chain): Ampliation of previous example. It also centralizes the measurements in the coordinator, but using a token passing topology. 
+
+
+
+ 
+In order to use this chip, and perform the UWB communications, the DWS1000 "shield" was the chosen solution.
+
+<br>
 
 #### ESP32 Wroom32
 <img src="https://github.com/Makerfabs/Makerfabs-ESP32-UWB/blob/main/md_pic/front.jpg?raw=true" alt="esp32 wroom32" width="300" height="200" align="right"/> 
 
-Firstly, I've been using the ESP32-Wroom32, developed by MakerFabs: 
+Firstly, I've been using the ESP32-Wroom32, developed by MakerFabs. These have the DW1000 Chip built in. 
 <br><br>
 
 [ESP32-UWB MakerFabs](https://www.makerfabs.com/esp32-uwb-ultra-wideband.html?srsltid=AfmBOoptL7z67ua57v7tP1AYSjEUQVG0_JfwDDH6NKWy50RSJLR1hWZG)  
@@ -254,7 +162,7 @@ These boards run using an ESP32 microcontroller.
 
 <img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/images/STM32%20Nucleo-F429ZI.png" alt="NUCLEO F429ZI" width="400" height="200" align ="right"/>
 
-The other boards used have been some STM32 Nucleo-F429ZI.
+I have also used some STM32 Nucleo-F429ZI boards. These however don't have their own DW1000 chip. Therefore, a shield that had said chip was neccesary. The option used was the [DWS1000](#dws1000)
 
 
 [STM32 NUCLEO F429ZI](https://www.st.com/en/evaluation-tools/nucleo-f429zi.html)
@@ -262,21 +170,9 @@ The other boards used have been some STM32 Nucleo-F429ZI.
 
 
 <br><br>
-<br><br>
-
-#### DW1000 --> UWB Chip
-<img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/images/Chip%20DW1000.jpeg" alt="DW1000" width="300" height="200" align ="right"/>
-
-Both devices (esp32 wroom32 & stm32 nucleo f429ZI) use the DW1000 chip to make the UWB communications possible.
 
 
-- [DW1000 Datasheet](https://www.qorvo.com/products/d/da007946)
-- [DW1000 User Manual](https://www.decawave.com/sites/default/files/resources/dw1000_user_manual_2.11.pdf)
-- [DW1000 Antenna Delay Calibration](https://www.decawave.com/wp-content/uploads/2018/10/APS014_Antennna-Delay-Calibration_V1.2.pdf)
 
-
-This chip is built into the ESP32 Wroom32 Boards, but isn't available on the nucleo boards directly.  
-In order to use this chip, and perform the UWB communications, the DWS1000 "shield" was the chosen solution.
 
 #### DWS1000
 
@@ -290,6 +186,7 @@ Clearly, in order to use this shield correctly, the code must have the appropiat
 [DWS1000 Product Brief](https://eu.mouser.com/datasheet/3/1081/1/dws1000productbriefv10.pdf) 
 
 
+<br><br>
 <br><br>
 
 
@@ -353,8 +250,8 @@ default_envs = nucleo_master
 [env]
 framework = arduino
 monitor_speed = 115200
-lib_extra_dirs = C:/Users/jaime/Documents/Arduino/libraries
-lib_deps = TFG_Jaime_Perez
+lib_extra_dirs = C:/Users/(route to where you have the library)
+lib_deps = TFG_Jaime_Perez (this is the name of the library)
 
 [nucleo_base]
 platform = ststm32
@@ -470,5 +367,6 @@ void initHardware(){
 <br><br>
 ---------
 Author: Jaime Pérez   
-Last update: 08/12/2025
+Last update: 13/03/2026
 <img src="https://github.com/jimmyperezp/Programacion_de_sistemas/blob/main/logo%20escuela.png" align="right" alt="logo industriales" width="300" height="80"/>  
+****
