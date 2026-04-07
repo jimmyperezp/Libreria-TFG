@@ -12,7 +12,10 @@ const uint8_t PIN_IRQ = 34; // irq pin
 const uint8_t PIN_SS = 4;   // spi select pin
 
 #define DEBUG_COORDINATOR false
-#define PLOTTING false
+#define READABLE_OUTPUT true        // Shows the data reports in a human readable format.
+#define KAMADA_KAWAI_PLOTTING false // Shows a JSON file to draw the nodes using Kamada-Kawai's algorithm
+#define RX_DISTANCE_PLOTTING false  // Shows a CSV output to graph the relationship between RX power & distance
+#define AI_INTEGRATION false        // Shows a CSV output to export to a tinyML model, which interprets & analizes possible decouplings.
 
 #define DEVICE_ADDR "C1:00:5B:D5:A9:9A:E2:9C" 
 uint8_t own_short_addr = 0; 
@@ -76,8 +79,12 @@ unsigned long wait_for_return_start = 0;
 const unsigned long WAIT_FOR_RETURN_TIMEOUT = 800;
 
 /*Used to print results*/
-unsigned long last_shown_data_timestamp = 0;
-unsigned long last_plot_timestamp = 0;
+uint8_t current_cycle_id = 0; //Used in the AI integration output. Used to differenciate each cycle from previous ones.
+unsigned long last_shown_AI_data_timestamp = 0;
+unsigned long last_shown_data_timestamp = 0;    
+unsigned long last_KK_plot_timestamp = 0;       //Last moment the Kamada-Kawai (KK) plot was made.
+
+
 
 /*States used in the FSM*/
 enum State{
@@ -797,9 +804,9 @@ void showJSONData(){
     */
 
     //1 I save the elapsed time between prints
-    unsigned long time_between_prints = current_time - last_plot_timestamp;
+    unsigned long time_between_KK_prints = current_time - last_KK_plot_timestamp;
     json_doc["time_between_cycles"] = time_between_prints;
-    last_plot_timestamp = current_time;
+    last_KK_plot_timestamp = current_time;
 
     //2: I create the field "measures":
     JsonArray measures_array = json_doc.createNestedArray("measures");
@@ -847,6 +854,33 @@ void showRXDistData(){
     }
     Serial.println();
 
+}
+
+void showAIData(){
+
+    unsigned long time_between_AI_prints = current_time - last_shown_AI_data_timestamp;
+    last_shown_AI_data_timestamp = current_time;
+    
+    Serial.println("AI_DATA:");
+    for(int i=0; i<amount_measurements;i++){
+        
+        //If the measurement isn't active, then the distance & RX power are filled with junk (-999)
+        float distance_to_print = measurements[i].active ? measurements[i].distance : -999.0;
+        float rx_pwr_to_print = measurements[i].active   ? measurements[i].rxPower  : -999.0;
+
+
+        Serial.print(current_cycle_id);                         Serial.print(",");
+        Serial.print(time_between_AI_prints);                   Serial.print(",");
+        Serial.print(measurements[i].short_addr_origin,HEX);    Serial.print(",");
+        Serial.print(measurements[i].short_addr_dest,HEX);      Serial.print(",");
+        Serial.print(distance_to_print);                        Serial.print(",");
+        Serial.print(rx_pwr_to_print);                          Serial.print(",");
+        Serial.println(measurements[i].active ? 1:0);            
+        
+    }
+    Serial.println();
+    current_cycle_id++;
+    resetMeasures();
 }
 
 void resetMeasures(){ 
@@ -1037,16 +1071,13 @@ void loop(){
 
     else if(state == END_CYCLE){
 
-        if(PLOTTING){
-            showJSONData();
-            showRXDistData();
-        }
-        showData();
+        if(AI_INTEGRATION)         showAIData();
+        if(READABLE_OUTPUT)        showData();
+        if(RX_DISTANCE_PLOTTING)   showRXDistData();
+        if(KAMADA_KAWAI_PLOTTING)  showJSONData();
 
-        num_retries = 0;
-        if(DEBUG_COORDINATOR){
-            Serial.print("\nEnd of cycle. Restarting process... ");
-        }
+        num_retries = 0; // To clear any ongoing transmission retries.
+        if(DEBUG_COORDINATOR) Serial.print("\nEnd of cycle. Restarting process... ");
         _discovery = false;
         state = DISCOVERY;
     }
