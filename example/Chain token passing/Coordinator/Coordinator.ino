@@ -465,13 +465,13 @@ int searchMeasure(uint8_t own_sa,uint8_t dest_sa){
 
 void activateRanging(){
 
-    DW1000Ranging.setEnableRanging(false);
+    DW1000Ranging.setEnableRanging(true);
     
 }
 
 void stopRanging(){
       
-    DW1000Ranging.setEnableRanging(true);
+    DW1000Ranging.setEnableRanging(false);
         
 }
 
@@ -805,7 +805,7 @@ void showJSONData(){
 
     //1 I save the elapsed time between prints
     unsigned long time_between_KK_prints = current_time - last_KK_plot_timestamp;
-    json_doc["time_between_cycles"] = time_between_prints;
+    json_doc["time_between_cycles"] = time_between_KK_prints;
     last_KK_plot_timestamp = current_time;
 
     //2: I create the field "measures":

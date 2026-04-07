@@ -421,7 +421,7 @@ int searchDevice(uint8_t own_sa,uint8_t dest_sa){
 
 void activateRanging(){
 
-    DW1000Ranging.setEnableRanging(false);
+    DW1000Ranging.setEnableRanging(true);
     stop_ranging_requested = false;
     seen_first_range = false;
 
@@ -431,7 +431,7 @@ void activateRanging(){
 
 void stopRanging(){
     coordinator_is_ranging = false;   
-    DW1000Ranging.setEnableRanging(true);
+    DW1000Ranging.setEnableRanging(false);
     stop_ranging_requested = true;
     
 }
