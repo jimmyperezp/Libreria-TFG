@@ -186,7 +186,7 @@ With this section of code, the program is finished.
 
 ### Saving the results
 
-The output files are indicated to be saved inside the [TinyML data sets](/extras/AI_Integration/tinyML%20data%20sets) folder. After finishing the experiments, the user can upload them directly from this folder into the tinyML generator used. 
+The output files are indicated to be saved inside the [TinyML data sets](/extras/AI%20Integration/tinyML%20data%20sets/) folder. After finishing the experiments, the user can upload them directly from this folder into the tinyML generator used. 
 
 
 <br>
