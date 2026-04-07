@@ -10,7 +10,7 @@ import csv
 SERIAL_PORT = 'COM9'      # Update with the coordinator's serial port
 BAUD_RATE = 115200        
 # IMPORTANT: Change the output file name with the experiment done (NLOS, LOS, etc)
-OUTPUT_FILE = 'extras/AI_integration/tinyML data sets/tinyML_data.csv'
+OUTPUT_FILE = 'extras/AI Integration/tinyML data sets/tinyML_data.csv'
 
 
 def main():
