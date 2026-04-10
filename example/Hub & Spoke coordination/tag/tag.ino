@@ -1,5 +1,4 @@
-// CENTRALIZE DATA
-// TAG (Will only act as a responder.)
+/*HUB & SPOKE COORDINATION --> TAG*/
 
 #include <SPI.h>
 #include "DW1000Ranging.h"

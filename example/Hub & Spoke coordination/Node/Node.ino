@@ -1,3 +1,5 @@
+/*HUB & SPOKE COORDINATION --> NODE*/
+
 #include <SPI.h>
 #include "DW1000Ranging.h"
 #include "DW1000.h"
