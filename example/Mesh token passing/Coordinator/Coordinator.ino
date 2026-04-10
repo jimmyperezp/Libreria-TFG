@@ -644,7 +644,7 @@ void PollUnicastFailed(){
         Serial.print(Existing_devices[ranging_device_index].short_addr,HEX); Serial.println("] FAILED. Moving on to next device. Back to unicast ranging.");
         
     }
-    Existing_devices[ranging_device_index].active = false;
+   
     Existing_devices[ranging_device_index].range_pending = false;
     _wait_unicast_range = false; 
     num_retries = 0;

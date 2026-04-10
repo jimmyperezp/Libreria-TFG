@@ -1134,11 +1134,6 @@ void loop(){
         if(!_discovery){
             Serial.println("DISCOVERING:\n");
 
-            //Marks all devices as inactive (except the parent) to only range with the discovered (active) ones.
-            for(int i = 0; i<amount_devices ; i++){ 
-                if(Existing_devices[i].short_addr != parent_address) Existing_devices[i].active = false; 
-            }
-
             _discovery = true;
             DW1000Ranging.setRangingMode(DW1000RangingClass::DISCOVERY); //Discovery is done via broadcast.
             activateRanging();
