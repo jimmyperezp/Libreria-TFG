@@ -1,5 +1,6 @@
 /*CHAIN TOKEN PASSING --> COORDINATOR*/
 
+
 #include <SPI.h>
 #include <ArduinoJson.h>
 #include "DW1000Ranging.h"
@@ -31,9 +32,15 @@ uint8_t amount_measurements = 0;
 ExistingDevice Existing_devices[MAX_DEVICES];
 uint8_t amount_devices = 0;
 
-uint8_t nodes_indexes[MAX_DEVICES];
-uint8_t amount_nodes = 0;
-uint8_t amount_active_nodes = 0;
+
+/*To sort nodes & optimize ranging (skipping redundant measures)*/
+
+#define OPTIMIZED_RANGING_LINKS 2
+
+uint8_t sorted_nodes[MAX_DEVICES]; // List of short address headers of the nodes, sorted by distance.
+uint8_t limit_ranging_devices = 0;
+uint8_t sorted_nodes_index = 0;
+uint8_t forward_nodes_count = 0;
 
 
 /*Time management*/
@@ -51,6 +58,8 @@ const unsigned long DISCOVERY_PERIOD = 300;
 static bool _discovery = false;
 static bool nodes_discovered = false;
 unsigned long discovery_start = 0;
+static bool full_sweep_cycle = true; //Used to know if the device ranges with all other devices, or only with those that are closest. 
+
 
 //To only re-discover after certain number of cycles:
 #define UPDATE_DISCOVERY_ATTEMPTS 15
@@ -225,7 +234,6 @@ void registerDevice(DW1000Device *device){
                 if(incoming_board_type == NODE){
             
                     Existing_devices[i].is_node = true;
-                    amount_active_nodes++;
                     
                     if(DEBUG_COORDINATOR){ 
                         Serial.print("Device ["); Serial.print(incoming_short_addr, HEX);   Serial.println("] re-activated as a NODE!"); }
@@ -257,12 +265,9 @@ void registerDevice(DW1000Device *device){
     if(incoming_board_type == NODE){
         
         Existing_devices[amount_devices].is_node = true;
-        nodes_indexes[amount_nodes] = amount_devices;
-        
+                
         if(!nodes_discovered) nodes_discovered = true;
-        amount_nodes++;
-        amount_active_nodes++;
-       
+        
     }
 
     else{ Existing_devices[amount_devices].is_node = false;}
@@ -287,7 +292,6 @@ void inactiveDevice(DW1000Device *device){
             
             if(Existing_devices[i].is_node){
                 node_disconnected = true;
-                amount_active_nodes--;
             }
             
             if(Existing_devices[i].range_pending){
@@ -384,7 +388,7 @@ void newRange(){
     if (Existing_devices[ranging_device_index].short_addr == short_addr_origin && Existing_devices[ranging_device_index].range_pending == true){
         Existing_devices[ranging_device_index].range_pending = false;
         Existing_devices[ranging_device_index].is_node = (incoming_board_type == NODE);
-        
+        sorted_nodes_index++; // To try the next device in the next loop, as this one has already ranged.
         _wait_unicast_range = false;  // To restart the timer next time state is state = WAIT_UNICAST_RANGE.
         state = COORDINATOR_RANGING;
     }
@@ -477,6 +481,55 @@ void stopRanging(){
         
 }
 
+float getLinkDistance(uint8_t target_short_addr){
+    
+    // Returns the distance between this device and the one received as a parameter.
+    // If no active measure exists, it returns a high fallback value. This way, when sorting the nodes by distance, that device would be sent to the back of the list. 
+        
+    int index = searchMeasure(own_short_addr, target_short_addr);
+    
+    if(index != -1 && measurements[index].active && measurements[index].distance > 0.0f){
+        return measurements[index].distance;
+    }
+
+    return 9999.0f; 
+}
+
+void sortNodes(){
+
+    // This function sorts the nodes by distance to this device. This order is then used to range only with the closest ones. 
+    // This way, redundant measures can be eliminated, reducing time and energy consumption.
+
+    forward_nodes_count = 0;
+
+    // 1: Fill the sorted_nodes array with the short addresses of the active nodes.
+    for(int i = 0; i < amount_devices; i++){
+        if(Existing_devices[i].active && Existing_devices[i].is_node){
+            sorted_nodes[forward_nodes_count] = Existing_devices[i].short_addr;
+            forward_nodes_count++;
+        }
+    }
+    
+    // 2. Bubble Sort the short addresses. The closest ones will be at the beggining of the list.
+    
+    for(uint8_t i = 0; i < forward_nodes_count - 1; i++){
+        for(uint8_t j = 0; j < forward_nodes_count - i - 1; j++){
+            
+            float dist_a = getLinkDistance(sorted_nodes[j]);
+            float dist_b = getLinkDistance(sorted_nodes[j+1]);
+            
+            // If node A is further away than node B, then swap them.
+            if(dist_a > dist_b){
+                uint8_t temp_addr = sorted_nodes[j];
+                sorted_nodes[j] = sorted_nodes[j+1];
+                sorted_nodes[j+1] = temp_addr;
+            }
+        }
+    }
+
+
+}
+
 
 
 /*UNICAST TRANSMISSIONS*/
@@ -510,13 +563,7 @@ void transmitUnicast(uint8_t message_type, DW1000Device* explicit_target){
 
     else if(message_type == MSG_TOKEN_HANDOFF){
 
-        token_target_address = getClosestNodeAddress();
-        if(token_target_address == -1){
-            if(DEBUG_COORDINATOR) Serial.println("NO ACTIVE NODES. Token handoff not sent. Back to discovery\n\n");
-            state = DISCOVERY;
-            discovery_attempts = UPDATE_DISCOVERY_ATTEMPTS; //To re-discover inmediately next loop, as no active nodes are available.
-            return;
-        }
+
         DW1000Device* target = DW1000Ranging.searchDeviceByShortAddHeader(token_target_address);
 
         if(target){
@@ -594,26 +641,29 @@ void PollUnicastFailed(){
     }
    
     Existing_devices[ranging_device_index].range_pending = false;
-    _wait_unicast_range = false; 
+    _wait_unicast_range = false;
+    sorted_nodes_index++; //This node has failed. By increasing this index, the next one will be tried in the next loop. 
     num_retries = 0;
     state = COORDINATOR_RANGING; 
 }
 
 void TokenHandoffFailed(){
-
     if(DEBUG_COORDINATOR){
         Serial.print("Token handoff with [");
-        Serial.print(getClosestNodeAddress(),HEX); Serial.println("] FAILED. Retrying token handoff... ");
+        Serial.print(token_target_address,HEX); Serial.println("] FAILED. Retrying token handoff... ");
         
     }
     
-    // Set both measure and device as inactive, so that it is not selected again when calling getClosestNodeAddress().
-    Existing_devices[searchDevice(token_target_address)].active = false;
-    measurements[searchMeasure(own_short_addr,token_target_address)].active = false;
-    
+    // Set both measure and device as inactive, so that it is ignored when sorting again
+    int dev_idx = searchDevice(token_target_address);
+    if(dev_idx != -1) Existing_devices[dev_idx].active = false;
+    int measure_idx = searchMeasure(own_short_addr, token_target_address);
+    if(measure_idx != -1) measurements[measure_idx].active = false;
+
+    sortNodes(); // Sorts again the nodes, so that the failed one goes to the back of the list and is not selected again.
     
     num_retries = 0;
-    state = TOKEN_HANDOFF_STATE; // Goes back to handoff. When calling getClosestNodeAddress(), the failed node won't be selected (it is set as inactive), so token will go to the next closest node. 
+    state = TOKEN_HANDOFF_STATE; // Goes back to handoff. When reading sorted_nodes[0], that position will now be filled with the next closest node.
 
 
 }
@@ -918,6 +968,7 @@ void loop(){
                     Serial.println(" No need to re-discover."); 
                 }
                 state = COORDINATOR_RANGING; 
+                full_sweep_cycle = false;
                 return;
             }
 
@@ -933,6 +984,7 @@ void loop(){
             _discovery = true;
             nodes_discovered = false;
             discovery_start = current_time;
+            full_sweep_cycle = true;
             DW1000Ranging.setRangingMode(DW1000RangingClass::DISCOVERY);
             activateRanging();
         }
@@ -963,46 +1015,67 @@ void loop(){
             _coordinator_ranging = true;
             DW1000Ranging.setRangingMode(DW1000RangingClass::UNICAST);
             activateRanging();
-            ranging_device_index = -1; //Set at -1 so that when doing active_polling_index++, the first index is 0.
+
+            sortNodes();
+            sorted_nodes_index = 0;
+
+            //If doing a full sweep, ranging must be done with all devices. If not, only with the closest ones (up to the limit set in OPTIMIZED_RANGING_LINKS)
+            uint8_t sweep_limit = full_sweep_cycle ? forward_nodes_count : OPTIMIZED_RANGING_LINKS;
+            limit_ranging_devices = (sweep_limit < forward_nodes_count) ? sweep_limit : forward_nodes_count; //To make sure the limit is never higher than the amount of active nodes. 
+
             if(DEBUG_COORDINATOR){Serial.print("\nCOORDINATOR RANGING:");}
         }
-        ranging_device_index++;
-
-
-        if(ranging_device_index < amount_devices){
-            // There still are devices to poll
+        
+        if(sorted_nodes_index >= limit_ranging_devices){
+            //The limit has been reached. All necessary rangings have been done. 
+            //Now, off to the token handoff.
+            _coordinator_ranging = false;
+            stopRanging();
+            if(DEBUG_COORDINATOR) Serial.print("\nCoordinator Ranging ended. ");
+            state = TOKEN_HANDOFF_STATE;
+            return;
+        }
+        
+        else{
+            //There still are devices to range with
+            uint8_t target_short_addr = sorted_nodes[sorted_nodes_index];
+            ranging_device_index = searchDevice(target_short_addr);
+            
+            
             if(DEBUG_COORDINATOR){
                 Serial.print("\nUnicast Polling with device: ");
                 Serial.print(ranging_device_index+1); 
                 Serial.print("/"); Serial.print(amount_devices); Serial.print(" --> ");
             }
 
-            if(Existing_devices[ranging_device_index].active == true){
+            if(ranging_device_index != -1 && Existing_devices[ranging_device_index].active == true){
+                
                 Existing_devices[ranging_device_index].range_pending = true;
                 num_retries = 0; //Before starting polling, set retries to 0 to avoid carrying previous retry attempt counts.
                 transmitUnicast(MSG_POLL_UNICAST); 
                 state = WAIT_UNICAST_RANGE;
+
+                //No need to increase sorted_nodes_index. That will be done when the range arrives (in newRange()), or, in case of failure, in PollUnicastFailed().
             }
 
-            else{
+            else if(ranging_device_index == -1){
+                if(DEBUG_COORDINATOR) Serial.println("Device not found. Skipping...");
+                sorted_nodes_index++;
+            }
+            
+            else if(Existing_devices[ranging_device_index].active == false){
 
                 if(DEBUG_COORDINATOR){
                     Serial.print("Skipped Polling with an inactive device: ");
                     Serial.println(Existing_devices[ranging_device_index].short_addr,HEX);
                 }
-                //Do nothing --> Next loop, state will still be unicast master ranging, and the index will increase, trying the next device.
+                sorted_nodes_index++;
+                
             }
 
-        }
 
-        else{
-            //All devices have been targeted with the unicast poll. Now, coordinator has to send the token to the closes node.
-            _coordinator_ranging = false;
-           
-            stopRanging();
-            if(DEBUG_COORDINATOR){Serial.print("\nCoordinator Ranging ended. ");}
-            state = TOKEN_HANDOFF_STATE;
         }
+ 
     }
 
     else if(state == WAIT_UNICAST_RANGE){ 
@@ -1028,6 +1101,16 @@ void loop(){
         if(DEBUG_COORDINATOR) Serial.println("\n\nTOKEN HANDOFF starts:");
         stopRanging();
         
+        if(forward_nodes_count == 0){
+
+            if(DEBUG_COORDINATOR) Serial.println("NO ACTIVE NODES. Token handoff not sent. Back to discovery\n\n");
+            state = DISCOVERY;
+            discovery_attempts = UPDATE_DISCOVERY_ATTEMPTS; //To re-discover inmediately next loop, as no active nodes are available.
+            return;
+
+        }
+
+        token_target_address = sorted_nodes[0]; 
         num_retries = 0; //To clear previous retry attempts.
         state = WAIT_TOKEN_HANDOFF_ACK;
         _wait_token_handoff_ack = false;
