@@ -1,3 +1,5 @@
+/*CHAIN TOKEN PASSING --> COORDINATOR*/
+
 #include <SPI.h>
 #include <ArduinoJson.h>
 #include "DW1000Ranging.h"
@@ -36,7 +38,7 @@ uint8_t amount_active_nodes = 0;
 
 /*Time management*/
 unsigned long current_time = 0;
-const unsigned long WAITING_TIME = 50; 
+const unsigned long WAITING_TIME = 100; 
 
 /*Retry messages management*/
 #define MAX_RETRIES 5
@@ -590,7 +592,7 @@ void PollUnicastFailed(){
         Serial.print(Existing_devices[ranging_device_index].short_addr,HEX); Serial.println("] FAILED. Moving on to next device. Back to unicast ranging.");
         
     }
-    Existing_devices[ranging_device_index].active = false;
+   
     Existing_devices[ranging_device_index].range_pending = false;
     _wait_unicast_range = false; 
     num_retries = 0;

@@ -1,3 +1,6 @@
+/*CHAIN TOKEN PASSING --> NODE*/
+// Use a different device Addr for each node that runs this code. 
+
 #include <SPI.h>
 #include "DW1000Ranging.h"
 #include "DW1000.h"
@@ -989,15 +992,9 @@ void loop(){
             discovery_attempts = 0;
         }
 
-
         if(!_discovery){
             Serial.println("DISCOVERING:\n");
-
-            //Marks all devices as inactive (except the parent) to only range with the discovered (active) ones.
-            for(int i = 0; i<amount_devices ; i++){ 
-                if(Existing_devices[i].short_addr != parent_address) Existing_devices[i].active = false; 
-            }
-
+            
             _discovery = true;
             DW1000Ranging.setRangingMode(DW1000RangingClass::DISCOVERY); //Discovery is done via broadcast.
             activateRanging();
@@ -1005,7 +1002,6 @@ void loop(){
             nodes_discovered = false;
             discovery_start = current_time;
         }
-
 
         if(_discovery && current_time - discovery_start >= DISCOVERY_PERIOD){
             _discovery = false;
