@@ -1,3 +1,5 @@
+/*DW1000Ranging.h*/
+
 #ifndef _DW1000Ranging_H_INCLUDED
 #define _DW1000Ranging_H_INCLUDED
 #endif
@@ -46,14 +48,12 @@
 #define INITIATOR 0   // Starts the TWR transmissions
 #define RESPONDER 1	  // Answers to polls to start the TWR process
 
-
-
 #define LEN_DATA 90 	// Máx amount of bytes that can be sent inside a message's payload (the data slots available to fill up)
 #define MAX_DEVICES 10  // Máx amount of devices saved into the networkDevices array. (each DW1000Device takes up around 74 bytes in SRAM memory)
 
 
 //Default timing values: 
-#define DEFAULT_RESET_PERIOD 500 		// [mS]
+#define DEFAULT_RESET_PERIOD 1200 		// [mS]
 #define DEFAULT_REPLY_DELAY_TIME 8000 	// [uS]
 #define DEFAULT_TIMER_DELAY 80			// [mS]
 
@@ -116,16 +116,12 @@ class DW1000RangingClass {
 		static void  removeNetworkDevices(int16_t index);
 		
 
-
-
 		/* Setters */
 		static void setReplyTime(uint16_t replyDelayTimeUs) { _replyDelayTimeUS = replyDelayTimeUs;}
 		static void setResetPeriod(uint32_t resetPeriod)    { _resetPeriod = resetPeriod; }
 		static void setRangingMode(RangingMode mode)        { _ranging_mode = mode; }
 		static void setEnableRanging(bool ranging_enabled)	{ _ranging_enabled = ranging_enabled; }
 		
-
-
 
 		/* Getters */
 		static uint8_t getNetworkDevicesNumber() { return _networkDevicesNumber;}
@@ -134,7 +130,6 @@ class DW1000RangingClass {
 		static byte*   getCurrentShortAddress()  { return _currentShortAddress; }
 		static bool    getIsTransmitting()       { return _is_transmitting;     }
 		
-
 
 		//ranging functions
 		static int16_t detectMessageType(byte datas[]); // TODO check return type

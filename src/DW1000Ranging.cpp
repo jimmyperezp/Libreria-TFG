@@ -1,72 +1,96 @@
+/*DW1000Ranging.cpp*/
+
 #include "DW1000Ranging.h"
 #include "DW1000Device.h"
 
-DW1000RangingClass DW1000Ranging;
+DW1000RangingClass DW1000Ranging; //Creates an object of the DW1000RangingClass named DW1000Ranging.
 
+//Own Device's address (received in the startAs... functions)
+byte DW1000RangingClass::_currentAddress[8];
+byte DW1000RangingClass::_currentShortAddress[2];
 
-//other devices we are going to communicate with which are on our network:
-DW1000Device 		DW1000RangingClass::_networkDevices[MAX_DEVICES];
-byte         		DW1000RangingClass::_currentAddress[8];
-byte         		DW1000RangingClass::_currentShortAddress[2];
-byte         		DW1000RangingClass::_lastSentToShortAddress[2];
-volatile uint8_t 	DW1000RangingClass::_networkDevicesNumber = 0; // TODO short, 8bit?
-int16_t      		DW1000RangingClass::_lastDistantDevice    = 0; // TODO short, 8bit?
+/*Other device's "properties"*/
+
+DW1000Device 		DW1000RangingClass::_networkDevices[MAX_DEVICES]; //Array of DW1000Devices
+volatile uint8_t 	DW1000RangingClass::_networkDevicesNumber = 0; 	
+int16_t      		DW1000RangingClass::_lastDistantDevice    = 0; 	// Saves the last seen device (used a lot when wanting to see properties of device that spoke to me last).
+byte         		DW1000RangingClass::_lastSentToShortAddress[2]; //Saves the Short Address of the last spoken to device. 
 DW1000Mac    		DW1000RangingClass::_globalMac;
+
 
 /*Board's type and TWR role*/
 uint8_t     DW1000RangingClass::_twr_role = 99; 
 uint8_t 	DW1000RangingClass::_device_type = 99;
 
-//Ranging Mode (broadcast or unicast)
+
+/*RANGING MODE (Broadcast, Unicast or Discovery)*/
+// Depending on the mode, the timerTick launches blinks (or not) with different frequencies.
 DW1000RangingClass::RangingMode DW1000RangingClass::_ranging_mode = DW1000RangingClass::BROADCAST;
 
-//To enable/disable ranging. Starts enabled.
+
+/*RANGING ENABLER*/
+//Used to 'mute' the device (only to ranging messages). Used, for instance, when token passing. This way, the token only travels downwards.
 bool DW1000RangingClass:: _ranging_enabled = true;
 
+/*CYCLE ID*/
+//Used in Mesh Token passing. This saves my own current cycle_id. This is used to make sure that all of the devices receive the token in a same cycle
 uint8_t DW1000RangingClass::_own_cycle_id = 0; 
 
-// message flow state
-volatile byte    DW1000RangingClass::_expectedMsgId;
+/*TWR Flags & variables*/
 
-// range filter
-volatile bool DW1000RangingClass::_useRangeFilter = false;
-uint16_t DW1000RangingClass::_rangeFilterValue = 15;
+volatile byte    DW1000RangingClass::_expectedMsgId; // sets the next expected message. This way, I control if the TWR flow is correct.
+bool DW1000RangingClass::_protocolFailed = false; 	 // If the received message isn't the expected one 
 
-// message sent/received state
+//Timestamps (used to calculate the distance between boards)
+int32_t DW1000RangingClass::timer           = 0;
+int16_t DW1000RangingClass::counterForBlink = 0; 
+int8_t  DW1000RangingClass::check_inactive_devices_count = 0;
+
+/*Message sending & reception*/
+
+//After sending or receiving a package, an external IRQ is launched (see functions begin, handleInterrupt & interruptonSent & interruptOnReceived)
 volatile bool DW1000RangingClass::_sentAck     = false;
 volatile bool DW1000RangingClass::_receivedAck = false;
 
-volatile bool DW1000RangingClass::_is_transmitting = false;
-uint32_t DW1000RangingClass::_tx_start_time = 0;
+volatile bool DW1000RangingClass::_is_transmitting = false; //Rised when starting transmitted and put down after sentAck is set as true.
+uint32_t DW1000RangingClass::_tx_start_time = 0;	//Controls the time in which _is_transmitting is true. Used to avoid possible blocks while transmitting.
 
-// protocol error state
-bool DW1000RangingClass::_protocolFailed = false;
 
-// Check if last frame was long: 
+/*RANGE FILTER*/
+// This could be used to smooth out the measurements using an EMA (exponential moving average). Currently not used. 
+// If wanted to use, call useRangeFilter(true) from the device's code.
+volatile bool DW1000RangingClass::_useRangeFilter = false;
+uint16_t DW1000RangingClass::_rangeFilterValue = 15;
+
+
+/*MAC message length*/
+//I beleive only the ranging init uses a long frame. The rest of messages use a short frame. 
+//This affects to: when receiving a UWB message, the first thing is to extract the valuable info from the MAC, by doing: 
+// _globalMac.decodeShortMACFrame(data, address); Here, I use decodeSHORT or decodeLONG MACFrame.
 bool DW1000RangingClass::_lastFrameWasLong = false;
 
-// timestamps to remember
-int32_t DW1000RangingClass::timer           = 0;
-int16_t DW1000RangingClass::counterForBlink = 0; // TODO 8 bit?
-int8_t  DW1000RangingClass::check_inactive_devices_count = 0;
 
-// data buffer
-byte DW1000RangingClass::data[LEN_DATA];
-// reset line to the chip
-uint8_t   DW1000RangingClass::_RST;
+/*OTHER PARAMETERS USED IN THE CODE*/
+
+byte DW1000RangingClass::data[LEN_DATA]; //Data buffer. The outgoing and incoming messages are saved here before being sent/processed.
+
+uint8_t   DW1000RangingClass::_RST; //Save the CHIPs reset and spi select lines.
 uint8_t   DW1000RangingClass::_SS;
-// watchdog and reset period
-uint32_t  DW1000RangingClass::_lastActivity;
+
+uint32_t  DW1000RangingClass::_lastActivity; //Watchdog to eliminate devices that have been inactive for too long.
 uint32_t  DW1000RangingClass::_resetPeriod;
-// reply times (same on both sides for symm. ranging)
-uint16_t  DW1000RangingClass::_replyDelayTimeUS;
-//timer delay
-uint16_t  DW1000RangingClass::_timerDelay;
-// ranging counter (per second)
-uint16_t  DW1000RangingClass::_successRangingCount = 0;
+
+uint16_t  DW1000RangingClass::_replyDelayTimeUS; // reply times (same on both sides for symm. ranging)
+
+uint16_t  DW1000RangingClass::_timerDelay; //timer delay
+
+uint16_t  DW1000RangingClass::_successRangingCount = 0; // ranging counter (per second)
 uint32_t  DW1000RangingClass::_rangingCountPeriod  = 0;
 
-//Callback Function handlers
+
+
+/*CALLBACK HANDLERS*/
+
 void (* DW1000RangingClass::_handleNewRange)(void) = 0;
 void (* DW1000RangingClass::_handleBlinkDevice)(DW1000Device*) = 0;
 void (* DW1000RangingClass::_handleDiscoveredDevice)(DW1000Device*) = 0;
@@ -89,28 +113,20 @@ void (* DW1000RangingClass::_handleTokenHandoff)(uint8_t) = 0;
 void (* DW1000RangingClass::_handleTokenHandoffAck)(void) = 0;
 void (* DW1000RangingClass::_handleTokenHandoffNack)(void) = 0;
 
+////////////
+/*METHODS*/
+///////////
 
-/* ###########################################################################
- * #### Init and end #######################################################
- * ######################################################################### */
 
-void DW1000RangingClass::initCommunication(uint8_t myRST, uint8_t mySS, uint8_t myIRQ) {
-	// reset line to the chip
-	_RST              = myRST;
-	_SS               = mySS;
-	_resetPeriod      = DEFAULT_RESET_PERIOD;
-	// reply times (same on both sides for symm. ranging)
-	_replyDelayTimeUS = DEFAULT_REPLY_DELAY_TIME;
-	//we set our timer delay
-	_timerDelay       = DEFAULT_TIMER_DELAY;
-	
-	
-	DW1000.begin(myIRQ, myRST);
-	DW1000.select(mySS);
-}
+
+
+
+/*CHIP INITIALIZATION AND STARTING*/
 
 void DW1000RangingClass::configureNetwork(uint16_t deviceAddress, uint16_t networkId, const byte mode[]) {
-	// general configuration
+	
+	//This function is called inside the startAs methods. It sets up the network with the given device mode, type and address
+	
 	DW1000.newConfiguration();
 	DW1000.setDefaults();
 	DW1000.setDeviceAddress(deviceAddress);
@@ -121,13 +137,41 @@ void DW1000RangingClass::configureNetwork(uint16_t deviceAddress, uint16_t netwo
 }
 
 void DW1000RangingClass::generalStart() {
-	// attach callback for (successfully) sent and received messages
+	
+	//These callbacks are called when a package is sent/received. 
+	//This is configured to happen inside setDefaults, which is inside configureNetwork
 	DW1000.attachSentHandler(handleSent);
 	DW1000.attachReceivedHandler(handleReceived);
 	
-	receiver(); // responder starts in receiving mode, awaiting a ranging poll message
+	receiver(); // Receiver prepared the device to receive. The default mode is waiting for a message.
 	_rangingCountPeriod = millis(); // for first time ranging frequency computation
 }
+
+void DW1000RangingClass::initCommunication(uint8_t myRST, uint8_t mySS, uint8_t myIRQ) {
+	
+	//Chip's pin definitions: Reset and SPI Select
+	_RST              = myRST;
+	_SS               = mySS;
+
+	//Default periods and timers
+	_resetPeriod      = DEFAULT_RESET_PERIOD;
+	_replyDelayTimeUS = DEFAULT_REPLY_DELAY_TIME; // reply times (same on both sides for symm. ranging)
+	_timerDelay       = DEFAULT_TIMER_DELAY; 	// we set our timer delay
+	
+	
+	DW1000.begin(myIRQ, myRST);
+	DW1000.select(mySS);
+}
+
+void DW1000RangingClass::receiver() {
+	DW1000.newReceive();
+	DW1000.setDefaults();
+	// so we don't need to restart the receiver manually
+	DW1000.receivePermanently(true);
+	DW1000.startReceive();
+}
+
+//StartAs methods. These set the Board type and its TWR Role
 
 void DW1000RangingClass::startAsResponder(const char address[], const byte mode[], const uint8_t device_type) {
 
@@ -166,6 +210,12 @@ void DW1000RangingClass::startAsInitiator(const char address[], const byte mode[
 	_device_type = device_type;
 	
 }
+
+
+
+
+
+/*NETWORK DEVICES*/
 
 bool DW1000RangingClass::addNetworkDevices(DW1000Device* device, bool shortAddress) {
 	bool   addDevice = true;
@@ -245,10 +295,11 @@ void DW1000RangingClass::removeNetworkDevices(int16_t index) {
 	}
 }
 
-/* ###########################################################################
- * #### Setters and Getters ##################################################
- * ######################################################################### */
 
+
+
+
+/*SETTERS AND GETTERS*/
 
 DW1000Device* DW1000RangingClass::searchDistantDevice(byte shortAddress[]) {
 	
@@ -286,28 +337,29 @@ DW1000Device* DW1000RangingClass::getDistantDevice() {
 }
 
 
-/* ###########################################################################
- * #### Public methods #######################################################
- * ######################################################################### */
+
+
+
+
+/*PUBLIC METHODS*/
 
 void DW1000RangingClass::checkForReset() {
+	//Checks for the last activity of the device. If greater than the reset period, then sets it as inactive
 	uint32_t curMillis = millis();
 	if(!_sentAck && !_receivedAck) {
-		// check if inactive
-		if(curMillis-_lastActivity > _resetPeriod) {
-			resetInactive();
-		}
-		return; // TODO cc
+		if(curMillis-_lastActivity > _resetPeriod) resetInactive();
+		return; 
 	}
 }
 
 void DW1000RangingClass::checkForInactiveDevices() {
+	//If the device has been set as inactive, then eliminates it from the networkDevices list.
 	for(uint8_t i = 0; i < _networkDevicesNumber; i++) {
 		if(_networkDevices[i].isInactive()) {
 			if(_handleInactiveDevice != 0) {
 				(*_handleInactiveDevice)(&_networkDevices[i]);
 			}
-			//we need to delete the device from the array:
+
 			removeNetworkDevices(i);
 			
 			i--; //If a device was removed, all the indexes move left. 
@@ -316,6 +368,12 @@ void DW1000RangingClass::checkForInactiveDevices() {
 	}
 }
 
+
+
+
+/*Message type detection*/
+// When receiving a full UWB package, it extracts the correct byte that informs what type of message it is
+// Used to continue the TWR protocol, to launch specific callbacks, etc.
 int16_t DW1000RangingClass::detectMessageType(byte datas[]) {
 	if(datas[0] == FC_1_BLINK) {
 		return BLINK;
@@ -333,6 +391,13 @@ int16_t DW1000RangingClass::detectMessageType(byte datas[]) {
 	return -1; // Default return value to prevent compilation error
 }
 
+
+
+
+
+
+/*LOOP*/
+//Thos is the main function of the whole library. It does all of the TWR algorithm, decodes and classifies incoming messages, launches the corresponding callbacks, etc.
 void DW1000RangingClass::loop() {
 	
 	checkForReset();
@@ -369,6 +434,7 @@ void DW1000RangingClass::loop() {
 				if (myDistantDevice) {
 					DW1000.getTransmitTimestamp(myDistantDevice->timePollAckSent);
 				}
+				
 			}
 		}
 		else if(_twr_role == INITIATOR) {
@@ -391,11 +457,10 @@ void DW1000RangingClass::loop() {
 					}
 				}
 				_expectedMsgId = POLL_ACK;
-				if(DEBUG){
-					Serial.print("Poll sent. Waiting for Ack..."); Serial.print("Ranging Mode --> "); Serial.println((_ranging_mode == DW1000RangingClass::BROADCAST) ? "BROADCAST" : "UNICAST");
-				}
+				
 				receiver();
 			}
+			
 			else if(messageType == RANGE) {
 				DW1000Time timeRangeSent;
 				DW1000.getTransmitTimestamp(timeRangeSent);
@@ -434,12 +499,9 @@ void DW1000RangingClass::loop() {
 			if (!is_broadcast && !is_for_me) {
 				
 				if(DEBUG){
-					Serial.print("Slaves Filter: -> ");
-					Serial.print("Requested to: [");
-					Serial.print(data[5],HEX);Serial.print(":");Serial.print(data[6],HEX);
-					Serial.print("] And I am: [");
-					Serial.print(_currentShortAddress[0], HEX); Serial.print(":"); Serial.print(_currentShortAddress[1], HEX);
-					Serial.println("]");
+					Serial.print("\nMessage filtering: -> ");
+					Serial.print("Directed to: ["); Serial.print(data[6],HEX);
+					Serial.print("] And I am: [");  Serial.print(_currentShortAddress[0], HEX);  Serial.println("]");
 
 					if(is_for_me) Serial.println("Message is for me --> I continue the loop");
 					else Serial.println("Message isn't for me --> I quit the loop.");
@@ -848,10 +910,6 @@ void DW1000RangingClass::loop() {
 
 							//If the poll was sent via unicast, the TWR procotol continues (transmit Range and expect range report)
 							//Poll was only sent once. Only 1 poll_ack expected.
-							if(DEBUG){
-
-								Serial.println("POLL ACK RECEIVED. SENDING RANGE MESSAGE");
-							}
 							
 							transmitRange(myDistantDevice); //Directly send range to the responder.
 							_expectedMsgId = RANGE_REPORT; //Next expected message is RANGE_REPORT from the responder.
@@ -903,23 +961,10 @@ void DW1000RangingClass::loop() {
 	}
 }
 
-void DW1000RangingClass::useRangeFilter(bool enabled) {
-	 
-	_useRangeFilter = enabled;
-}
 
-void DW1000RangingClass::setRangeFilterValue(uint16_t newValue) {
-	// Used for the smoothing algorithm (Exponential Moving Average). newValue must be >= 2. Default 15.
-	if (newValue < 2) {
-		_rangeFilterValue = 2;
-	}else{
-		_rangeFilterValue = newValue;
-	}
-}
 
-/* ###########################################################################
- * #### Private methods and Handlers for transmit & Receive reply ############
- * ######################################################################### */
+
+/*PRIVATE METHODS AND HANDLERS FOR TRANSMIT & RECEIVE REPLY*/
 
 void DW1000RangingClass::handleSent() {
 	// status change on sent success
@@ -1013,16 +1058,21 @@ void DW1000RangingClass::copyShortAddress(byte address1[], byte address2[]) {
 	*(address1+1) = *(address2+1);
 }
 
-/*  ###########################################################################
- * #### Methods for ranging protocole   ######################################
- * ######################################################################### */
+
+
+
+
+
+/*TRANSMITTING METHODS*/
 
 void DW1000RangingClass::transmitInit() {
+	//Must be called any time a message is about to be sent via UWB
 	DW1000.newTransmit();
 	DW1000.setDefaults();
 }
 
 void DW1000RangingClass::transmit(byte datas[]) {
+	//Final step of the transmitting sequence. After building up the data buffer, this method actually sends the constructed message.
 	DW1000.setData(data, LEN_DATA);
 	_is_transmitting = true;
 	_tx_start_time = millis();
@@ -1030,12 +1080,16 @@ void DW1000RangingClass::transmit(byte datas[]) {
 }
 
 void DW1000RangingClass::transmit(byte datas[], DW1000Time time) {
+	//Final step of the transmitting sequence. After building up the data buffer, this method actually sends the constructed message.
+	//This is just as the previous method, only that this receives an extra parameter: a time delay to send the message.
 	DW1000.setDelay(time);
 	DW1000.setData(data, LEN_DATA);
 	_is_transmitting = true;
 	_tx_start_time = millis(); 
 	DW1000.startTransmit();
 }
+
+	//TWR PROTOCOL MESSAGES:
 
 void DW1000RangingClass::transmitBlink() {
 	transmitInit();
@@ -1238,19 +1292,8 @@ void DW1000RangingClass::transmitRangeFailed(DW1000Device* myDistantDevice) {
 }
 
 
-void DW1000RangingClass::receiver() {
-	DW1000.newReceive();
-	DW1000.setDefaults();
-	// so we don't need to restart the receiver manually
-	DW1000.receivePermanently(true);
-	DW1000.startReceive();
-}
 
-/* ###################################################
-* -------------------------------------------------
-* Methods: Mode Switch, Data Request & Data Report
-* -------------------------------------------------
-###################################################### */
+	// DATA FLOW & CONTROL MESSAGES
 
 void DW1000RangingClass::transmitStopRanging(DW1000Device* device){
 
@@ -1296,7 +1339,6 @@ void DW1000RangingClass::transmitStopRangingAck(DW1000Device* device){
 	data[SHORT_MAC_LEN] = STOP_RANGING_ACK;
 	transmit(data);
 }
-
 
 void DW1000RangingClass::transmitModeSwitch(bool toInitiator, DW1000Device* device, bool _is_ranging_done_via_broadcast){
 
@@ -1587,13 +1629,14 @@ void DW1000RangingClass::transmitTokenHandoffNack(DW1000Device* device){
 }
 
 
-/* ###########################################################################
- * #### Methods for range computation and corrections  #######################
- * ######################################################################### */
 
+
+
+/*RANGE COMPUTATION*/
 
 void DW1000RangingClass::computeRangeAsymmetric(DW1000Device* myDistantDevice, DW1000Time* myTOF) {
 	// asymmetric two-way ranging (more computation intense, less error prone)
+	// This method calculates the distance between two boards using the saved timestamps in the TWR message exchange.
 	DW1000Time round1 = (myDistantDevice->timePollAckReceived-myDistantDevice->timePollSent).wrap();
 	DW1000Time reply1 = (myDistantDevice->timePollAckSent-myDistantDevice->timePollReceived).wrap();
 	DW1000Time round2 = (myDistantDevice->timeRangeReceived-myDistantDevice->timePollAckSent).wrap();
@@ -1605,9 +1648,25 @@ void DW1000RangingClass::computeRangeAsymmetric(DW1000Device* myDistantDevice, D
 
 
 
-/* ###########################################################################
- * #### Utils  ###############################################################
- * ######################################################################### */
+
+
+/*RANGE & NOISE FILTERING*/
+
+//As seen in the .h file, this methods smooth the distances received using an EMA (exponential moving average).
+//Currently not used. If wanted, user should call useRangeFilter(true)
+void DW1000RangingClass::useRangeFilter(bool enabled) {
+	 
+	_useRangeFilter = enabled;
+}
+
+void DW1000RangingClass::setRangeFilterValue(uint16_t newValue) {
+	// Used for the smoothing algorithm (Exponential Moving Average). newValue must be >= 2. Default 15.
+	if (newValue < 2) {
+		_rangeFilterValue = 2;
+	}else{
+		_rangeFilterValue = newValue;
+	}
+}
 
 float DW1000RangingClass::filterValue(float value, float previousValue, uint16_t numberOfElements) {
 	
