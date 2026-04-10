@@ -1,5 +1,6 @@
+/*DW1000Device.h*/
 
-#define INACTIVITY_TIME 15000
+#define INACTIVITY_TIME 1500
 
 #define COORDINATOR 1
 #define NODE 2
@@ -23,7 +24,7 @@ public:
 	DW1000Device(byte address[], bool shortOne = false);
 	~DW1000Device();
 	
-	//setters:
+	//Setters:
 	void setReplyTime(uint16_t replyDelayTimeUs);
 	void setAddress(char address[]);
 	void setAddress(byte* address);
@@ -38,24 +39,22 @@ public:
 	void setBoardType(uint8_t boardType) {_boardType = boardType;}
 	void setIndex(int8_t index) { _index = index; }
 
-	void setCycleId(uint8_t cycle_id){_cycle_id = cycle_id;}
+	void setCycleId(uint8_t cycle_id){_cycle_id = cycle_id;} // Used in mesh token passing. Used to make sure every node receives the token in each cycle
 	
-	
-	//getters
+	/*Getters*/
 
 	uint8_t getBoardType(){return _boardType;}
 	uint16_t getReplyTime() { return _replyDelayTimeUS; }
-	
-	byte* getByteAddress();
 	
 	int8_t getIndex() { return _index; }
 	
 	uint8_t getCycleId(){return _cycle_id;}
 
-	byte* getByteShortAddress();
+	//To get the short address in all forms (as byte, as uint16_t, or only the header)
 	uint16_t getShortAddress();
-	uint8_t getShortAddressHeader();
-
+	uint8_t  getShortAddressHeader();
+	byte*    getByteShortAddress();
+	byte* 	 getByteAddress();
 	
 	float getRange();
 	float getRXPower();
@@ -65,8 +64,7 @@ public:
 	bool isAddressEqual(DW1000Device* device);
 	bool isShortAddressEqual(DW1000Device* device);
 	
-	//functions which contains the date: (easier to put as public)
-	// timestamps to remember
+	//Timestamps used in the TWR ranging protocol
 	DW1000Time timePollSent;
 	DW1000Time timePollReceived;
 	DW1000Time timePollAckSent;
@@ -74,19 +72,20 @@ public:
 	DW1000Time timeRangeSent;
 	DW1000Time timeRangeReceived;
 	
-	void    noteActivity();
-	bool isInactive();
+	void noteActivity();
+	bool isInactive();	// Checks last activity time. If greater than the limit, then sets device as inactive.
 
 
 private:
-	//device ID
-	byte         _ownAddress[8];
-	byte         _shortAddress[2];
-	int32_t      _activity;
-	uint16_t     _replyDelayTimeUS;
-	int8_t       _index; // not used
-	uint8_t 	 _cycle_id; // Used to ensure all of the devices receive the token in each coordinator's cycle.
 	
+	
+	int32_t   _activity;
+	uint16_t  _replyDelayTimeUS;
+	uint8_t	  _cycle_id; // Used to ensure all of the devices receive the token in each coordinator's cycle.
+	int8_t    _index; 	 // Used to "control" the spot it ocuppies in the networkDevices array
+	byte      _ownAddress[8];
+	byte      _shortAddress[2];
+
 	uint16_t _boardType;
 	int16_t _range;
 	int16_t _RXPower;

@@ -1,4 +1,4 @@
-
+/*DW1000.cpp*/
 
 #include "DW1000.h"
 
@@ -1257,34 +1257,21 @@ void DW1000Class::setDefaults() {
 
 		setStandardFrameLength(true);
 		
-		useSmartPower(false);
+		useSmartPower(false); //This adapts the TX power to be the maximum possible (máximum authorized is -41.3 dBm)
 		suppressFrameCheck(false);
 
 		//for global frame filtering
 		setFrameFilter(false);
-			/* old defaults with active frame filter - better set filter in every script 	where you really need it
-			setFrameFilter(true);
-			//for data frame (poll, poll_ack, range, range report, range failed) filtering
-			setFrameFilterAllowData(true);
-			//for reserved (blink) frame filtering
-			setFrameFilterAllowReserved(true);
-			//setFrameFilterAllowMAC(true);
-			//setFrameFilterAllowBeacon(true);
-			//setFrameFilterAllowAcknowledgement(true);
-			*/
-		
-		//Frame length:
-		
 
-		interruptOnSent(true);
+		//External IRQs configuration. Setting these as true or false writes a 0 or 1 in the SYS_MSK Register
+		interruptOnSent(true);  //Interrupts after sendind a UWB package. This controls the _sentAck (and _is_transmitting) flag
 		interruptOnReceived(true);
 		interruptOnReceiveFailed(true);
 		interruptOnReceiveTimestampAvailable(false);
 		interruptOnAutomaticAcknowledgeTrigger(true);
 		setReceiverAutoReenable(true);
-		// default mode when powering up the chip
-		// still explicitly selected for later tuning
-		enableMode(MODE_1);
+
+		enableMode(MODE_1); //Default mode is 1. This is overwritten later, after the user calls the startAs(...) method.
 		
 		// TODO add channel and code to mode tuples
 	    // TODO add channel and code settings with checks (see DW1000 user manual 10.5 table 61)/
