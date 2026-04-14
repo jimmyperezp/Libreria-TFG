@@ -280,8 +280,8 @@ void registerDevice(DW1000Device *device){
 void inactiveDevice(DW1000Device *device){
 
     uint8_t origin_short_addr = device->getShortAddressHeader();
-    Serial.print("Lost connection with device: ");
-    Serial.println(origin_short_addr, HEX);
+    Serial.print("\nLost connection with device:");
+    Serial.println(origin_short_addr, HEX); Serial.println();
     
     bool node_disconnected = false;
 
@@ -769,29 +769,35 @@ void aggregatedDataReport(byte* data){
 
 void showData(){
 
+    /*If the distance in a link is equal to SKIPPED_MEASURE_DISTANCE (which is 999), then that link has been
+    skipped this cycle. Being skipped is way different than being missing*/
+
+
     bool inactive_measures_exist = false;
 
-    Serial.println("\n--------------------------- DATA REPORT ---------------------------");
+    Serial.println("\n------------------------------- DATA REPORT --------------------------------");
     
     unsigned long time_between_prints = current_time - last_shown_data_timestamp;
     last_shown_data_timestamp = current_time;
-    Serial.print("                             Cycle ");Serial.print(discovery_attempts);Serial.print("/");Serial.println(UPDATE_DISCOVERY_ATTEMPTS);
-    Serial.print("                   Time since last print --> ");
+    Serial.print("\t\t\t\tCycle: ");Serial.print(discovery_attempts);Serial.print("/");Serial.println(UPDATE_DISCOVERY_ATTEMPTS);
+    Serial.print("\t\t\tTime this cycle: ");
     Serial.print(time_between_prints);
-    Serial.println(" ms\n");
+    Serial.println(" mS\n");
+
 
     for (int i = 0; i < amount_measurements ; i++){ 
         
         if(measurements[i].active == true){
             Serial.print(" Devices: ");
-            Serial.print(measurements[i].short_addr_origin,HEX);
-            Serial.print(" -> ");
-            Serial.print(measurements[i].short_addr_dest,HEX);
-            Serial.print("\t Distance: ");
-            Serial.print(measurements[i].distance);
-            Serial.print(" m \t RX power: ");
-            Serial.print(measurements[i].rxPower);
-            Serial.println(" dBm");
+            Serial.print(measurements[i].short_addr_origin,HEX); Serial.print(" -> "); Serial.print(measurements[i].short_addr_dest,HEX);
+            float dist = measurements[i].distance;
+            if(dist == SKIPPED_DISTANCE){
+                Serial.println("\t[SKIPPED MEASUREMENT]");
+            }
+            else{
+                Serial.print("\tDistance: "); Serial.print(measurements[i].distance);
+                Serial.print(" m\tRX Power: "); Serial.print(measurements[i].rxPower); Serial.println(" dBm");
+            }            
         }
     }
 
@@ -821,7 +827,7 @@ void showData(){
     
     }
     
-    Serial.println("--------------------------------------------------------------------");
+    Serial.println("----------------------------------------------------------------------------");
     
     resetMeasures();
     
@@ -1023,12 +1029,25 @@ void loop(){
             uint8_t sweep_limit = full_sweep_cycle ? forward_nodes_count : OPTIMIZED_RANGING_LINKS;
             limit_ranging_devices = (sweep_limit < forward_nodes_count) ? sweep_limit : forward_nodes_count; //To make sure the limit is never higher than the amount of active nodes. 
 
-            if(DEBUG_COORDINATOR){Serial.print("\nCOORDINATOR RANGING:");}
+            if(DEBUG_COORDINATOR){
+                Serial.print("\nCOORDINATOR RANGING:");
+                if(full_sweep_cycle) Serial.print("\nFULL SWEEP CYCLE. Ranging with ");
+                else Serial.print("\nNOT a full sweep cycle. Ranging with "); 
+                Serial.print(limit_ranging_devices); Serial.print(" devices\n");
+            }
+            
         }
         
         if(sorted_nodes_index >= limit_ranging_devices){
             //The limit has been reached. All necessary rangings have been done. 
-            //Now, off to the token handoff.
+
+            for(int i = limit_ranging_devices; i < forward_nodes_count; i++){
+                // First, mark the skipped rangings (if they exist) as skipped
+                // This way, the coordinator differenciates measurements skipped from those that haven't been made.
+                logMeasure(own_short_addr, sorted_nodes[i], SKIPPED_DISTANCE, 55.5f);
+            }
+            
+            //Now, end the coordinator ranging state and prepare for token handoff.
             _coordinator_ranging = false;
             stopRanging();
             if(DEBUG_COORDINATOR) Serial.print("\nCoordinator Ranging ended. ");
@@ -1045,7 +1064,7 @@ void loop(){
             if(DEBUG_COORDINATOR){
                 Serial.print("\nUnicast Polling with device: ");
                 Serial.print(ranging_device_index+1); 
-                Serial.print("/"); Serial.print(amount_devices); Serial.print(" --> ");
+                Serial.print("/"); Serial.print(limit_ranging_devices); Serial.print(" --> ");
             }
 
             if(ranging_device_index != -1 && Existing_devices[ranging_device_index].active == true){

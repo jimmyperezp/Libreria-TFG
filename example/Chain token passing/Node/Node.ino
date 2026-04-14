@@ -34,11 +34,10 @@ int amount_measurements = 0;
 
 ExistingDevice Existing_devices[MAX_DEVICES];
 uint8_t amount_devices = 0;
-uint8_t amount_active_nodes = 0;
 
 
 /*To sort nodes & optimize ranging (skipping redundant measures)*/
-#define OPTIMIZED_RANGING_LINKS 2
+#define OPTIMIZED_RANGING_LINKS 1
 
 uint8_t sorted_nodes[MAX_DEVICES]; // List of short address headers of the nodes, sorted by distance.
 uint8_t limit_ranging_devices = 0;
@@ -240,10 +239,8 @@ void registerDevice(DW1000Device *device){
 
             if(Existing_devices[i].active == false){
                 Existing_devices[i].active = true;
-                if(incoming_board_type == NODE){
-                    Existing_devices[i].is_node = true;
-                    amount_active_nodes++;
-                }  
+                if(incoming_board_type == NODE) Existing_devices[i].is_node = true;
+                
                 else{ Existing_devices[i].is_node = false;}
             }
             return;
@@ -1100,17 +1097,29 @@ void loop(){
             sortNodes();
             sorted_nodes_index = 0;
 
-            uint8_t sweep_limit = full_sweep_cycle ? amount_active_nodes : OPTIMIZED_RANGING_LINKS;
-            limit_ranging_devices = (sweep_limit < amount_active_nodes) ? sweep_limit : amount_active_nodes; 
+            uint8_t sweep_limit = full_sweep_cycle ? forward_nodes_count : OPTIMIZED_RANGING_LINKS;
+            limit_ranging_devices = (sweep_limit < forward_nodes_count) ? sweep_limit : forward_nodes_count; 
             //See comments on the sweep limit in the coordinator.ino file
 
-            if(DEBUG_NODE){Serial.println("RANGING: ");}
+            if(DEBUG_NODE){
+                Serial.println("RANGING: ");
+                if(full_sweep_cycle) Serial.print("\nFULL SWEEP CYCLE. Ranging with ");
+                else Serial.print("\nNOT a full sweep cycle. Ranging with "); 
+                Serial.print(limit_ranging_devices); Serial.print(" devices\n");
+            }
 
         }
         
         if(sorted_nodes_index >= limit_ranging_devices){
             //The limit has been reached. All necessary rangings have been done. 
-            //Now, off to the token handoff.
+            
+            for(int i = limit_ranging_devices ; i<forward_nodes_count;i++){
+                // Mark the skipped measures as if their distance value was SKIPPED_DISTANCE
+                // This way, the coordinator will know and display this measure as skipped, instead of inactive.
+                logMeasure(own_short_addr,sorted_nodes[i],SKIPPED_DISTANCE,55.5f);
+            }
+
+            //Now, finish the ranging state and prepare for token handoffs
             _ranging = false;
             stopRanging();
             if(DEBUG_NODE) Serial.print("\nRanging ended. ");
@@ -1127,7 +1136,7 @@ void loop(){
             if(DEBUG_NODE){
                 Serial.print("\nUnicast Polling with device: ");
                 Serial.print(ranging_device_index+1); 
-                Serial.print("/"); Serial.print(amount_devices); Serial.print(" --> ");
+                Serial.print("/"); Serial.print(limit_ranging_devices); Serial.print(" --> ");
             }
 
             if(ranging_device_index != -1 && Existing_devices[ranging_device_index].active == true){

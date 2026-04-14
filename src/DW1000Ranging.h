@@ -52,11 +52,16 @@
 #define MAX_DEVICES 10  // Máx amount of devices saved into the networkDevices array. (each DW1000Device takes up around 74 bytes in SRAM memory)
 
 
-//Default timing values: 
+/*Default timing values*/
 #define DEFAULT_RESET_PERIOD 1200 		// [mS]
 #define DEFAULT_REPLY_DELAY_TIME 8000 	// [uS]
 #define DEFAULT_TIMER_DELAY 80			// [mS]
 
+
+/*Skipped distance value*/
+//When a measurement is active, and its value is equal to this constant, then the coordinator knows this measure was skipped (instead of having failed)
+//This is used to optimize the network, avoiding redundant measures as much as possible.
+#define SKIPPED_DISTANCE 600.5f //Values greater than 650 will cause overflow & malfunctioning.
 
 
 // Struct to handle the known measurements among the system's devices. Each device locally creates an array of this struct to save its measurements.
