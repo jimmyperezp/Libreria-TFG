@@ -62,7 +62,7 @@ static bool full_sweep_cycle = true; //Used to know if the device ranges with al
 
 
 //To only re-discover after certain number of cycles:
-#define UPDATE_DISCOVERY_ATTEMPTS 15
+#define UPDATE_DISCOVERY_ATTEMPTS 6
 static bool discovery_previously_done = false;
 uint8_t discovery_attempts = 0;
 
@@ -779,7 +779,8 @@ void showData(){
     
     unsigned long time_between_prints = current_time - last_shown_data_timestamp;
     last_shown_data_timestamp = current_time;
-    Serial.print("\t\t\t\tCycle: ");Serial.print(discovery_attempts);Serial.print("/");Serial.println(UPDATE_DISCOVERY_ATTEMPTS);
+    Serial.print("\t\t   Cycle: ");Serial.print(discovery_attempts);Serial.print("/");Serial.print(UPDATE_DISCOVERY_ATTEMPTS);
+    Serial.print(full_sweep_cycle ? " Doing a":" Not"); Serial.println(" Full sweep cycle");
     Serial.print("\t\t\tTime this cycle: ");
     Serial.print(time_between_prints);
     Serial.println(" mS\n");
@@ -788,11 +789,11 @@ void showData(){
     for (int i = 0; i < amount_measurements ; i++){ 
         
         if(measurements[i].active == true){
-            Serial.print(" Devices: ");
+            Serial.print("Devices: ");
             Serial.print(measurements[i].short_addr_origin,HEX); Serial.print(" -> "); Serial.print(measurements[i].short_addr_dest,HEX);
             float dist = measurements[i].distance;
             if(dist == SKIPPED_DISTANCE){
-                Serial.println("\t[SKIPPED MEASUREMENT]");
+                Serial.println("\t[SKIPPED]");
             }
             else{
                 Serial.print("\tDistance: "); Serial.print(measurements[i].distance);
@@ -810,21 +811,17 @@ void showData(){
     }
 
     if(inactive_measures_exist == true){
-        Serial.println("\n\t    ############ INACTIVE MEASURES ############");
-    
+        Serial.println("\n");
+
         for (int i = 0; i < amount_measurements ; i++){ 
         
             if(measurements[i].active == false){
-                inactive_measures_exist = true;
-                
-                Serial.print("\t\tDevice: ["); Serial.print(measurements[i].short_addr_origin,HEX); Serial.print("] didn't range with: [");
-                Serial.print(measurements[i].short_addr_dest,HEX); Serial.println("]");
+                Serial.print("Devices: ");     
+                Serial.print(measurements[i].short_addr_origin,HEX); Serial.print(" -> "); Serial.print(measurements[i].short_addr_dest,HEX);
+                Serial.println("\t[INACTIVE]");
                 
             }
-        }
-
-        Serial.println("\t    ###########################################");
-    
+        }    
     }
     
     Serial.println("----------------------------------------------------------------------------");
