@@ -1,6 +1,6 @@
 /*DW1000Device.h*/
 
-#define INACTIVITY_TIME 1500
+#define INACTIVITY_TIME 6000
 
 #define COORDINATOR 1
 #define NODE 2
