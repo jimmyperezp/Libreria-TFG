@@ -53,7 +53,7 @@ static bool nodes_discovered = false;
 unsigned long discovery_start = 0;
 
 //To only re-discover after certain number of cycles:
-#define UPDATE_DISCOVERY_ATTEMPTS 15
+#define UPDATE_DISCOVERY_ATTEMPTS 6
 static bool discovery_previously_done = false;
 uint8_t discovery_attempts = 0;
 
@@ -777,8 +777,7 @@ void showData(){
     }
     
     Serial.println("--------------------------------------------------------------------");
-    
-    resetMeasures();
+
     
 }
 
@@ -916,7 +915,7 @@ void showAIData(){
     }
 
     Serial.println(); //End of this cycle's line
-    resetMeasures();
+
 }
 
 void resetMeasures(){ 
@@ -1113,6 +1112,8 @@ void loop(){
         if(KAMADA_KAWAI_PLOTTING)  showJSONData();
 
         num_retries = 0; // To clear any ongoing transmission retries.
+        resetMeasures(); // To clear this cycle's measures & avoid showing obsolete measures in the monitor.
+        
         if(DEBUG_COORDINATOR) Serial.print("\nEnd of cycle. Restarting process... ");
         _discovery = false;
         state = DISCOVERY;
