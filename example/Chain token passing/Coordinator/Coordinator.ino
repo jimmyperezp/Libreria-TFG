@@ -5,6 +5,10 @@
 #include "DW1000Ranging.h"
 #include "DW1000.h"
 
+#include "model-parameters/model_metadata.h"
+#include "edge-impulse-sdk/classifier/ei_run_classifier.h"
+
+
 #define SPI_SCK 18
 #define SPI_MISO 19
 #define SPI_MOSI 23
@@ -17,7 +21,9 @@ const uint8_t PIN_SS = 4;   // spi select pin
 #define READABLE_OUTPUT true        // Shows the data reports in a human readable format.
 #define KAMADA_KAWAI_PLOTTING false // Shows a JSON file to draw the nodes using Kamada-Kawai's algorithm
 #define RX_DISTANCE_PLOTTING false  // Shows a CSV output to graph the relationship between RX power & distance
-#define AI_INTEGRATION false        // Shows a CSV output to export to a tinyML model, which interprets & analizes possible decouplings.
+#define AI_TRAINING false        // Shows a CSV output to export to a tinyML model, which interprets & analizes possible decouplings.
+#define AI_DEPLOYMENT true          // Uses the trained ML model to predict the train's status
+
 
 #define DEVICE_ADDR "C1:00:5B:D5:A9:9A:E2:9C" 
 uint8_t own_short_addr = 0; 
@@ -862,7 +868,7 @@ void showRXDistData(){
 
 }
 
-void showAIData(){
+void showAITrainingData(){
 
     /*This function prints the collected data in a CSV format, which will be collected by a python script to train a tinyML model
     IMPORTANT: THIS MODEL IS ONLY VALID WITH 4 DEVICES
@@ -915,6 +921,80 @@ void showAIData(){
     }
 
     Serial.println(); //End of this cycle's line
+
+}
+
+void showAIPrediction(){
+
+    //Only uses the model after a couple of cycles, to let the model "warm up"
+
+    if(cycle_count < 2){
+        Serial.println("\nSkipping AI prediction. Model Warming up");
+    }
+    else{
+
+        unsigned long time_between_AI_predictions = current_time - last_shown_AI_prediction_timestamp;
+        last_shown_AI_prediction_timestamp = current_time;
+
+        //The model needs a buffer containing all of the data used to train it
+        float features[19];
+        int feat_index = 0;
+
+        features[feat_index++] = float(time_between_AI_predictions); //First element is the timestamp
+
+        //Now, I fill the buffer with the link's info:
+        for(int i = 0; i<6; i++){
+            uint8_t addr_a = links[i][0];
+            uint8_t addr_b = links[i][1];
+
+            int meas_idx = searchMeasure(addr_a,addr_b);
+
+            if((meas_idx != -1) && (measurements[meas_idx].active)){
+                features[feat_index++] = 1.0;
+                features[feat_index++] = (float)measurements[meas_idx].distance;
+                features[feat_index++] = (float)measurements[meas_idx].rxPower;
+
+            }
+            else{
+                //The link is inactive
+                features[feat_index++] = 0.0;
+                features[feat_index++] = -999.0;
+                features[feat_index++] = -999.0;
+            }
+        }
+
+        //Now the buffer is ready. I prepare it for what edge impulse expects
+        signal_t signal;
+        int err = numpy::signal_from_buffer(features,EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE,&signal);
+        if(err!=0){
+            Serial.println("ERROR: The signal for the model wasn't created propperly");
+            return;
+        }
+        
+
+        ei_impulse_result_t result = {0};
+        err = run_classifier(&signal,&result,false);
+        if(err!= EI_IMPULSE_OK){
+            Serial.println("ERROR: Failed while running the classifier");
+            return;
+        }
+
+        //Now, I print the prediction:
+        Serial.println("----------------------------------");
+        Serial.println("AI prediction on train status: ")
+
+        float max_value = 0.0;
+        const char* winning_label = "unknown";
+
+        for (size_t i = 0; i < EI_CLASSIFIER_LABEL_COUNT, i++){
+            Serial.print("result.classification[i].label");
+            Serial.print(": "); Serial.print(result.classification[i].value *100.0,1);
+            Serial.println("%");
+        }
+
+
+    }
+
 
 }
 
@@ -1106,7 +1186,8 @@ void loop(){
 
     else if(state == END_CYCLE){
 
-        if(AI_INTEGRATION)         showAIData();
+        if(AI_TRAINING)            showAITrainingData();
+        if(AI_DEPLOYMENT)          showAIPrediction();
         if(READABLE_OUTPUT)        showData();
         if(RX_DISTANCE_PLOTTING)   showRXDistData();
         if(KAMADA_KAWAI_PLOTTING)  showJSONData();
