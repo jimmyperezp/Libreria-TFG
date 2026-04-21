@@ -86,14 +86,26 @@ static bool return_received = false; // To avoid processing the same report more
 unsigned long wait_for_return_start = 0;
 const unsigned long WAIT_FOR_RETURN_TIMEOUT = 800;
 
-/*Used in AI Integration prints*/
+/*Used in AI Training and deployment*/
 const uint8_t ID_C1 = 0xC1;
 const uint8_t ID_B2 = 0xB2;
 const uint8_t ID_B3 = 0xB3;
 const uint8_t ID_B4 = 0xB4;
 
+const uint8_t links[6][2] = {
+    {ID_C1, ID_B2}, // Link 0
+    {ID_C1, ID_B3}, // Link 1
+    {ID_C1, ID_B4}, // Link 2
+    {ID_B2, ID_B3}, // Link 3
+    {ID_B2, ID_B4}, // Link 4
+    {ID_B3, ID_B4}  // Link 5
+};
+
+uint8_t cycle_count = 0;
+
 /*Used to print results*/
 unsigned long last_shown_AI_data_timestamp = 0;
+unsigned long last_shown_AI_prediction_timestamp = 0;
 unsigned long last_shown_data_timestamp = 0;    
 unsigned long last_KK_plot_timestamp = 0;       //Last moment the Kamada-Kawai (KK) plot was made.
 
@@ -882,15 +894,6 @@ void showAITrainingData(){
     Link 5 --> B3-B4  
     */
 
-    static const uint8_t links[6][2] = {
-        {ID_C1, ID_B2}, // Link 0
-        {ID_C1, ID_B3}, // Link 1
-        {ID_C1, ID_B4}, // Link 2
-        {ID_B2, ID_B3}, // Link 3
-        {ID_B2, ID_B4}, // Link 4
-        {ID_B3, ID_B4}  // Link 5
-    };
-
     
 
     unsigned long time_between_AI_prints = current_time - last_shown_AI_data_timestamp;
@@ -980,21 +983,23 @@ void showAIPrediction(){
         }
 
         //Now, I print the prediction:
-        Serial.println("----------------------------------");
-        Serial.println("AI prediction on train status: ")
+        Serial.println("\n----------------------------------");
+        Serial.println("AI prediction on train status: ");
 
         float max_value = 0.0;
         const char* winning_label = "unknown";
 
-        for (size_t i = 0; i < EI_CLASSIFIER_LABEL_COUNT, i++){
-            Serial.print("result.classification[i].label");
+        for (size_t i = 0; i < EI_CLASSIFIER_LABEL_COUNT; i++){
+            Serial.print(result.classification[i].label);
             Serial.print(": "); Serial.print(result.classification[i].value *100.0,1);
             Serial.println("%");
         }
+        Serial.println("----------------------------------\n");
 
 
     }
 
+    cycle_count++;
 
 }
 
