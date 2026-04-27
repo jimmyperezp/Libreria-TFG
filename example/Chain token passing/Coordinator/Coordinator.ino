@@ -5,9 +5,10 @@
 #include "DW1000Ranging.h"
 #include "DW1000.h"
 
+/*
 #include "model-parameters/model_metadata.h"
 #include "edge-impulse-sdk/classifier/ei_run_classifier.h"
-
+*/
 
 #define SPI_SCK 18
 #define SPI_MISO 19
@@ -927,6 +928,7 @@ void showAITrainingData(){
 
 }
 
+/*
 void showAIPrediction(){
 
     //Only uses the model after a couple of cycles, to let the model "warm up"
@@ -1002,6 +1004,7 @@ void showAIPrediction(){
     cycle_count++;
 
 }
+*/
 
 void resetMeasures(){ 
     for(int i = 0;i<amount_measurements;i++){
