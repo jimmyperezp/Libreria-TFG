@@ -692,6 +692,7 @@ void aggregatedDataReport(byte* data){
              
             if(DEBUG_COORDINATOR) Serial.println(" but already received before. Only need to send ACK");
             transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
+            delay(10);
             
             return;
 
@@ -700,11 +701,13 @@ void aggregatedDataReport(byte* data){
         else if(_wait_for_return == false){
             if(DEBUG_COORDINATOR) Serial.print(" but I wasn't waiting for it anymore. Sending ack of reception but ignoring data\n");
             transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
+            delay(10);
             
             return;
         }
 
         transmitUnicast(MSG_DATA_REPORT_ACK, reporting_device);
+        delay(10);
         
 
         return_received = true; //To avoid processing the same report more than once in case it is received multiple times due to retries and ACK failures.
@@ -1153,6 +1156,7 @@ void loop(){
         state = WAIT_TOKEN_HANDOFF_ACK;
         _wait_token_handoff_ack = false;
         transmitUnicast(MSG_TOKEN_HANDOFF);
+        delay(10);
         
 
     }
@@ -1195,7 +1199,7 @@ void loop(){
     else if(state == END_CYCLE){
 
         if(AI_TRAINING)            showAITrainingData();
-        if(AI_DEPLOYMENT)          showAIPrediction();
+        //if(AI_DEPLOYMENT)          showAIPrediction();
         if(READABLE_OUTPUT)        showData();
         if(RX_DISTANCE_PLOTTING)   showRXDistData();
         if(KAMADA_KAWAI_PLOTTING)  showJSONData();

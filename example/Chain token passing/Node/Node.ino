@@ -366,7 +366,7 @@ void tokenHandoff(uint8_t incoming_cycle_id){
             Serial.println(". Sending ACK but continuing with current task...");
         }
         transmitUnicast(MSG_TOKEN_HANDOFF_ACK,requesting_device);
-        delay(15);
+        delay(10);
         return;
     }
 
@@ -811,7 +811,7 @@ void aggregatedDataReport(byte* data){
             }
         }
         transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
-        delay(15);
+        delay(10);
         return;
     }
 
@@ -853,7 +853,7 @@ void aggregatedDataReport(byte* data){
              
             if(DEBUG_NODE) Serial.print(" but already received before. Only need to send ACK...");
             transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
-            delay(15);
+            delay(10);
             return;
 
         }
@@ -861,12 +861,12 @@ void aggregatedDataReport(byte* data){
         else if(_wait_for_return == false){
             if(DEBUG_NODE) Serial.print(" but I wasn't waiting for it anymore. Sending ack of reception but ignoring data");
             transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
-            delay(15);
+            delay(10);
             return;
         }
 
         transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
-        delay(15);
+        delay(10);
 
         return_received = true; //To avoid processing the same report more than once in case it is received multiple times due to retries and ACK failures.
         
@@ -1119,7 +1119,7 @@ void loop(){
             _wait_token_handoff_ack = false;
             num_retries = 0;
             transmitUnicast(MSG_TOKEN_HANDOFF);
-            delay(15); 
+            delay(10); 
             
         }
          
@@ -1168,7 +1168,7 @@ void loop(){
         _wait_return_to_parent_ack = false;
         num_retries = 0;
         transmitUnicast(MSG_RETURN_TO_PARENT);
-        delay(15);
+        delay(10);
         
     }     
     else if(state == WAIT_RETURN_TO_PARENT_ACK){
