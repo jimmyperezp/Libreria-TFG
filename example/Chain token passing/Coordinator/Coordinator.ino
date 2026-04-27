@@ -54,7 +54,7 @@ uint8_t num_retries = 0;
 
 
 /*state = DISCOVERY*/
-const unsigned long DISCOVERY_PERIOD = 300;
+const unsigned long DISCOVERY_PERIOD = 500;
 static bool _discovery = false;
 static bool nodes_discovered = false;
 unsigned long discovery_start = 0;
@@ -85,7 +85,7 @@ unsigned long wait_token_handoff_ack_start = 0;
 static bool _wait_for_return = false;
 static bool return_received = false; // To avoid processing the same report more than once in case it is received multiple times due to retries and ACK failures.
 unsigned long wait_for_return_start = 0;
-const unsigned long WAIT_FOR_RETURN_TIMEOUT = 800;
+const unsigned long WAIT_FOR_RETURN_TIMEOUT = 3000;
 
 /*Used in AI Training and deployment*/
 const uint8_t ID_C1 = 0xC1;

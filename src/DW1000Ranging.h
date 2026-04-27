@@ -53,7 +53,7 @@
 
 
 //Default timing values: 
-#define DEFAULT_RESET_PERIOD 1200 		// [mS]
+#define DEFAULT_RESET_PERIOD 3000 		// [mS]
 #define DEFAULT_REPLY_DELAY_TIME 8000 	// [uS]
 #define DEFAULT_TIMER_DELAY 80			// [mS]
 

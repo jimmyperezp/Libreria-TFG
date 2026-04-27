@@ -70,7 +70,7 @@ uint8_t num_retries = 0;
 /*state = DISCOVERY*/
 static bool _discovery = false;
 unsigned long discovery_start = 0;
-const unsigned long DISCOVERY_PERIOD = 150;
+const unsigned long DISCOVERY_PERIOD = 300;
 
 //To only re-discovery after a certain number of cycles: 
 #define UPDATE_DISCOVERY_ATTEMPTS 6
@@ -113,7 +113,7 @@ unsigned long wait_return_to_parent_ack_start = 0;
 static bool _wait_for_return = false;
 static bool return_received = false; // To avoid processing the same report more than once in case it is received multiple times due to retries and ACK failures.
 unsigned long wait_for_return_start = 0;
-const unsigned long WAITING_RETURN_TIME = 400;
+const unsigned long WAITING_RETURN_TIME = 2500;
 
 
 /*Function prototypes*/
@@ -1021,13 +1021,25 @@ void loop(){
     }
     else if(state == RANGING){
 
-        if(!nodes_discovered){
+
+        bool has_active_nodes = false;
+        
+        for(int i = 0; i < amount_devices; i++){
+            if(Existing_devices[i].is_node && Existing_devices[i].active){
+                has_active_nodes = true;
+                break;
+            }
+        }
+
+        // If there aren't active nodes, then I'm the TAIL, and I return to parent.
+        if(!has_active_nodes){
             if(DEBUG_NODE){
-                Serial.print("No nodes to range with. Returning to parent\n");
+                Serial.print("No active nodes to range with. Returning to parent\n");
             }
             state = RETURN_TO_PARENT;
             return;
         }
+
         if(!_ranging){
             _ranging = true;
             DW1000Ranging.setRangingMode(DW1000RangingClass::UNICAST); // After discovery, ranging is done via unicast.
