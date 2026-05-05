@@ -5,10 +5,10 @@
 #include "DW1000Ranging.h"
 #include "DW1000.h"
 
-/*
+
 #include "model-parameters/model_metadata.h"
 #include "edge-impulse-sdk/classifier/ei_run_classifier.h"
-*/
+
 
 #define SPI_SCK 18
 #define SPI_MISO 19
@@ -22,7 +22,7 @@ const uint8_t PIN_SS = 4;   // spi select pin
 #define READABLE_OUTPUT true        // Shows the data reports in a human readable format.
 #define KAMADA_KAWAI_PLOTTING false // Shows a JSON file to draw the nodes using Kamada-Kawai's algorithm
 #define RX_DISTANCE_PLOTTING false  // Shows a CSV output to graph the relationship between RX power & distance
-#define AI_TRAINING false        // Shows a CSV output to export to a tinyML model, which interprets & analizes possible decouplings.
+#define AI_TRAINING false           // Shows a CSV output to export to a tinyML model, which interprets & analizes possible decouplings.
 #define AI_DEPLOYMENT true          // Uses the trained ML model to predict the train's status
 
 
@@ -931,7 +931,7 @@ void showAITrainingData(){
 
 }
 
-/*
+
 void showAIPrediction(){
 
     //Only uses the model after a couple of cycles, to let the model "warm up"
@@ -1007,7 +1007,7 @@ void showAIPrediction(){
     cycle_count++;
 
 }
-*/
+
 
 void resetMeasures(){ 
     for(int i = 0;i<amount_measurements;i++){
@@ -1199,7 +1199,7 @@ void loop(){
     else if(state == END_CYCLE){
 
         if(AI_TRAINING)            showAITrainingData();
-        //if(AI_DEPLOYMENT)          showAIPrediction();
+        if(AI_DEPLOYMENT)          showAIPrediction();
         if(READABLE_OUTPUT)        showData();
         if(RX_DISTANCE_PLOTTING)   showRXDistData();
         if(KAMADA_KAWAI_PLOTTING)  showJSONData();
