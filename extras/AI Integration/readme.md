@@ -193,7 +193,16 @@ The output files are indicated to be saved inside the [TinyML data sets](/extras
 
 ### Edge impulse
 
-TODO --> Explain the use of Edge Impulse (the tinyML generator that I'm using)
+
+> <img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/extras/images/Logo%20Edge%20Impulse.webp" alt="Edge Impulse Logo" width="80" height="60" align = "right"/>  Edge Impulse is the used platform to generate a tinyML model in charge of evaluating the train's status in real time.  
+
+It produces a compiled neural network that is included inside the SRC files of this library. Said platform exports 3 folders:  
+1. *Model-Parameters*: Here are the weights and neccesary values for the neural network.
+2. *Edge Impulse SDK*: This is the model's engine. This folder is based on 3 main pillars:   
+    2.1: TensorFlowLite For Microcontrollers (TFLM). This is used as an optimized calculator. It's in charge of doing the matrix operations while not consuming a big part of the microcontroller resources.
+    2.2: Edge Impulse API (classifier): The main functions & methods used by the user inside the device's code are stored here  
+    2.3 Porting & Wrappers. Finally, this folder includes multiple definitions so that the model can be run in a huge variety of devices.
+3. TFLite-model. This folder includes the proyect's main definitions, such as: number of inputs, frequency, project's name, etc.
 
 
 <br><br>
