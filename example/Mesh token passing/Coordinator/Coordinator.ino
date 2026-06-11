@@ -126,7 +126,7 @@ void setup(){
         
     attachCallbacks();
    
-    DW1000Ranging.startAsInitiator(DEVICE_ADDR,DW1000.MODE_1, false,COORDINATOR);
+    DW1000Ranging.startAsInitiator(DEVICE_ADDR,DW1000.MODE_1, COORDINATOR);
 
     own_short_addr = getOwnShortAddressHeader();
     DW1000Ranging.setOwnCycleId(cycle_id); //Initializes cycle ID to avoid initial collisions (all nodes start on cycle 0)
