@@ -4,8 +4,8 @@
 
 
 
-<img src="https://github.com/HQarroum/awesome-iot/blob/master/iot-logo.png" alt="IoT" width="40" height="40"/> <img src="https://github.com/jimmyperezp/jimmyperezp/blob/main/cpp.svg" alt="c++" width="40" height="40"/> <img src="https://cdn.worldvectorlogo.com/logos/arduino-1.svg" alt="arduino" width="40" height="40"/> <img src="https://upload.wikimedia.org/wikipedia/commons/c/cd/PlatformIO_logo.svg" alt="platformIO" width="40" height="40"/>
-
+<img src="https://github.com/HQarroum/awesome-iot/blob/master/iot-logo.png" alt="IoT" width="40" height="40"/> <img src="https://github.com/jimmyperezp/jimmyperezp/blob/main/cpp.svg" alt="c++" width="40" height="40"/> <img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/extras/images/Python-logo.png" alt="Python Logo" width="40" height="40"/><img src="https://cdn.worldvectorlogo.com/logos/arduino-1.svg" alt="arduino" width="40" height="40"/> <img src="https://upload.wikimedia.org/wikipedia/commons/c/cd/PlatformIO_logo.svg" alt="platformIO" width="40" height="40"/> <img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/extras/images/Logo%20Edge%20Impulse.webp" alt="Edge Impulse Logo" width="60" height="40"/>
+ <img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/extras/images/TFL.png" alt="TensorFlowLite Logo" width="60" height="40"/> 
 > This library is a personal modification of the DW1000 chips library, used for UWB communication.   
 
 
@@ -236,28 +236,24 @@ For example, the *platformio.ini* file in my case was the following:
 
 ```ini 
 [platformio]
-default_envs = nucleo_master
+default_envs = nucleo_coordinator
 
 [env]
 framework = arduino
 monitor_speed = 115200
-lib_extra_dirs = C:/Users/(route to where you have the library)
-lib_deps = TFG_Jaime_Perez (this is the name of the library)
+lib_extra_dirs = C:/Users/ (Route to wherever the library is stored) 
+lib_deps = TFG_Jaime_Perez (Name of the library)
 
 [nucleo_base]
-platform = ststm32
+platform = ststm32 
 board = nucleo_f429zi
 build_flags =   
     -D nucleo_f429zi
 
-[esp32_base]
-platform = espressif32
-board = esp32doit-devkit-v1 
 
-
-[env:nucleo_master]
-extends = nucleo_base
-build_src_filter = -<*> +<centralizar_N_slaves/master.cpp>
+[env:Nucleo_coordinator]
+extends = nucleo_base (This environment is a "nucleo_base" extension)
+build_src_filter = -<*> +<Chain Token passing/coordinator.cpp>  (Selection of what file should be compiled in this environment)
 
 ```
 
