@@ -194,7 +194,7 @@ The output files are indicated to be saved inside the [TinyML data sets](/extras
 ### Edge impulse
 
 
-> <img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/extras/images/Logo%20Edge%20Impulse.webp" alt="Edge Impulse Logo" width="80" height="60" align = "right"/>  Edge Impulse is the used platform to generate a tinyML model in charge of evaluating the train's status in real time.  
+> <img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/extras/images/Logo%20Edge%20Impulse.webp" alt="Edge Impulse Logo" width="160" height="140" align = "right"/>  Edge Impulse is the used platform to generate a tinyML model in charge of evaluating the train's status in real time.  
 
 It produces a compiled neural network that is included inside the SRC files of this library. Said platform exports 3 folders:  
 1. *Model-Parameters*: Here are the weights and neccesary values for the neural network.
