@@ -103,15 +103,15 @@ def clean(t=turtle):
 
 
 def draw_ui(t):
-    write_txt(-120, 220, "UWB Positioning", "orange",  t, f=('Arial', 28, 'normal'))
+    write_txt(-200, 220, "2D Positioning App", "orange",  t, f=('Arial', 35, 'normal'))
     fill_rect(-400, 150, 800, 50, "black", t)
-    write_txt(-250, 155, "Posicionamiento 2D - Jaime Pérez", "yellow",  t, f=('Arial', 24, 'normal'))
+    write_txt(-350, 155, "Relative position between 2 fixed Nodes and 1 Mobile Node", "yellow",  t, f=('Arial', 20, 'normal'))
 
 
 def draw_uwb_anchor(x, y, txt, range, t):
     r = 20
     fill_cycle(x+20, y-50, r, "purple", t)
-    write_txt(x+20 + r, y-50, txt + ": " + str(range) + "M",
+    write_txt(x+20 + r, y-50, txt + ": " + str(range) + "m",
               "black",  t, f=('Arial', 16, 'normal'))
 
 
@@ -187,21 +187,21 @@ def main():
             if one["A"] == "17A1":
                 clean(t_a1)
                 a1_range = uwb_range_offset(float(one["R"]))
-                draw_uwb_anchor(-250, 150, "A1(0,0)", a1_range, t_a1)
+                draw_uwb_anchor(-330, 110, "Node 1 (origin)", a1_range, t_a1)
                 node_count += 1
 
             if one["A"] == "17A2":
                 clean(t_a2)
                 a2_range = uwb_range_offset(float(one["R"]))
                 draw_uwb_anchor(-250 + meter2pixel * distance_a1_a2,
-                                150, "A2(" + str(distance_a1_a2)+")", a2_range, t_a2)
+                                110, "Node 2 (" + str(distance_a1_a2)+"m to origin)", a2_range, t_a2)
                 node_count += 1
 
         if node_count == 2:
             x, y = tag_pos(a2_range, a1_range, distance_a1_a2)
             print(x, y)
             clean(t_a3)
-            draw_uwb_tag(x, y, "TAG", t_a3)
+            draw_uwb_tag(x, y, "Mobile Node", t_a3)
 
         time.sleep(0.1)
 
