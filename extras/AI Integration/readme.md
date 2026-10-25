@@ -1,211 +1,86 @@
-# AI Integration
+# Generación de datasets de entrenamiento a partir del simulador
 
-> <img src="https://raw.githubusercontent.com/devicons/devicon/master/icons/python/python-original.svg" alt="python" width="80" height="80" align = "right"/> This python script reads the Serial monitor & extracts the measurements collected after each cycle. It then saves them in a .csv file, which is used to train a tinyML model.
+## Uso
 
-<br>
+Requisitos: Python 3.9 o superior, con `pandas` y `numpy` (`pip install -r requirements.txt`).
 
-### Context and expected use
-
-In order to train a ML model to help me detect possible decouplings or integrity losses, I need a series of datasets taken in different situations.  
-To do so, the [Chain token passing example](/example/Chain%20token%20passing) has been modified in order to show a specific output in the serial monitor. Said output starts with the header: "AI_DATA", and simply shows the measurements collected that cycle in a csv format. 
-
-To see this output, the defines section of the [*Coordinator.ino*](/example/Chain%20token%20passing/Coordinator/Coordinator.ino) must set the AI_INTEGRATION as true: 
-
-```c++
-#define AI_INTEGRATION true
-```
-
-
-Once this is done, the coordinator's output is the following: 
-
-<p align = center>
-AI_DATA:  
-Cycle_ID , Time since last print, origin address, destiny address, distance, RX power, Active? 
-<p>
-
-- Cycle ID: Indicates the cycle that the coordinator is in. This allows the model to differenciate each cycle from the previous, as well as to collect all of the measurements made in each cycle.
-- Time between prints. It may be redundant to show this in every line of the output, but it is necessary. It shows the time taken between cycles. The model will use this value to understand if there has been high UWB traffic, or if the devices have been working on a high number of retries, taking up more time to finish the cycle.
-- Origin and destiny short addresses: They indicate the devices involved in that measurement.
-- Distance and RX power: Values measured between both devices indicated
-- Active? : This last value indicates if the connection between both devices has been active this cycle. This lets the model know of any missing communications.
-
-
-For example, a possible output could be the following: 
-
-AI_DATA:
-
-0, 494 , C1 , B2 , 12.54 , -89.17 ,1  
-0, 494 , C1 , B3 , 41.96 , -95.62 ,1  
-0, 494 , B2 , B3 , 33.57 , -91.36 ,1  
-0, 494 , B3 , B4 , 24.56 , -90.77 ,1  
-
-AI_DATA:
-
-1, 742 , C1 , B2 , 12.72 , -89.26 ,1  
-1, 742 , C1 , B3 , -999  , -999   ,0  
-1, 742 , B2 , B3 , 33.55 , -91.44 ,1  
-1, 742 , B3 , B4 , 24.60 , -90.57 ,1  
-
-AI_DATA:
-
-2, 1023 , C1 , B2 , 12.67 , -89.01 ,1  
-2, 1023 , C1 , B3 , -999  , -999   ,0  
-2, 1023 , B2 , B3 , 33.56 , -91.35 ,1  
-2, 1023 , B3 , B4 , -999  , -999   ,0  
-
-
-<br>
-
-### Data collector functioning
-
-This sript works in a similar way to the [RX Distance Data collector](/extras/RX-Distance%20relation). It is comoposed of 5 main blocks: 
-
-<br>
-
-#### 1:  Accessing the port & saving the file: 
-
-```python
-# Serial monitor setup:
-SERIAL_PORT = 'COM9'      # Update with the coordinator's serial port
-BAUD_RATE = 115200        
-# IMPORTANT: Change the output file name with the experiment done (NLOS, LOS, etc)
-OUTPUT_FILE = 'extras/AI_integration/tinyML data sets/tinyML_data.csv'
-```
-
-As mentioned in the comments, it is key to update the output file depending on the experiment made.  
-For example, if the data collected is for devices in LOS, then name it tinyML_data_LOS.csv, and so on.
-
-<br>
-
-#### 2: Opening the serial monitor & reading each line
-
-```python
-def main():
-    try:
-        
-        ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
-        
-        
-        with open(OUTPUT_FILE, mode='w', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow(["Cycle ID","Cycle time [mS]","Origin Addr","Destiny Addr", "Distance (m)", "RX Power (dBm)","Active"])
-            
-            recording = False
-            
-            # Data colection loop
-            while True:
-                if ser.in_waiting > 0:
-                    try:
-                        
-                        line = ser.readline().decode('utf-8').strip() # The full line is read and saved here
-                    
-                        if line == ("AI_DATA:"):
-                            recording = True
-                            continue # Goes to the next 'while' iteration (to read the next lines)
-```
-<br><br>
-
-This block of code starts by accessing the serial monitor (ser). Then it opens the file indicated as output: 
-
-```python
-with open(OUTPUT_FILE, mode='w', newline='') as file: # From now on, 'file' is the OUTPUT_FILE indicated in the header section
-```
-
-After accessing the serial port and opening the output file, the script reads every line shown in the serial monitor: 
-
-```python
-line = ser.readline().decode('utf-8').strip() 
-```
-
-"Line" contains the full line as a plain text. The next step is to see if that line is the seached header: 
-
-```python
-if line == ("AI_DATA:"):
-    recording = True
-    continue 
-```
-
-When this happens, then the program continues to the neext loop iteration, where the line is converted from plain text to a CSV format
-
-<br>
-
-#### 3: Converting the lines into CSV format
-
-```python
-if recording and "," in line: 
-    data_elements = line.split(",")
-```
-
-If recording == true (The AI_DATA header has previously been read), then, for every comma found in the line, separate the text using commas.  
-This means turning an entry like this: "[0,393,C1,B2,34.87,-76.43,1]"  
-Into a trully CSV line: "['0','393','C1','B2','34.87','-76.43','1']
-
-
-<br>
-
-#### 4: Writing the converted line into the output file
-
-```python
-if len(data_elements) == 7:
-    writer.writerow(data_elements)
-    file.flush()
-else:
-    recording = False
-```
-
-If the data_elements array (that contains the line in CSV format) has a length of 7 elements (correct), then directly writes it in the file (the output file, as indicated in section 2).  
-However, if the length is not 7, then there has been some kind of problem. This is handled by setting the recording as false, therefore skipping the current log until reading "AI_DATA" again.
-
-
-<br>
-
-#### 5: Handling errors 
-
-If there has been any kind of error while opening the serial port or the file, then the error is shown for the user to be aware of it. 
-
-
-```python
-                    except Exception as e:
-                        print(f"Error while reading data: {e}")
-                        
-  
-    except serial.SerialException as e:
-        print(f"Error with the serial port: {e}")
-    except KeyboardInterrupt:
-        print("\nUser aborted the program.")
-    finally:
-        if 'ser' in locals() and ser.is_open:
-            ser.close()
-
+1. Copia las carpetas de los ensayos del simulador dentro de `datos_simulador/`. De cada ensayo solo hacen falta `config.json`, `coord/rx_coord.csv` y `coord/imu_crd.csv`.
+2. Revisa `ensayos_simulador.json`: en él están las rutas, el instante de cada evento y los parámetros.
+3. Desde la carpeta `scripts/`:
 
 ```
+python exportar_edge_impulse.py ../ensayos_simulador.json
+```
 
-With this section of code, the program is finished. 
+Para añadir un ensayo nuevo basta con añadir una entrada en `ensayos_simulador.json`. No hay que tocar el código.
 
-<br>
+## Qué hay en cada carpeta
 
-### Saving the results
+| Carpeta | Contenido |
+|---|---|
+| `scripts/formato_crudo.py` | Definición del CSV en crudo, el formato común al simulador y a las ESP32 |
+| `scripts/adaptador_simulador.py` | Datos del simulador → CSV en crudo. Se puede ejecutar solo |
+| `scripts/calculo_columnas.py` | CSV en crudo → las 37 columnas del modelo. Es el mismo cálculo para los dos orígenes |
+| `scripts/exportar_edge_impulse.py` | Ejecuta la cadena completa y escribe los CSV para Edge Impulse |
+| `datos/crudo/` | Un CSV en crudo por ensayo, más su archivo de composición |
+| `datos/columnas/` | Todos los ciclos con las 37 columnas, su uso y su etiqueta. Sirve para revisar |
+| `datos/edge_impulse/` | **Los CSV de entrenamiento**, uno por ensayo y etiqueta |
+| `datos/revision/` | Figuras de revisión de las columnas principales |
+| `datos/resumen.json` | Referencias de calibración, número de filas, ciclos descartados |
 
-The output files are indicated to be saved inside the [TinyML data sets](/extras/AI%20Integration/tinyML%20data%20sets/) folder. After finishing the experiments, the user can upload them directly from this folder into the tinyML generator used. 
+## Cadena de procesamiento
 
+```
+simulador ──adaptador──► CSV en crudo ──cálculo de columnas──► columnas + etiqueta ──► CSV Edge Impulse
+ESP32 ─────grabador────► CSV en crudo ──(el mismo cálculo)───► ...
+```
 
-<br>
+### 1. Adaptador: del simulador al CSV en crudo
 
-### Edge impulse
+- **Ciclo.** Una vuelta del round robin. Cada vagón tiene una ranura fija de 0,25 s y una vuelta completa dura 1 s. Los mensajes se asignan a su ciclo por el número de ranura, de modo que no depende de redondeos de tiempo.
+- **Tiempo cero.** El inicio de la simulación, que es la referencia de los instantes de fallo del simulador (`FAIL_TIME`).
+- **`tiempo_ms`** es el instante del último mensaje recibido en el ciclo. **`duracion_ciclo_ms`** va desde el inicio de la vuelta hasta el final de la última ranura con respuesta.
+- **Enlace C–V1.** Distancia y potencia medidas por el coordinador a V1.
+- **Enlaces entre vagones.** El simulador solo da distancias al coordinador, así que la separación se obtiene por resta: d(Vk) − d(Vk−1). Solo cuenta como visto si se recibieron los dos vagones.
+- **Potencia RX.** Solo existe para C–V1. En los demás enlaces se deja vacía, porque el simulador no la da. No es una entrada del modelo.
+- **IMU.** La de cada vagón viene en su mensaje. La del coordinador es la muestra de su propia IMU en el instante en que recibe a V1.
+- **Lo no recibido** queda como celda vacía con `visto = 0`.
+- **Último ciclo.** Se descarta si el registro termina a mitad de él.
 
+### 2. Cálculo de columnas
 
-> <img src="https://github.com/jimmyperezp/Libreria-TFG/blob/main/extras/images/Logo%20Edge%20Impulse.webp" alt="Edge Impulse Logo" width="160" height="140" align = "right"/>  Edge Impulse is the used platform to generate a tinyML model in charge of evaluating the train's status in real time. It produces a compiled neural network that is included inside the SRC files of this library. Said platform exports 3 folders:  
-1. *Model-Parameters*: Here are the weights and neccesary values for the neural network.
-2. *Edge Impulse SDK*: This is the model's engine. This folder is based on 3 main pillars:   
-    2.1: TensorFlowLite For Microcontrollers (TFLM). This is used as an optimized calculator. It's in charge of doing the matrix operations while not consuming a big part of the microcontroller resources.
-    2.2: Edge Impulse API (classifier): The main functions & methods used by the user inside the device's code are stored here  
-    2.3 Porting & Wrappers. Finally, this folder includes multiple definitions so that the model can be run in a huge variety of devices.
-3. TFLite-model. This folder includes the proyect's main definitions, such as: number of inputs, frequency, project's name, etc.
+Está documentado al principio de `calculo_columnas.py`. En resumen:
 
+- **Calibración.** La distancia de referencia de cada enlace es la mediana de los ciclos 3 a 32. Se hace una sola vez y supone que el tren está íntegro al arrancar.
+- **Por enlace:**
+  - `visto`
+  - `ciclos_sin_ver`, con tope en 10
+  - `desviacion_m`, igual a distancia − referencia
+  - `dif_acel_x_ms2`, igual a la aceleración longitudinal del vehículo trasero menos la del delantero
+- **Por vagón:** desviación respecto a la media de los demás vehículos recibidos (locomotora incluida), en acel_y, acel_z, giro_x, giro_y y giro_z.
+- **Lo no visto vale 0** en todas las columnas numéricas. Su ausencia ya la indican `visto` y `ciclos_sin_ver`.
 
-<br><br>
+### 3. Etiquetado y exportación
 
-------
-<img src="https://github.com/jimmyperezp/Programacion_de_sistemas/blob/main/logo%20escuela.png" align="right" alt="logo industriales" width="300" height="80"/>   
-Author: Jaime Pérez  
-Last modified: 07/04/2026  
+- **Ciclos 0–2: descartados.** Es el transitorio de arranque de la simulación, con aceleraciones de hasta −125 m/s².
+- **Ciclos de calibración:** se incluyen como OK.
+- **Etiqueta.** OK hasta el evento. A partir del primer ciclo que termina después del evento, `LOST_INTEGRITY`.
+- **`fin_s`** recorta el final del ensayo cuando hace falta.
+- **Formato para Edge Impulse:**
+  - `tiempo_ms` es nominal y equiespaciado (ciclo × 1000 ms), porque Edge Impulse supone muestras equiespaciadas.
+  - La duración real del ciclo va como entrada (`duracion_ciclo_ms`).
+  - Los archivos se llaman `<ETIQUETA>.<ensayo>.csv`, así que Edge Impulse puede tomar la etiqueta del nombre del archivo.
+
+## Ensayos y decisiones de etiquetado
+
+| Ensayo | Evento | OK | LOST_INTEGRITY | Notas |
+|---|---|---|---|---|
+| desacople | Desacople V2–V3 a 150 s | ciclos 3–149 (147) | ciclos 150–454 (305) | Recortado desde 455 s: V3 y V4 vuelven a recibirse en los últimos segundos, un efecto del simulador sin sentido físico |
+| prefallo | Rotura V2–V3 a 130 s | ciclos 3–129 (127) | ciclos 130–399 (270) | La degradación de 100–130 s se etiqueta OK: es unas 30 veces menor que el error UWB y no es detectable |
+| frenado | Frenado a 300 s | ciclos 3–339 (337) | — | El frenado es operación normal: todo OK |
+
+## Diferencias conocidas con las ESP32
+
+- **Duración del ciclo.** En el simulador la vuelta es fija: dura 1000 ms y baja a 500 ms cuando faltan V3 y V4. En las ESP32 dura unos 1400 ms y sube cuando hay fallos, por los tiempos de espera. Para probar en las placas un modelo entrenado con el simulador, conviene valorar si se quita esta columna.
+- **IMU.** En las ESP32 viaja a ceros hasta que haya sensores. Con IMU a ceros, el modelo adecuado para las placas es la variante solo UWB.
+- **Distancias entre vecinos.** En el simulador salen por resta, así que el ruido de los enlaces es mayor que el de una medida directa.

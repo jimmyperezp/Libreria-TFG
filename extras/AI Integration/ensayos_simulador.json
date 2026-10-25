@@ -1,0 +1,35 @@
+{
+  "general": {
+    "carpeta_salida": "datos",
+    "ciclos_descartados_inicio": 3,
+    "calibracion_primer_ciclo": 3,
+    "calibracion_n_ciclos": 30,
+    "tope_ciclos_sin_ver": 10,
+    "periodo_nominal_ms": 1000
+  },
+  "ensayos": [
+    {
+      "nombre": "desacople",
+      "descripcion": "Desacople instantáneo del enganche V2-V3 a los 150 s",
+      "carpeta_simulador": "datos_simulador/decoupling_w2_150s",
+      "evento_s": 150.0,
+      "etiqueta_tras_evento": "LOST_INTEGRITY",
+      "fin_s": 455.0
+    },
+    {
+      "nombre": "prefallo",
+      "descripcion": "Degradación del enganche V2-V3 entre 100 y 130 s y rotura a los 130 s. La degradación es indetectable con UWB y se etiqueta OK",
+      "carpeta_simulador": "datos_simulador/decoupling_prefail30s_t100s",
+      "evento_s": 130.0,
+      "etiqueta_tras_evento": "LOST_INTEGRITY",
+      "fin_s": null
+    },
+    {
+      "nombre": "frenado",
+      "descripcion": "Frenado de parada completa a los 300 s. Es operación normal: todo OK",
+      "carpeta_simulador": "datos_simulador/brake_300s",
+      "evento_s": null,
+      "fin_s": null
+    }
+  ]
+}

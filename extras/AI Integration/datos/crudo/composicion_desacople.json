@@ -1,0 +1,55 @@
+{
+  "origen": "simulador",
+  "vehiculos": [
+    {
+      "posicion": "c",
+      "id": "crd",
+      "papel": "coordinador (locomotora)"
+    },
+    {
+      "posicion": "v1",
+      "id": "c0",
+      "papel": "vagón"
+    },
+    {
+      "posicion": "v2",
+      "id": "c1",
+      "papel": "vagón"
+    },
+    {
+      "posicion": "v3",
+      "id": "c2",
+      "papel": "vagón"
+    },
+    {
+      "posicion": "v4",
+      "id": "c3",
+      "papel": "vagón"
+    }
+  ],
+  "enlaces": [
+    {
+      "columna": "enlace_c_v1",
+      "id": "crd-c0"
+    },
+    {
+      "columna": "enlace_v1_v2",
+      "id": "c0-c1"
+    },
+    {
+      "columna": "enlace_v2_v3",
+      "id": "c1-c2"
+    },
+    {
+      "columna": "enlace_v3_v4",
+      "id": "c2-c3"
+    }
+  ],
+  "imu": "simulada por el simulador (con ruido)",
+  "potencia_rx": "solo enlace_c_v1; vacía en los demás (el simulador no la da)",
+  "ciclos": 458,
+  "periodo_nominal_ms": 1000,
+  "tiempo_cero": "inicio de la simulación",
+  "ensayo": "desacople",
+  "carpeta_origen": "decoupling_w2_150s"
+}

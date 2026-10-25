@@ -1,0 +1,96 @@
+{
+  "parametros": {
+    "carpeta_salida": "datos",
+    "ciclos_descartados_inicio": 3,
+    "calibracion_primer_ciclo": 3,
+    "calibracion_n_ciclos": 30,
+    "tope_ciclos_sin_ver": 10,
+    "periodo_nominal_ms": 1000
+  },
+  "ensayos": {
+    "desacople": {
+      "descripcion": "Desacople instantáneo del enganche V2-V3 a los 150 s",
+      "ciclos_totales": 458,
+      "descartados": {
+        "descartado_arranque": 3,
+        "descartado_fin": 3
+      },
+      "archivos": {
+        "OK": {
+          "filas": 147,
+          "ciclos": [
+            3,
+            149
+          ]
+        },
+        "LOST_INTEGRITY": {
+          "filas": 305,
+          "ciclos": [
+            150,
+            454
+          ]
+        }
+      },
+      "referencias_calibracion_m": {
+        "enlace_c_v1": 21.4687,
+        "enlace_v1_v2": 21.2243,
+        "enlace_v2_v3": 21.1554,
+        "enlace_v3_v4": 21.1094
+      },
+      "avisos_calibracion": []
+    },
+    "prefallo": {
+      "descripcion": "Degradación del enganche V2-V3 entre 100 y 130 s y rotura a los 130 s. La degradación es indetectable con UWB y se etiqueta OK",
+      "ciclos_totales": 400,
+      "descartados": {
+        "descartado_arranque": 3
+      },
+      "archivos": {
+        "OK": {
+          "filas": 127,
+          "ciclos": [
+            3,
+            129
+          ]
+        },
+        "LOST_INTEGRITY": {
+          "filas": 270,
+          "ciclos": [
+            130,
+            399
+          ]
+        }
+      },
+      "referencias_calibracion_m": {
+        "enlace_c_v1": 21.4973,
+        "enlace_v1_v2": 21.144,
+        "enlace_v2_v3": 21.5487,
+        "enlace_v3_v4": 21.18
+      },
+      "avisos_calibracion": []
+    },
+    "frenado": {
+      "descripcion": "Frenado de parada completa a los 300 s. Es operación normal: todo OK",
+      "ciclos_totales": 340,
+      "descartados": {
+        "descartado_arranque": 3
+      },
+      "archivos": {
+        "OK": {
+          "filas": 337,
+          "ciclos": [
+            3,
+            339
+          ]
+        }
+      },
+      "referencias_calibracion_m": {
+        "enlace_c_v1": 21.5044,
+        "enlace_v1_v2": 21.0548,
+        "enlace_v2_v3": 21.1299,
+        "enlace_v3_v4": 21.1351
+      },
+      "avisos_calibracion": []
+    }
+  }
+}
