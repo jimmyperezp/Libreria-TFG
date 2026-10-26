@@ -5,6 +5,8 @@
 #include "DW1000Ranging.h"
 #include "DW1000.h"
 #include "composition.h"
+#include "link_references.h"
+#include "model_features.h"
 
 
 #include "model-parameters/model_metadata.h"
@@ -26,6 +28,7 @@ const uint8_t PIN_SS = 4;   // spi select pin
 #define AI_TRAINING false           // (Old TFG format, 6 fixed links. Superseded by RAW_DATA_OUTPUT)
 #define COMPOSITION_OUTPUT true     // Shows, every cycle, the train composition, the state of each link and the observed chain
 #define RAW_DATA_OUTPUT true        // Prints every cycle a CSV row ("RAW_DATA:") with the same columns as the simulator's raw CSV
+#define FEATURES_OUTPUT true        // Prints every cycle the 37 model inputs ("FEATURES:"), same columns as the training CSVs
 #define AI_DEPLOYMENT false         // Uses the trained ML model to predict the train's status
                                     // (OFF: the model currently in src/ is the TFG one, which expects the old 6-link format. It will be replaced.)
 
@@ -114,8 +117,12 @@ int16_t coordinator_son = -1;          // Node that accepted the coordinator's t
 uint32_t cycle_number = 0;             // Cycles completed since startup ("ciclo" column)
 unsigned long last_cycle_end_time = 0; // To measure each cycle's real duration
 
-/*Raw data row: fixed positions for 5 vehicles (coordinator + 4 nodes), as in the simulator's raw CSV*/
-#define RAW_VEHICLES 5
+/*Link references & model features (see link_references.h and model_features.h)*/
+LinkReferenceTable link_references;
+RawRow cycle_row;                      // This cycle's observation in fixed positions (printed as RAW_DATA)
+float model_features[NUM_FEATURES];    // This cycle's 37 model inputs
+
+/*Raw data row: fixed positions for RAW_VEHICLES (5) vehicles, as in the simulator's raw CSV*/
 const char* RAW_POSITION_NAMES[RAW_VEHICLES] = {"c", "v1", "v2", "v3", "v4"};
 const char* RAW_IMU_AXES[6] = {"acel_x_ms2", "acel_y_ms2", "acel_z_ms2", "giro_x_rads", "giro_y_rads", "giro_z_rads"};
 
@@ -179,7 +186,9 @@ void setup(){
     own_short_addr = getOwnShortAddressHeader();
 
     initComposition(composition);
+    initLinkReferences(link_references);
     if(RAW_DATA_OUTPUT) printRawHeader();
+    if(FEATURES_OUTPUT) printFeaturesHeader();
     last_cycle_end_time = millis();
 
     state = DISCOVERY;
@@ -1060,14 +1069,83 @@ void processCycle(){
     unsigned long cycle_duration = cycle_end_time - last_cycle_end_time;
     last_cycle_end_time = cycle_end_time;
 
+    // 1) Composition
     Chain observed = buildObservedChain(own_short_addr, coordinator_son, measurements, amount_measurements);
     ChainComparison comparison;
     CompositionEvent event = updateComposition(composition, observed, comparison);
 
+    // 2) References & unseen counters of every link of the composition (per pair of devices)
+    updateCompositionLinks();
+
+    // 3) This cycle's row in fixed positions, and the 37 model inputs computed from it
+    buildRawRow(cycle_row, cycle_end_time, cycle_duration);
+    computeFeatures(cycle_row, link_references, model_features);
+
+    // 4) Outputs
     if(COMPOSITION_OUTPUT) showComposition(observed, comparison, event, cycle_duration);
-    if(RAW_DATA_OUTPUT)    printRawRow(cycle_end_time, cycle_duration);
+    if(RAW_DATA_OUTPUT)    printRawRow(cycle_row);
+    if(FEATURES_OUTPUT)    printFeatures(cycle_row.cycle);
 
     cycle_number++;
+}
+
+void updateCompositionLinks(){
+
+    // Every link of the stored composition (not only the first RAW_LINKS) keeps its reference updated,
+    // so that the composition analysis is independent of how many positions the model uses.
+    const Chain &comp = composition.current;
+
+    for(int i = 0; i + 1 < comp.length; i++){
+        int idx = activeMeasureBetween(comp.ids[i], comp.ids[i+1]);
+        bool seen = (idx != -1);
+        float distance = seen ? measurements[idx].distance : 0.0f;
+        updateLinkReference(link_references, comp.ids[i], comp.ids[i+1], seen, distance, comp);
+    }
+}
+
+void buildRawRow(RawRow &row, unsigned long cycle_end_time, unsigned long cycle_duration){
+
+    // Maps this cycle's measures and IMU blocks to the fixed positions (c, v1..v4) of the composition.
+
+    const Chain &comp = composition.current;
+
+    row.cycle = cycle_number;
+    row.time_ms = cycle_end_time;
+    row.duration_ms = cycle_duration;
+
+    for(int v = 0; v < RAW_VEHICLES; v++){
+        row.position_used[v] = (v < comp.length);
+        row.ids[v] = row.position_used[v] ? comp.ids[v] : 0;
+    }
+
+    // Links between consecutive positions
+    for(int i = 0; i < RAW_LINKS; i++){
+        int idx = -1;
+        if(row.position_used[i] && row.position_used[i+1]) idx = activeMeasureBetween(row.ids[i], row.ids[i+1]);
+
+        row.link_seen[i] = (idx != -1);
+        row.link_distance[i] = row.link_seen[i] ? measurements[idx].distance : 0.0f;
+        row.link_rx_power[i] = row.link_seen[i] ? measurements[idx].rxPower  : 0.0f;
+    }
+
+    // IMU of each position (coordinator: its own IMU; nodes: the blocks received in the report)
+    for(int v = 0; v < RAW_VEHICLES; v++){
+
+        ImuSample sample;
+        bool available = false;
+
+        if(v == 0){ readOwnImu(sample); available = true; }
+        else if(row.position_used[v]){
+            int idx = searchImu(row.ids[v]);
+            if(idx != -1){ sample = imu_received[idx]; available = true; }
+        }
+
+        row.imu_received[v] = available;
+        for(int k = 0; k < 3; k++){
+            row.acc[v][k]  = available ? DW1000Ranging.decodeAcc(sample.acc[k])   : 0.0f;
+            row.gyro[v][k] = available ? DW1000Ranging.decodeGyro(sample.gyro[k]) : 0.0f;
+        }
+    }
 }
 
 void printChain(const Chain &chain){
@@ -1114,8 +1192,18 @@ void showComposition(const Chain &observed, ChainComparison comparison, Composit
     for(int i = 0; i + 1 < comp.length; i++){
         Serial.print("   "); Serial.print(comp.ids[i], HEX); Serial.print("-"); Serial.print(comp.ids[i+1], HEX);
         int idx = activeMeasureBetween(comp.ids[i], comp.ids[i+1]);
-        if(idx != -1){ Serial.print("\tseen       "); Serial.print(measurements[idx].distance); Serial.println(" m"); }
-        else Serial.println("\tNOT SEEN");
+        if(idx != -1){ Serial.print("\tseen       "); Serial.print(measurements[idx].distance); Serial.print(" m"); }
+        else Serial.print("\tNOT SEEN   ");
+
+        LinkReference* ref = findLinkReference(link_references, comp.ids[i], comp.ids[i+1]);
+        if(ref == nullptr || ref->num_samples == 0) Serial.println("\tref: no samples yet");
+        else{
+            Serial.print("\tref "); Serial.print(ref->reference); Serial.print(" m ");
+            if(ref->fixed) Serial.print("(fixed)");
+            else{ Serial.print("(calibrating "); Serial.print(ref->num_samples); Serial.print("/"); Serial.print(LINK_REF_SAMPLES); Serial.print(")"); }
+            if(ref->unseen_cycles > 0){ Serial.print("   unseen for "); Serial.print(ref->unseen_cycles); Serial.print(ref->unseen_cycles >= UNSEEN_CYCLES_CAP ? "+ cycles" : " cycles"); }
+            Serial.println();
+        }
     }
 
     Serial.print("   Observed: "); printChain(observed);
@@ -1161,51 +1249,40 @@ void printRawHeader(){
     Serial.println();
 }
 
-void printRawRow(unsigned long cycle_end_time, unsigned long cycle_duration){
+void printRawRow(const RawRow &row){
 
-    // One row per cycle. Positions (c, v1..v4) come from the stored composition.
+    // One CSV row per cycle, from the same RawRow used to compute the features.
     // Whatever wasn't received is left EMPTY (and "visto" = 0), as in the simulator's raw CSV.
 
-    const Chain &comp = composition.current;
-
     Serial.print("RAW_DATA:");
-    Serial.print(cycle_number); Serial.print(",");
-    Serial.print(cycle_end_time); Serial.print(",");
-    Serial.print(cycle_duration);
+    Serial.print(row.cycle); Serial.print(",");
+    Serial.print(row.time_ms); Serial.print(",");
+    Serial.print(row.duration_ms);
 
-    // Links between consecutive positions
-    for(int i = 0; i < RAW_VEHICLES - 1; i++){
-        int idx = -1;
-        if(i + 1 < comp.length) idx = activeMeasureBetween(comp.ids[i], comp.ids[i+1]);
-
-        if(idx != -1){
-            Serial.print(",1,"); Serial.print(measurements[idx].distance, 3);
-            Serial.print(",");   Serial.print(measurements[idx].rxPower, 2);
+    for(int i = 0; i < RAW_LINKS; i++){
+        if(row.link_seen[i]){
+            Serial.print(",1,"); Serial.print(row.link_distance[i], 3);
+            Serial.print(",");   Serial.print(row.link_rx_power[i], 2);
         }
         else Serial.print(",0,,");
     }
 
-    // IMU of each position
     for(int v = 0; v < RAW_VEHICLES; v++){
-
-        ImuSample sample;
-        bool available = false;
-
-        if(v == 0){ readOwnImu(sample); available = true; }		// Coordinator: its own IMU
-        else if(v < comp.length){
-            int idx = searchImu(comp.ids[v]);
-            if(idx != -1){ sample = imu_received[idx]; available = true; }
-        }
-
-        for(int k = 0; k < 3; k++){
-            Serial.print(",");
-            if(available) Serial.print(DW1000Ranging.decodeAcc(sample.acc[k]), 3);
-        }
-        for(int k = 0; k < 3; k++){
-            Serial.print(",");
-            if(available) Serial.print(DW1000Ranging.decodeGyro(sample.gyro[k]), 4);
-        }
+        for(int k = 0; k < 3; k++){ Serial.print(","); if(row.imu_received[v]) Serial.print(row.acc[v][k], 3);  }
+        for(int k = 0; k < 3; k++){ Serial.print(","); if(row.imu_received[v]) Serial.print(row.gyro[v][k], 4); }
     }
+    Serial.println();
+}
+
+void printFeaturesHeader(){
+    Serial.print("FEATURES_HEADER:ciclo");
+    for(int i = 0; i < NUM_FEATURES; i++){ Serial.print(","); Serial.print(featureName(i)); }
+    Serial.println();
+}
+
+void printFeatures(uint32_t cycle){
+    Serial.print("FEATURES:"); Serial.print(cycle);
+    for(int i = 0; i < NUM_FEATURES; i++){ Serial.print(","); Serial.print(model_features[i], 6); }
     Serial.println();
 }
 
