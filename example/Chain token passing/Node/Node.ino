@@ -763,10 +763,12 @@ void TokenHandoffFailed(){
         
     }
     
-    Existing_devices[searchDevice(token_target_address)].active = false;
-    measurements[searchMeasure(own_short_addr,getClosestNodeAddress())].active = false;
-    
     // Set both measure and device as inactive, so that it is not selected again when calling getClosestNodeAddress().
+    // The measure must be searched with token_target_address (the node that failed). Using getClosestNodeAddress() here
+    // would return the NEXT closest node (the failed one is already inactive) and deactivate the wrong measure.
+    Existing_devices[searchDevice(token_target_address)].active = false;
+    int failed_measure = searchMeasure(own_short_addr,token_target_address);
+    if(failed_measure != -1) measurements[failed_measure].active = false;
 
     state = TOKEN_HANDOFF_STATE; // Goes back to handoff. When calling getClosestNodeAddress(), the failed node won't be selected (it is set as inactive), so token will go to the next closest node. 
 
