@@ -79,8 +79,40 @@ Está documentado al principio de `calculo_columnas.py`. En resumen:
 | prefallo | Rotura V2–V3 a 130 s | ciclos 3–129 (127) | ciclos 130–399 (270) | La degradación de 100–130 s se etiqueta OK: es unas 30 veces menor que el error UWB y no es detectable |
 | frenado | Frenado a 300 s | ciclos 3–339 (337) | — | El frenado es operación normal: todo OK |
 
+## Grabación de ensayos con las ESP32
+
+`scripts/grabador_serie.py` registra un ensayo leyendo el monitor serie del coordinador. Es la versión nueva de `TinyML data collector.py`, adaptada al formato en crudo.
+
+Requisito: `pip install pyserial`. Desde la carpeta `scripts/`:
+
+```
+python grabador_serie.py ../config_grabador.json --ensayo desconexion_v3
+```
+
+Durante la grabación:
+- **Marcas de fase con teclas fijas**, definidas en `config_grabador.json` (por defecto `o` = OK y `l` = LOST_INTEGRITY). La marca se guarda con el reloj del coordinador: la fase nueva empieza en el ciclo siguiente al último recibido. Al empezar se marca automáticamente la `fase_inicial`. Para añadir fases, basta con añadir teclas al archivo.
+- **Terminar:** tecla `q` o Ctrl+C.
+- `--ver-monitor` muestra todo el monitor serie; sin él, solo una línea de estado.
+
+Archivos que deja en `grabaciones/<ensayo>/`:
+
+| Archivo | Contenido |
+|---|---|
+| `crudo_<ensayo>.csv` | Filas `RAW_DATA`, con el mismo formato que el CSV en crudo del simulador |
+| `columnas_placa_<ensayo>.csv` | Filas `FEATURES`: las 37 columnas calculadas por la placa |
+| `marcas_<ensayo>.csv` | Marcas de fase: desde qué ciclo, tiempo del coordinador, fase y hora del PC |
+| `monitor_<ensayo>.txt` | Todo el monitor serie, con la hora del PC |
+| `info_<ensayo>.json` | Puerto, commit del repositorio, notas y resumen (filas, ciclos perdidos, líneas corruptas) |
+
+Protecciones:
+- Comprueba que la cabecera `RAW_HEADER` del coordinador coincide con `formato_crudo.py`. Si no coincide, el firmware y los scripts son de versiones distintas y se detiene.
+- Si el coordinador se reinicia a mitad de grabación (cabecera nueva o el ciclo retrocede), se detiene conservando lo grabado: el reloj vuelve a 0 y las marcas dejarían de cuadrar.
+- Cuenta los ciclos perdidos y las líneas corruptas, y escribe los archivos línea a línea.
+
+**Pendiente:** el exportador todavía no lee las marcas (admite un solo evento por ensayo) y se detiene si hay huecos en la grabación. Se ampliará para los ensayos con las ESP32.
+
 ## Diferencias conocidas con las ESP32
 
 - **Duración del ciclo.** En el simulador la vuelta es fija: dura 1000 ms y baja a 500 ms cuando faltan V3 y V4. En las ESP32 dura unos 1400 ms y sube cuando hay fallos, por los tiempos de espera. Para probar en las placas un modelo entrenado con el simulador, conviene valorar si se quita esta columna.
-- **IMU.** En las ESP32 viaja a ceros hasta que haya sensores. Con IMU a ceros, el modelo adecuado para las placas es la variante solo UWB.
+- **IMU.** En las ESP32 viaja a ceros hasta que haya sensores, así que en las placas el modelo no recibe la información de la IMU con la que se entrenó. Los resultados en las placas sirven también para justificar la necesidad de añadir IMU a los dispositivos.
 - **Distancias entre vecinos.** En el simulador salen por resta, así que el ruido de los enlaces es mayor que el de una medida directa.

@@ -1,0 +1,11 @@
+{
+  "puerto": "COM4",
+  "baudios": 115200,
+  "carpeta_salida": "grabaciones",
+  "fase_inicial": "OK",
+  "teclas": {
+    "o": "OK",
+    "l": "LOST_INTEGRITY"
+  },
+  "tecla_salir": "q"
+}
