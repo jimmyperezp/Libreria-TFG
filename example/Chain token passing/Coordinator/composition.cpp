@@ -46,13 +46,24 @@ Chain buildObservedChain(uint8_t coordinator, int16_t coordinator_son, const Mea
 		uint8_t current = (uint8_t)next;
 		next = -1;
 
-		// Each node reports only its measure with its son: the active measure whose origin is 'current'
-		// gives the next device. Devices already in the chain are skipped to avoid loops.
+		// Each node reports only its measure with its son, so the next device is the OTHER END of the active
+		// measure that involves 'current' and a device not yet in the chain.
+		// The direction of the measure is NOT used: the coordinator stores each pair once (logMeasure searches
+		// both directions), so a measure reported as B3->B2 may be stored as B2->B3 from a previous cycle.
+		// The coordinator's own measures are skipped: its son is known from the token handoff ACK.
 		for(int i = 0; i < num_measures; i++){
 			if(!measures[i].active) continue;
-			if(measures[i].short_addr_origin != current) continue;
-			if(chainIndexOf(chain, measures[i].short_addr_dest) != -1) continue;
-			next = measures[i].short_addr_dest;
+			uint8_t a = measures[i].short_addr_origin;
+			uint8_t b = measures[i].short_addr_dest;
+			if(a == coordinator || b == coordinator) continue;
+
+			uint8_t other;
+			if(a == current) other = b;
+			else if(b == current) other = a;
+			else continue;
+
+			if(chainIndexOf(chain, other) != -1) continue;	// Already in the chain (e.g. the parent)
+			next = other;
 			break;
 		}
 	}
