@@ -89,8 +89,23 @@ unsigned long wait_for_range_start = 0;
 
 /*Token Control*/
 static bool i_have_token = false; 
-int16_t token_target_address = -1; 
-uint8_t parent_address = 0; //Device that sent the token to this node. The data return will be sent to this address. 
+int16_t token_target_address = -1;
+uint8_t parent_address = 0; //Device that sent the token to this node. The data return will be sent to this address.
+int16_t son_address = -1;   //Node that accepted this node's token in the current cycle. -1 --> no son (this node is the tail).
+
+
+/*IMU & data report*/
+#define MAX_IMU_SAMPLES MAX_DEVICES
+ImuSample imu_received[MAX_IMU_SAMPLES];   // IMU blocks received in the son's report (devices further down the chain)
+uint8_t amount_imu_received = 0;
+
+// Snapshot of the report sent to the parent. It is built ONCE when entering RETURN_TO_PARENT
+// and resent exactly as it is on every retry, until the parent ACKs it (or retries run out).
+#define MAX_REPORT_MEASURES MAX_DEVICES
+Measurement report_measures[MAX_REPORT_MEASURES];
+uint8_t amount_report_measures = 0;
+ImuSample report_imu[MAX_IMU_SAMPLES];
+uint8_t amount_report_imu = 0;
 
 
 /*MODE SWITCHING control*/
@@ -119,6 +134,9 @@ const unsigned long WAITING_RETURN_TIME = 2500;
 /*Function prototypes*/
 //transmitUnicast presents errors as one of the parameters is set as null
 void transmitUnicast(uint8_t message_type, DW1000Device* explicit_target = nullptr);
+void readOwnImu(ImuSample &sample);
+void storeReceivedImu(ImuSample* incoming, int num_incoming);
+void buildReport();
 
 /*CODE*/
 
@@ -374,6 +392,10 @@ void tokenHandoff(uint8_t incoming_cycle_id){
 
     parent_address = requesting_address; // I save the parent address to know where to send the return data when the time comes.
 
+    // New cycle for this node: no son yet and no IMU blocks received from further devices.
+    son_address = -1;
+    amount_imu_received = 0;
+
     
     if(!(i_have_token)){
         i_have_token = true;
@@ -419,7 +441,8 @@ void tokenHandoffAck(){
     }
 
     Existing_devices[searchDevice(origin_short_addr)].token_handoff_pending = false;
-    i_have_token = false; 
+    son_address = origin_short_addr; // The node that accepted the token is my son in this cycle
+    i_have_token = false;
     switchToResponder();
     state = WAIT_FOR_RETURN;
 
@@ -671,20 +694,21 @@ void transmitUnicast(uint8_t message_type,DW1000Device* explicit_target){
                     Serial.print(parent_address,HEX);
                     Serial.print("] via unicast");
                 }
-            DW1000Ranging.transmitAggregatedDataReport((Measurement*)measurements, amount_measurements,parent);
+            DW1000Ranging.transmitAggregatedDataReport(report_measures, amount_report_measures, parent, report_imu, amount_report_imu);
         }
 
 
         else{
             if(DEBUG_NODE){
-                Serial.print("Parent ["); 
-                Serial.print(parent_address,HEX); 
+                Serial.print("Parent [");
+                Serial.print(parent_address,HEX);
                 Serial.println("] not found. Data report sent via broadcast. ");
             }
-            DW1000Ranging.transmitAggregatedDataReport((Measurement*)measurements, amount_measurements, nullptr);
+            DW1000Ranging.transmitAggregatedDataReport(report_measures, amount_report_measures, nullptr, report_imu, amount_report_imu);
         }
 
-        clearMeasures(); // No matter if transmitting via unicast or broadcast, measures are "cleared" (marked as inactive) to avoid sending obsolete measures next time.
+        // The report is sent from the snapshot built in buildReport(). Retries resend the same snapshot.
+        // (Before, measures were cleared here after the first attempt, so every retry was sent EMPTY.)
     }
     else if(message_type == MSG_DATA_REPORT_ACK){
 
@@ -836,7 +860,8 @@ void aggregatedDataReport(byte* data){
             }
             //1) Manages tokenHandoffAck flags as if it was received
             Existing_devices[searchDevice(reporting_node_short_addr)].token_handoff_pending = false;
-            i_have_token = false; 
+            son_address = reporting_node_short_addr; // The node that accepted the token is my son in this cycle
+            i_have_token = false;
             switchToResponder();
 
             //2) Sets the state and flags before processing the data.
@@ -898,6 +923,11 @@ void aggregatedDataReport(byte* data){
             logMeasure(short_addr_origin,short_addr_dest,distance_m,rxPower);
 
         }
+
+        // IMU blocks of the devices further down the chain (they are forwarded to the parent)
+        ImuSample incoming_imu[MAX_IMU_SAMPLES];
+        int num_incoming_imu = DW1000Ranging.readAggregatedImu(data, incoming_imu, MAX_IMU_SAMPLES);
+        storeReceivedImu(incoming_imu, num_incoming_imu);
     }
 
     _wait_for_return = false;
@@ -930,6 +960,104 @@ void dataReportAck(){
 void clearMeasures(){
     for(int i=0; i<amount_measurements; i++){
         measurements[i].active = false;
+    }
+}
+
+
+/*IMU*/
+
+void readOwnImu(ImuSample &sample){
+
+    // Reads this node's IMU and encodes it as it travels in the report.
+    // The boards don't have an IMU yet: all values are 0. When the sensor is added, only the
+    // six physical values below must be filled in (acc in m/s^2, gyro in rad/s).
+
+    float acc_ms2[3]  = {0.0f, 0.0f, 0.0f};
+    float gyro_rads[3] = {0.0f, 0.0f, 0.0f};
+
+    sample.short_addr = own_short_addr;
+    for(int i = 0; i < 3; i++){
+        sample.acc[i]  = DW1000Ranging.encodeAcc(acc_ms2[i]);
+        sample.gyro[i] = DW1000Ranging.encodeGyro(gyro_rads[i]);
+    }
+}
+
+void storeReceivedImu(ImuSample* incoming, int num_incoming){
+
+    // Saves the IMU blocks received from the son. If a device's block was already stored
+    // (e.g. a repeated report), it is overwritten instead of duplicated.
+
+    for(int i = 0; i < num_incoming; i++){
+
+        int slot = -1;
+        for(int j = 0; j < amount_imu_received; j++){
+            if(imu_received[j].short_addr == incoming[i].short_addr){ slot = j; break; }
+        }
+
+        if(slot == -1){
+            if(amount_imu_received >= MAX_IMU_SAMPLES){
+                Serial.println("IMU list is full. Block discarded");
+                continue;
+            }
+            slot = amount_imu_received++;
+        }
+        imu_received[slot] = incoming[i];
+    }
+}
+
+
+/*REPORT TO PARENT*/
+
+void buildReport(){
+
+    // Builds the snapshot that will be sent to the parent (and resent as-is on retries):
+    //  - Measures: ONLY this node's measure with its son, plus the measures received from the son.
+    //    The measures with other devices were only needed to choose the son and are not reported.
+    //  - IMU: the blocks received from the son, plus this node's own block.
+    // Afterwards, this cycle's measures and received IMU blocks are cleared.
+
+    amount_report_measures = 0;
+
+    for(int i = 0; i < amount_measurements; i++){
+
+        if(!measurements[i].active) continue;
+
+        bool own_measure = (measurements[i].short_addr_origin == own_short_addr);
+        if(own_measure && (son_address == -1 || measurements[i].short_addr_dest != son_address)) continue;
+
+        if(amount_report_measures >= MAX_REPORT_MEASURES){
+            Serial.println("Report measures list is full. Measure discarded");
+            break;
+        }
+        report_measures[amount_report_measures++] = measurements[i];
+    }
+
+    amount_report_imu = 0;
+    for(int i = 0; i < amount_imu_received && amount_report_imu < MAX_IMU_SAMPLES - 1; i++){
+        report_imu[amount_report_imu++] = imu_received[i];
+    }
+    readOwnImu(report_imu[amount_report_imu++]); // Own block always goes in (one slot is always kept free for it)
+
+    clearMeasures();
+    amount_imu_received = 0;
+
+    if(DEBUG_NODE){
+        // Same formula as the library's size check: MAC header + type + M + 6M + N + 13N
+        int report_bytes = SHORT_MAC_LEN + 3 + 6 * amount_report_measures + IMU_BLOCK_LEN * amount_report_imu;
+        Serial.print("\nReport built --> Son: [");
+        if(son_address == -1) Serial.print("none, I am the tail"); else Serial.print(son_address,HEX);
+        Serial.print("]  Measures: "); Serial.print(amount_report_measures);
+        Serial.print("  IMU blocks: "); Serial.print(amount_report_imu);
+        Serial.print("  Size: "); Serial.print(report_bytes); Serial.print("/"); Serial.print(LEN_DATA); Serial.println(" bytes");
+
+        for(int i = 0; i < amount_report_measures; i++){
+            Serial.print("   Measure "); Serial.print(report_measures[i].short_addr_origin,HEX);
+            Serial.print(" -> "); Serial.print(report_measures[i].short_addr_dest,HEX);
+            Serial.print(": "); Serial.print(report_measures[i].distance); Serial.println(" m");
+        }
+        Serial.print("   IMU from:");
+        for(int i = 0; i < amount_report_imu; i++){ Serial.print(" "); Serial.print(report_imu[i].short_addr,HEX); }
+        Serial.println();
     }
 }
 
@@ -1178,6 +1306,7 @@ void loop(){
     }
     else if(state == RETURN_TO_PARENT){
 
+        buildReport(); // Snapshot of this cycle's report. Retries will resend this same snapshot.
         state = WAIT_RETURN_TO_PARENT_ACK;
         _wait_return_to_parent_ack = false;
         num_retries = 0;
