@@ -23,7 +23,8 @@ const uint8_t PIN_SS = 4;   // spi select pin
 #define KAMADA_KAWAI_PLOTTING false // Shows a JSON file to draw the nodes using Kamada-Kawai's algorithm
 #define RX_DISTANCE_PLOTTING false  // Shows a CSV output to graph the relationship between RX power & distance
 #define AI_TRAINING false           // Shows a CSV output to export to a tinyML model, which interprets & analizes possible decouplings.
-#define AI_DEPLOYMENT true          // Uses the trained ML model to predict the train's status
+#define AI_DEPLOYMENT false         // Uses the trained ML model to predict the train's status
+                                    // (OFF: the model currently in src/ is the TFG one, which expects the old 6-link format. It will be replaced.)
 
 
 #define DEVICE_ADDR "C1:00:5B:D5:A9:9A:E2:9C" 
@@ -103,6 +104,11 @@ const uint8_t links[6][2] = {
 };
 
 uint8_t cycle_count = 0;
+
+/*IMU blocks received in the data report (one per node in the chain)*/
+#define MAX_IMU_SAMPLES MAX_DEVICES
+ImuSample imu_received[MAX_IMU_SAMPLES];
+uint8_t amount_imu_received = 0;
 
 /*Used to print results*/
 unsigned long last_shown_AI_data_timestamp = 0;
@@ -737,6 +743,9 @@ void aggregatedDataReport(byte* data){
             logMeasure(short_addr_origin,short_addr_dest,distance_m,rxPower);
 
         }
+
+        // IMU blocks of the nodes in the chain
+        amount_imu_received = DW1000Ranging.readAggregatedImu(data, imu_received, MAX_IMU_SAMPLES);
     }
 
     _wait_for_return = false; // To restart the timer next time state is WAIT_FOR_RETURN.
@@ -778,6 +787,16 @@ void showData(){
             inactive_measures_exist = true;
             break;
         }
+    }
+
+    Serial.print("\n IMU blocks received: "); Serial.println(amount_imu_received);
+    for (int i = 0; i < amount_imu_received; i++){
+        Serial.print(" Node: "); Serial.print(imu_received[i].short_addr,HEX);
+        Serial.print("\t Acc [m/s2]: ");
+        for (int k = 0; k < 3; k++){ Serial.print(DW1000Ranging.decodeAcc(imu_received[i].acc[k]),3); Serial.print(k < 2 ? ", " : ""); }
+        Serial.print("\t Gyro [rad/s]: ");
+        for (int k = 0; k < 3; k++){ Serial.print(DW1000Ranging.decodeGyro(imu_received[i].gyro[k]),4); Serial.print(k < 2 ? ", " : ""); }
+        Serial.println();
     }
 
     if(inactive_measures_exist == true){
@@ -1013,6 +1032,7 @@ void resetMeasures(){
     for(int i = 0;i<amount_measurements;i++){
         measurements[i].active = false; //This way, only prints active measures next time showData() is called
     }
+    amount_imu_received = 0; // IMU blocks belong to a single cycle as well
 }
 
 /*LOOP*/
