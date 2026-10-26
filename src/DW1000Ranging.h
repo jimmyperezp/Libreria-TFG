@@ -2,7 +2,6 @@
 
 #ifndef _DW1000Ranging_H_INCLUDED
 #define _DW1000Ranging_H_INCLUDED
-#endif
 
 #include "DW1000.h"
 #include "DW1000Time.h"
@@ -339,3 +338,5 @@ class DW1000RangingClass {
 };
 
 extern DW1000RangingClass DW1000Ranging;
+
+#endif // _DW1000Ranging_H_INCLUDED
