@@ -1510,11 +1510,14 @@ void DW1000RangingClass::transmitLocalDataReport(Measurement* measurements, int 
     transmit(data); //Finally, sends the message
 }
 
-void DW1000RangingClass::transmitAggregatedDataReport(Measurement* measurements, int numMeasures, DW1000Device* device) {
+void DW1000RangingClass::transmitAggregatedDataReport(Measurement* measurements, int numMeasures, DW1000Device* device, ImuSample* imu_samples, int num_imu) {
 
-	//Works same as local data report, but includes the origin short Address in the payload, as this message is aggregated and can be sent by other devices that are not the origin of the measures. 
+	//Works same as local data report, but includes the origin short Address in the payload, as this message is aggregated and can be sent by other devices that are not the origin of the measures.
+	//After the measures, it carries the IMU blocks of the devices included in the report:
+	//	[MAC header][type][M][M x 6 bytes measures][N][N x 13 bytes IMU blocks]
 
-	
+	if(imu_samples == nullptr) num_imu = 0;
+
 	uint8_t active_measures = 0;
 	byte dest[2];
 
@@ -1539,32 +1542,88 @@ void DW1000RangingClass::transmitAggregatedDataReport(Measurement* measurements,
 	}
 	data[index++] = active_measures;
 
-	size_t totalPayloadSize = 1 + active_measures * 6; //1 byte more than the localDataReport, as the origin_short_address has to be included as well.  
-	size_t totalMessageSize = SHORT_MAC_LEN + 1 + totalPayloadSize; 
+	// [type] + [M] + measures + [N] + IMU blocks
+	size_t totalPayloadSize = 1 + 1 + active_measures * 6 + 1 + num_imu * IMU_BLOCK_LEN;
+	size_t totalMessageSize = SHORT_MAC_LEN + totalPayloadSize;
 
 	if (totalMessageSize > LEN_DATA) {
-		if (DEBUG) {
-			Serial.println("Error: DATA REPORT exceeds the size of the data[] buffer");
-		}
-		return;  
+		// Always reported (not only in DEBUG): a report that doesn't fit is never sent, so the problem must be visible.
+		Serial.print("Error: DATA REPORT exceeds the size of the data[] buffer (");
+		Serial.print(totalMessageSize); Serial.print(" > "); Serial.print(LEN_DATA); Serial.println(" bytes). Report not sent.");
+		return;
 	}
 
-	for (uint8_t i = 0; i < numMeasures; i++) {
+	for (int i = 0; i < numMeasures; i++) {
 		if(measurements[i].active == true){
 
 			data[index++] = (uint8_t)measurements[i].short_addr_origin;
 			data[index++] = (uint8_t)measurements[i].short_addr_dest;
-			uint16_t distance_cm = (uint16_t)(measurements[i].distance * 100.0f);
-			memcpy(data + index, &distance_cm, 2); 
+
+			// Distance in cm, saturated to the uint16 range (0 - 655.35 m) so it never wraps around
+			float distance_cm_f = measurements[i].distance * 100.0f;
+			if(distance_cm_f < 0.0f) distance_cm_f = 0.0f;
+			if(distance_cm_f > 65535.0f) distance_cm_f = 65535.0f;
+			uint16_t distance_cm = (uint16_t)distance_cm_f;
+			memcpy(data + index, &distance_cm, 2);
 			index += 2;
-			int16_t rxPower_tx = (int16_t)(measurements[i].rxPower * 100.0f); 
-			memcpy(data + index, &rxPower_tx, 2); 
+			int16_t rxPower_tx = (int16_t)(measurements[i].rxPower * 100.0f);
+			memcpy(data + index, &rxPower_tx, 2);
 			index += 2;
 		}
-		
+
 	}
-	
+
+	// IMU blocks
+	data[index++] = (uint8_t)num_imu;
+
+	for (int i = 0; i < num_imu; i++) {
+		data[index++] = imu_samples[i].short_addr;
+		memcpy(data + index, imu_samples[i].acc, 6);
+		index += 6;
+		memcpy(data + index, imu_samples[i].gyro, 6);
+		index += 6;
+	}
+
 	transmit(data);
+}
+
+int DW1000RangingClass::readAggregatedImu(byte* report, ImuSample* out, int max_out) {
+
+	// Layout: [MAC header][type][M][M x 6][N][N x 13]
+	int index = SHORT_MAC_LEN + 1;
+	uint8_t num_measures = report[index++];
+	index += num_measures * 6;
+
+	if (index >= LEN_DATA) return 0;	// Malformed report: no room left for the IMU count
+
+	uint8_t num_imu = report[index++];
+
+	if (index + num_imu * IMU_BLOCK_LEN > LEN_DATA) return 0;	// Malformed report: blocks don't fit in the buffer
+
+	int copied = 0;
+	for (int i = 0; i < num_imu && copied < max_out; i++) {
+		out[copied].short_addr = report[index++];
+		memcpy(out[copied].acc, report + index, 6);
+		index += 6;
+		memcpy(out[copied].gyro, report + index, 6);
+		index += 6;
+		copied++;
+	}
+	return copied;
+}
+
+int16_t DW1000RangingClass::encodeAcc(float acc_ms2) {
+	float units = acc_ms2 * IMU_ACC_UNITS_PER_MS2;
+	if (units > 32767.0f)  units = 32767.0f;	// Saturation: a value out of range is clipped, never wrapped
+	if (units < -32768.0f) units = -32768.0f;
+	return (int16_t)lroundf(units);
+}
+
+int16_t DW1000RangingClass::encodeGyro(float gyro_rads) {
+	float units = gyro_rads * IMU_GYRO_UNITS_PER_RADS;
+	if (units > 32767.0f)  units = 32767.0f;
+	if (units < -32768.0f) units = -32768.0f;
+	return (int16_t)lroundf(units);
 }
 
 void DW1000RangingClass::transmitDataReportAck(DW1000Device* device){

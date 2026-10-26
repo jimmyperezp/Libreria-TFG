@@ -69,6 +69,25 @@ struct Measurement {
 };
 
 
+/* IMU data carried inside the aggregated data reports */
+
+// Each IMU block inside a DATA_REPORT_AGGREGATED takes 13 bytes:
+//   [0]      short address header of the node the sample belongs to
+//   [1..6]   acc x, y, z   --> int16, 1 unit = 1 mm/s^2     (range +-32.767 m/s^2, ~ +-3.3 g)
+//   [7..12]  gyro x, y, z  --> int16, 1 unit = 0.1 mrad/s   (range +-3.2767 rad/s, ~ +-187 deg/s)
+// Values outside the range are saturated (never wrapped).
+#define IMU_BLOCK_LEN 13
+#define IMU_ACC_UNITS_PER_MS2   1000.0f		// 1 unit = 1 mm/s^2
+#define IMU_GYRO_UNITS_PER_RADS 10000.0f	// 1 unit = 0.1 mrad/s
+
+// IMU sample of one device, already encoded as it travels in the report.
+struct ImuSample {
+	uint8_t short_addr;		// Short address header of the device that produced the sample
+	int16_t acc[3];			// x, y, z in mm/s^2
+	int16_t gyro[3];		// x, y, z in 0.1 mrad/s
+};
+
+
 // Each device locally (in the ".ino") creates an array of this struct to handle its known Devices from there.
 struct ExistingDevice{
 	
@@ -181,8 +200,18 @@ class DW1000RangingClass {
 		void transmitTokenHandoffNack		(DW1000Device* device = nullptr);
 		
 		void transmitLocalDataReport		(Measurement* measurements, int num_measures, DW1000Device* device = nullptr); 
-		void transmitAggregatedDataReport	(Measurement* measurements, int num_measures, DW1000Device* device = nullptr);
- 
+		void transmitAggregatedDataReport	(Measurement* measurements, int num_measures, DW1000Device* device = nullptr, ImuSample* imu_samples = nullptr, int num_imu = 0);
+
+		// Reads the IMU blocks placed after the measurements of a received DATA_REPORT_AGGREGATED.
+		// Returns the number of blocks copied into 'out' (0 if there are none or the report is malformed).
+		static int readAggregatedImu(byte* report, ImuSample* out, int max_out);
+
+		// Physical units <--> encoded int16 (with saturation)
+		static int16_t encodeAcc(float acc_ms2);
+		static int16_t encodeGyro(float gyro_rads);
+		static float   decodeAcc(int16_t acc_units)   { return (float)acc_units / IMU_ACC_UNITS_PER_MS2;   }
+		static float   decodeGyro(int16_t gyro_units) { return (float)gyro_units / IMU_GYRO_UNITS_PER_RADS; }
+
 
 		//	For ranging protocol: transmitPoll has to be public so that the devices can locally call it to target their known devices via unicast
 		// (The rest of ranging protocol functions are private)
