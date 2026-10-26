@@ -4,6 +4,7 @@
 #include <ArduinoJson.h>
 #include "DW1000Ranging.h"
 #include "DW1000.h"
+#include "composition.h"
 
 
 #include "model-parameters/model_metadata.h"
@@ -22,7 +23,9 @@ const uint8_t PIN_SS = 4;   // spi select pin
 #define READABLE_OUTPUT true        // Shows the data reports in a human readable format.
 #define KAMADA_KAWAI_PLOTTING false // Shows a JSON file to draw the nodes using Kamada-Kawai's algorithm
 #define RX_DISTANCE_PLOTTING false  // Shows a CSV output to graph the relationship between RX power & distance
-#define AI_TRAINING false           // Shows a CSV output to export to a tinyML model, which interprets & analizes possible decouplings.
+#define AI_TRAINING false           // (Old TFG format, 6 fixed links. Superseded by RAW_DATA_OUTPUT)
+#define COMPOSITION_OUTPUT true     // Shows, every cycle, the train composition, the state of each link and the observed chain
+#define RAW_DATA_OUTPUT true        // Prints every cycle a CSV row ("RAW_DATA:") with the same columns as the simulator's raw CSV
 #define AI_DEPLOYMENT false         // Uses the trained ML model to predict the train's status
                                     // (OFF: the model currently in src/ is the TFG one, which expects the old 6-link format. It will be replaced.)
 
@@ -105,6 +108,17 @@ const uint8_t links[6][2] = {
 
 uint8_t cycle_count = 0;
 
+/*Composition analysis (see composition.h)*/
+CompositionState composition;
+int16_t coordinator_son = -1;          // Node that accepted the coordinator's token in this cycle (-1: none)
+uint32_t cycle_number = 0;             // Cycles completed since startup ("ciclo" column)
+unsigned long last_cycle_end_time = 0; // To measure each cycle's real duration
+
+/*Raw data row: fixed positions for 5 vehicles (coordinator + 4 nodes), as in the simulator's raw CSV*/
+#define RAW_VEHICLES 5
+const char* RAW_POSITION_NAMES[RAW_VEHICLES] = {"c", "v1", "v2", "v3", "v4"};
+const char* RAW_IMU_AXES[6] = {"acel_x_ms2", "acel_y_ms2", "acel_z_ms2", "giro_x_rads", "giro_y_rads", "giro_z_rads"};
+
 /*IMU blocks received in the data report (one per node in the chain)*/
 #define MAX_IMU_SAMPLES MAX_DEVICES
 ImuSample imu_received[MAX_IMU_SAMPLES];
@@ -163,6 +177,10 @@ void setup(){
     DW1000Ranging.startAsInitiator(DEVICE_ADDR,DW1000.MODE_1,COORDINATOR);
 
     own_short_addr = getOwnShortAddressHeader();
+
+    initComposition(composition);
+    if(RAW_DATA_OUTPUT) printRawHeader();
+    last_cycle_end_time = millis();
 
     state = DISCOVERY;
     
@@ -391,6 +409,7 @@ void tokenHandoffAck(){
     // If code reaches here, the ACK received is valid.    
 
     Existing_devices[searchDevice(origin_short_addr)].token_handoff_pending = false;
+    coordinator_son = origin_short_addr; // The node that accepted the token is the first one of the observed chain
     state = WAIT_FOR_RETURN;
 
     if(DEBUG_COORDINATOR){
@@ -542,9 +561,11 @@ void transmitUnicast(uint8_t message_type, DW1000Device* explicit_target){
 
         token_target_address = getClosestNodeAddress();
         if(token_target_address == -1){
-            if(DEBUG_COORDINATOR) Serial.println("NO ACTIVE NODES. Token handoff not sent. Back to discovery\n\n");
-            state = DISCOVERY;
-            discovery_attempts = UPDATE_DISCOVERY_ATTEMPTS; //To re-discover inmediately next loop, as no active nodes are available.
+            if(DEBUG_COORDINATOR) Serial.println("NO ACTIVE NODES. Token handoff not sent. Ending cycle and re-discovering\n\n");
+            // The cycle is ended (instead of going straight back to discovery) so that it is still processed and
+            // reported: a cycle in which no node answers is exactly what the monitoring has to see.
+            state = END_CYCLE;
+            discovery_attempts = UPDATE_DISCOVERY_ATTEMPTS; //To re-discover inmediately next cycle, as no active nodes are available.
             return;
         }
         DW1000Device* target = DW1000Ranging.searchDeviceByShortAddHeader(token_target_address);
@@ -682,6 +703,7 @@ void aggregatedDataReport(byte* data){
             if(DEBUG_COORDINATOR) Serial.print("\nImplicit ACK! Received data report while waiting for Token Handoff ACK. Proceeding...");
             
             Existing_devices[searchDevice(reporting_node_short_addr)].token_handoff_pending = false;
+            coordinator_son = reporting_node_short_addr;
             
             state = WAIT_FOR_RETURN;
             _wait_for_return = true;
@@ -1028,6 +1050,166 @@ void showAIPrediction(){
 }
 
 
+/*COMPOSITION & RAW DATA*/
+
+void processCycle(){
+
+    // Runs once per cycle, at END_CYCLE, before the measures are cleared.
+
+    unsigned long cycle_end_time = millis();
+    unsigned long cycle_duration = cycle_end_time - last_cycle_end_time;
+    last_cycle_end_time = cycle_end_time;
+
+    Chain observed = buildObservedChain(own_short_addr, coordinator_son, measurements, amount_measurements);
+    ChainComparison comparison;
+    CompositionEvent event = updateComposition(composition, observed, comparison);
+
+    if(COMPOSITION_OUTPUT) showComposition(observed, comparison, event, cycle_duration);
+    if(RAW_DATA_OUTPUT)    printRawRow(cycle_end_time, cycle_duration);
+
+    cycle_number++;
+}
+
+void printChain(const Chain &chain){
+    for(int i = 0; i < chain.length; i++){
+        if(i > 0) Serial.print(" > ");
+        Serial.print(chain.ids[i], HEX);
+    }
+}
+
+int activeMeasureBetween(uint8_t a, uint8_t b){
+    // Index of this cycle's measure between a and b (in any direction), or -1 if there isn't one
+    int idx = searchMeasure(a, b);
+    if(idx != -1 && measurements[idx].active) return idx;
+    return -1;
+}
+
+int searchImu(uint8_t short_addr){
+    for(int i = 0; i < amount_imu_received; i++){
+        if(imu_received[i].short_addr == short_addr) return i;
+    }
+    return -1;
+}
+
+void readOwnImu(ImuSample &sample){
+    // The coordinator doesn't have an IMU yet: all values are 0 (same encoding as the nodes' blocks).
+    float acc_ms2[3]   = {0.0f, 0.0f, 0.0f};
+    float gyro_rads[3] = {0.0f, 0.0f, 0.0f};
+    sample.short_addr = own_short_addr;
+    for(int i = 0; i < 3; i++){
+        sample.acc[i]  = DW1000Ranging.encodeAcc(acc_ms2[i]);
+        sample.gyro[i] = DW1000Ranging.encodeGyro(gyro_rads[i]);
+    }
+}
+
+void showComposition(const Chain &observed, ChainComparison comparison, CompositionEvent event, unsigned long cycle_duration){
+
+    const Chain &comp = composition.current;
+
+    Serial.print("\n[Cycle "); Serial.print(cycle_number); Serial.print(" | "); Serial.print(cycle_duration); Serial.print(" ms] Composition: ");
+    printChain(comp);
+    if(composition.consolidated) Serial.println("   (consolidated)");
+    else{ Serial.print("   (startup "); Serial.print(composition.startup_cycles); Serial.print("/"); Serial.print(COMPOSITION_WINDOW_CYCLES); Serial.println(")"); }
+
+    for(int i = 0; i + 1 < comp.length; i++){
+        Serial.print("   "); Serial.print(comp.ids[i], HEX); Serial.print("-"); Serial.print(comp.ids[i+1], HEX);
+        int idx = activeMeasureBetween(comp.ids[i], comp.ids[i+1]);
+        if(idx != -1){ Serial.print("\tseen       "); Serial.print(measurements[idx].distance); Serial.println(" m"); }
+        else Serial.println("\tNOT SEEN");
+    }
+
+    Serial.print("   Observed: "); printChain(observed);
+    Serial.print("  --> "); Serial.println(comparisonName(comparison));
+
+    switch(event){
+        case COMP_EVENT_FIRST:               Serial.println("   COMPOSITION: first composition obtained (startup window open)"); break;
+        case COMP_EVENT_UPDATED_STARTUP:     Serial.println("   COMPOSITION: updated during the startup window"); break;
+        case COMP_EVENT_CONSOLIDATED:        Serial.println("   COMPOSITION: consolidated (startup window finished)"); break;
+        case COMP_EVENT_CANDIDATE_STARTED:
+            Serial.print("   COMPOSITION: change observed ("); Serial.print(comparisonName(comparison));
+            Serial.print("). It will be adopted if it persists "); Serial.print(COMPOSITION_WINDOW_CYCLES); Serial.println(" cycles");
+            break;
+        case COMP_EVENT_CANDIDATE_DISCARDED: Serial.println("   COMPOSITION: observed change didn't persist. Discarded"); break;
+        case COMP_EVENT_ADOPTED:             Serial.println("   COMPOSITION: change ADOPTED. New composition stored"); break;
+        default: break;
+    }
+    if(composition.candidate_cycles > 1 && event == COMP_EVENT_NONE){
+        Serial.print("   COMPOSITION: change pending "); Serial.print(composition.candidate_cycles);
+        Serial.print("/"); Serial.println(COMPOSITION_WINDOW_CYCLES);
+    }
+    if(comp.length > RAW_VEHICLES){
+        Serial.print("   WARNING: the composition has "); Serial.print(comp.length);
+        Serial.print(" vehicles. Only the first "); Serial.print(RAW_VEHICLES); Serial.println(" go into RAW_DATA");
+    }
+}
+
+void printRawHeader(){
+    // Same column names (and order) as the simulator's raw CSV (extras/AI Integration/scripts/formato_crudo.py)
+    Serial.print("RAW_HEADER:ciclo,tiempo_ms,duracion_ciclo_ms");
+    for(int i = 0; i < RAW_VEHICLES - 1; i++){
+        const char* links_cols[3] = {"visto", "distancia_m", "potencia_rx_dbm"};
+        for(int k = 0; k < 3; k++){
+            Serial.print(",enlace_"); Serial.print(RAW_POSITION_NAMES[i]); Serial.print("_");
+            Serial.print(RAW_POSITION_NAMES[i+1]); Serial.print("_"); Serial.print(links_cols[k]);
+        }
+    }
+    for(int v = 0; v < RAW_VEHICLES; v++){
+        for(int k = 0; k < 6; k++){
+            Serial.print(","); Serial.print(RAW_POSITION_NAMES[v]); Serial.print("_"); Serial.print(RAW_IMU_AXES[k]);
+        }
+    }
+    Serial.println();
+}
+
+void printRawRow(unsigned long cycle_end_time, unsigned long cycle_duration){
+
+    // One row per cycle. Positions (c, v1..v4) come from the stored composition.
+    // Whatever wasn't received is left EMPTY (and "visto" = 0), as in the simulator's raw CSV.
+
+    const Chain &comp = composition.current;
+
+    Serial.print("RAW_DATA:");
+    Serial.print(cycle_number); Serial.print(",");
+    Serial.print(cycle_end_time); Serial.print(",");
+    Serial.print(cycle_duration);
+
+    // Links between consecutive positions
+    for(int i = 0; i < RAW_VEHICLES - 1; i++){
+        int idx = -1;
+        if(i + 1 < comp.length) idx = activeMeasureBetween(comp.ids[i], comp.ids[i+1]);
+
+        if(idx != -1){
+            Serial.print(",1,"); Serial.print(measurements[idx].distance, 3);
+            Serial.print(",");   Serial.print(measurements[idx].rxPower, 2);
+        }
+        else Serial.print(",0,,");
+    }
+
+    // IMU of each position
+    for(int v = 0; v < RAW_VEHICLES; v++){
+
+        ImuSample sample;
+        bool available = false;
+
+        if(v == 0){ readOwnImu(sample); available = true; }		// Coordinator: its own IMU
+        else if(v < comp.length){
+            int idx = searchImu(comp.ids[v]);
+            if(idx != -1){ sample = imu_received[idx]; available = true; }
+        }
+
+        for(int k = 0; k < 3; k++){
+            Serial.print(",");
+            if(available) Serial.print(DW1000Ranging.decodeAcc(sample.acc[k]), 3);
+        }
+        for(int k = 0; k < 3; k++){
+            Serial.print(",");
+            if(available) Serial.print(DW1000Ranging.decodeGyro(sample.gyro[k]), 4);
+        }
+    }
+    Serial.println();
+}
+
+
 void resetMeasures(){ 
     for(int i = 0;i<amount_measurements;i++){
         measurements[i].active = false; //This way, only prints active measures next time showData() is called
@@ -1218,6 +1400,8 @@ void loop(){
 
     else if(state == END_CYCLE){
 
+        processCycle();            // Composition analysis + raw data row
+
         if(AI_TRAINING)            showAITrainingData();
         if(AI_DEPLOYMENT)          showAIPrediction();
         if(READABLE_OUTPUT)        showData();
@@ -1227,6 +1411,7 @@ void loop(){
         num_retries = 0; // To clear any ongoing transmission retries.
         resetMeasures(); // To clear this cycle's measures & avoid showing obsolete measures in the monitor.
         
+        coordinator_son = -1;
         if(DEBUG_COORDINATOR) Serial.print("\nEnd of cycle. Restarting process... ");
         _discovery = false;
         state = DISCOVERY;
