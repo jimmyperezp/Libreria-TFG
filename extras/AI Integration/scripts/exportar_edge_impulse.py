@@ -120,6 +120,10 @@ def main():
     base = archivo.parent
     cfg = json.loads(archivo.read_text(encoding='utf-8'))
     g = cfg['general']
+    if not cfg.get('ensayos'):
+        sys.exit(f'La lista "ensayos" de {archivo.name} está vacía: no hay nada que exportar.\n'
+                 'Añade cada grabación como una entrada DENTRO de "ensayos": [ ... ] '
+                 '(con "nombre", "crudo" y "marcas"; o "carpeta_simulador" para el simulador).')
     salida = ruta(base, g['carpeta_salida'])
     (salida / 'columnas').mkdir(parents=True, exist_ok=True)
     (salida / 'edge_impulse').mkdir(parents=True, exist_ok=True)
