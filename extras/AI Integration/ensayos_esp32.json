@@ -1,0 +1,17 @@
+{
+  "general": {
+    "carpeta_salida": "datos_esp32",
+    "ciclos_descartados_inicio": 0,
+    "calibracion_primer_ciclo": 0,
+    "calibracion_n_ciclos": 30,
+    "tope_ciclos_sin_ver": 10,
+    "periodo_nominal_ms": 1000
+  },
+  "ensayos": [],
+  "ejemplo_de_ensayo": {
+    "nombre": "desconexion_v3",
+    "descripcion": "Se desconecta V3 y se vuelve a conectar",
+    "crudo": "grabaciones/desconexion_v3/crudo_desconexion_v3.csv",
+    "marcas": "grabaciones/desconexion_v3/marcas_desconexion_v3.csv"
+  }
+}

@@ -55,9 +55,13 @@ def columnas_modelo():
 def calibrar(crudo, primer_ciclo, n_ciclos):
     """Distancia de referencia de cada enlace = mediana durante la calibración."""
     cal = crudo[(crudo.ciclo >= primer_ciclo) & (crudo.ciclo < primer_ciclo + n_ciclos)]
-    if len(cal) < n_ciclos:
-        raise ValueError(f'Solo hay {len(cal)} ciclos para calibrar (se piden {n_ciclos})')
+    if cal.empty:
+        raise ValueError(f'No hay ningún ciclo en la ventana de calibración ({primer_ciclo}-{primer_ciclo + n_ciclos - 1})')
     referencias, avisos = {}, []
+    if len(cal) < n_ciclos:
+        # En las grabaciones por puerto serie se puede perder algún ciclo. La regla no cambia
+        # (mediana de la ventana), solo se calcula con los ciclos que hay.
+        avisos.append(f'faltan {n_ciclos - len(cal)} de {n_ciclos} ciclos en la ventana de calibración')
     for a, b in ENLACES:
         e = nombre_enlace(a, b)
         vistos = cal[cal[f'{e}_visto'] == 1][f'{e}_distancia_m']

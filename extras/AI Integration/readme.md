@@ -110,7 +110,29 @@ Protecciones:
 - Si el coordinador se reinicia a mitad de grabación (cabecera nueva o el ciclo retrocede), se detiene conservando lo grabado: el reloj vuelve a 0 y las marcas dejarían de cuadrar.
 - Cuenta los ciclos perdidos y las líneas corruptas, y escribe los archivos línea a línea.
 
-**Pendiente:** el exportador todavía no lee las marcas (admite un solo evento por ensayo) y se detiene si hay huecos en la grabación. Se ampliará para los ensayos con las ESP32.
+## Exportar las grabaciones de las ESP32
+
+El mismo exportador convierte las grabaciones en CSV para Edge Impulse, con su propio registro de ensayos, `ensayos_esp32.json`. Cada grabación es una entrada de la lista `"ensayos"` que apunta al CSV en crudo y al archivo de marcas (hay un ejemplo en `"ejemplo_de_ensayo"`):
+
+```json
+{
+  "nombre": "desconexion_v3",
+  "crudo": "grabaciones/desconexion_v3/crudo_desconexion_v3.csv",
+  "marcas": "grabaciones/desconexion_v3/marcas_desconexion_v3.csv"
+}
+```
+
+Desde `scripts/`:
+```
+python exportar_edge_impulse.py ../ensayos_esp32.json
+```
+
+Los resultados van a `datos_esp32/`, separados de los del simulador.
+
+- **Etiquetas a partir de las marcas:** cada ciclo lleva la fase de la última marca anterior o igual a él. Admite cualquier número de fases. Si una marca se pulsó tarde, se corrige esa línea del archivo de marcas y se vuelve a exportar.
+- **Ciclos perdidos:** si los ciclos de una etiqueta no son consecutivos, se escribe un archivo por tramo (`OK.desconexion_v3_p1.csv`, `_p2`…), para que cada archivo sea equiespaciado. Los tramos quedan listados en `resumen.json`.
+- **Calibración:** misma regla que con el simulador (mediana de la ventana de calibración), aquí desde el ciclo 0, como en la placa. Si falta algún ciclo de la ventana, se calcula con los que hay y se avisa.
+- **`periodo_nominal_ms` = 1000**, igual que en el simulador, aunque los ciclos reales duren otra cosa: con ventanas de una fila no afecta al modelo, y así todos los datos del proyecto de Edge Impulse tienen la misma frecuencia. La duración real va en `duracion_ciclo_ms`.
 
 ## Diferencias conocidas con las ESP32
 
