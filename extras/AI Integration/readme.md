@@ -6,11 +6,7 @@ Requisitos: Python 3.9 o superior, con `pandas` y `numpy` (`pip install -r requi
 
 1. Copia las carpetas de los ensayos del simulador dentro de `datos_simulador/`. De cada ensayo solo hacen falta `config.json`, `coord/rx_coord.csv` y `coord/imu_crd.csv`.
 2. Revisa `ensayos_simulador.json`: en él están las rutas, el instante de cada evento y los parámetros.
-3. Desde la carpeta `scripts/`:
-
-```
-python exportar_edge_impulse.py ../ensayos_simulador.json
-```
+3. Abre `scripts/exportar_edge_impulse.py`, pon `REGISTRO = '../ensayos_simulador.json'` en el bloque de configuración del principio y pulsa el botón de ejecutar de VS Code. Desde la terminal también funciona, pasando el registro como argumento: `python exportar_edge_impulse.py ../ensayos_simulador.json`.
 
 Para añadir un ensayo nuevo basta con añadir una entrada en `ensayos_simulador.json`. No hay que tocar el código.
 
@@ -122,10 +118,7 @@ El mismo exportador convierte las grabaciones en CSV para Edge Impulse, con su p
 }
 ```
 
-Desde `scripts/`:
-```
-python exportar_edge_impulse.py ../ensayos_esp32.json
-```
+Para exportar: en `scripts/exportar_edge_impulse.py`, `REGISTRO = '../ensayos_esp32.json'` (es el valor por defecto) y botón de ejecutar.
 
 Los resultados van a `datos_esp32/`, separados de los del simulador.
 

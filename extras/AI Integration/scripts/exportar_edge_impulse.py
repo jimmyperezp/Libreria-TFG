@@ -2,7 +2,9 @@
 Exportador: CSV en crudo -> CSV de entrenamiento para Edge Impulse.
 
 Uso:
-  python exportar_edge_impulse.py <archivo_de_ensayos.json>
+  - Desde VS Code: elige el registro en REGISTRO (configuración, abajo) y pulsa el botón de ejecutar (Play).
+  - Desde la terminal (opcional, sustituye a REGISTRO):
+      python exportar_edge_impulse.py ../ensayos_esp32.json
 
 Para cada ensayo del archivo de configuración:
   1. Si el ensayo indica "carpeta_simulador", ejecuta antes el adaptador del
@@ -45,6 +47,16 @@ import pandas as pd
 
 import adaptador_simulador
 import calculo_columnas
+
+
+# ============================== CONFIGURACIÓN ==============================
+
+# Registro de ensayos que se exporta. Ruta absoluta o relativa a la carpeta de este script:
+#   '../ensayos_esp32.json'       grabaciones de las placas
+#   '../ensayos_simulador.json'   ensayos del simulador
+REGISTRO = '../ensayos_esp32.json'
+
+# ===========================================================================
 
 
 def ruta(base, p):
@@ -96,9 +108,15 @@ def etiquetar(col, ens, g, base):
 
 
 def main():
-    if len(sys.argv) != 2:
+    if len(sys.argv) > 2:
         sys.exit(__doc__)
-    archivo = Path(sys.argv[1]).resolve()
+    archivo = Path(sys.argv[1]) if len(sys.argv) == 2 else Path(REGISTRO)
+    if not archivo.is_absolute() and len(sys.argv) < 2:
+        archivo = Path(__file__).resolve().parent / archivo   # REGISTRO se cuenta desde la carpeta del script
+    archivo = archivo.resolve()
+    if not archivo.exists():
+        sys.exit(f'No existe el registro de ensayos: {archivo}')
+    print(f'Registro: {archivo}')
     base = archivo.parent
     cfg = json.loads(archivo.read_text(encoding='utf-8'))
     g = cfg['general']
