@@ -3,7 +3,6 @@ Grabador del puerto serie: registra un ensayo con las ESP32.
 
 Lee lo que imprime el coordinador y guarda, en CARPETA_SALIDA/<ENSAYO>/:
   crudo_<ensayo>.csv           filas RAW_DATA, con el mismo formato que el CSV en crudo del simulador
-  columnas_placa_<ensayo>.csv  filas FEATURES: las 37 columnas que calculó la propia placa
   marcas_<ensayo>.csv          las marcas de fase pulsadas durante el ensayo
   monitor_<ensayo>.txt         todo el monitor serie, tal cual llega (con la hora del PC)
   info_<ensayo>.json           fecha, puerto, commit del repositorio y resumen de la grabación
@@ -60,9 +59,6 @@ NOTAS = ''                  # Texto libre que se guarda en info_<ensayo>.json
 
 PREFIJO_CABECERA = 'RAW_HEADER:'
 PREFIJO_FILA = 'RAW_DATA:'
-PREFIJO_CABECERA_COLUMNAS = 'FEATURES_HEADER:'
-PREFIJO_COLUMNAS = 'FEATURES:'
-NUM_COLUMNAS_MODELO = 37
 
 
 class ErrorGrabacion(Exception):
@@ -81,22 +77,18 @@ class Grabador:
         self.columnas = columnas_crudo()
 
         self.f_crudo = open(self.carpeta / f'crudo_{ensayo}.csv', 'w', newline='', encoding='utf-8')
-        self.f_placa = open(self.carpeta / f'columnas_placa_{ensayo}.csv', 'w', newline='', encoding='utf-8')
         self.f_marcas = open(self.carpeta / f'marcas_{ensayo}.csv', 'w', newline='', encoding='utf-8')
         self.f_monitor = open(self.carpeta / f'monitor_{ensayo}.txt', 'w', encoding='utf-8')
         self.w_crudo = csv.writer(self.f_crudo)
-        self.w_placa = csv.writer(self.f_placa)
         self.w_marcas = csv.writer(self.f_marcas)
         self.w_crudo.writerow(self.columnas)
         self.w_marcas.writerow(['desde_ciclo', 'tiempo_ms_coordinador', 'fase', 'hora_pc'])
-        self.cabecera_placa_escrita = False
 
         self.info = dict(info, ensayo=ensayo, inicio=datetime.now().isoformat(timespec='seconds'))
         self.cabecera_validada = False
         self.ultimo_ciclo = None
         self.ultimo_tiempo_ms = None
         self.filas = 0
-        self.filas_placa = 0
         self.ciclos_perdidos = 0
         self.lineas_corruptas = 0
         self.marcas = 0
@@ -116,10 +108,6 @@ class Grabador:
             self._cabecera(linea[len(PREFIJO_CABECERA):])
         elif linea.startswith(PREFIJO_FILA):
             self._fila(linea[len(PREFIJO_FILA):])
-        elif linea.startswith(PREFIJO_CABECERA_COLUMNAS):
-            self._cabecera_placa(linea[len(PREFIJO_CABECERA_COLUMNAS):])
-        elif linea.startswith(PREFIJO_COLUMNAS):
-            self._fila_placa(linea[len(PREFIJO_COLUMNAS):])
 
     def _cabecera(self, texto):
         recibidas = texto.split(',')
@@ -168,20 +156,6 @@ class Grabador:
             self._escribir_marca(ciclo, tiempo_ms, self.fase_inicial)
             self.fase_inicial_pendiente = False
 
-    def _cabecera_placa(self, texto):
-        if not self.cabecera_placa_escrita:
-            self.w_placa.writerow(texto.split(','))
-            self.cabecera_placa_escrita = True
-
-    def _fila_placa(self, texto):
-        valores = texto.split(',')
-        if len(valores) != NUM_COLUMNAS_MODELO + 1:
-            self.lineas_corruptas += 1
-            return
-        self.w_placa.writerow(valores)
-        self.f_placa.flush()
-        self.filas_placa += 1
-
     # --- Marcas -----------------------------------------------------------
 
     def marcar(self, tecla):
@@ -214,14 +188,13 @@ class Grabador:
             'fin': datetime.now().isoformat(timespec='seconds'),
             'motivo_fin': motivo,
             'filas_crudo': self.filas,
-            'filas_columnas_placa': self.filas_placa,
             'ciclos_perdidos': self.ciclos_perdidos,
             'lineas_corruptas': self.lineas_corruptas,
             'marcas': self.marcas,
             'cabecera_validada': self.cabecera_validada,
         }
         self.info.update(resumen)
-        for f in (self.f_crudo, self.f_placa, self.f_marcas, self.f_monitor):
+        for f in (self.f_crudo, self.f_marcas, self.f_monitor):
             f.close()
         (self.carpeta / f'info_{self.ensayo}.json').write_text(
             json.dumps(self.info, indent=2, ensure_ascii=False), encoding='utf-8')

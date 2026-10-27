@@ -101,7 +101,6 @@ Archivos que deja en la carpeta del ensayo:
 | Archivo | Contenido |
 |---|---|
 | `crudo_<ensayo>.csv` | Filas `RAW_DATA`, con el mismo formato que el CSV en crudo del simulador |
-| `columnas_placa_<ensayo>.csv` | Filas `FEATURES`: las 37 columnas calculadas por la placa |
 | `marcas_<ensayo>.csv` | Marcas de fase: desde qué ciclo, tiempo del coordinador, fase y hora del PC |
 | `monitor_<ensayo>.txt` | Todo el monitor serie, con la hora del PC |
 | `info_<ensayo>.json` | Puerto, commit del repositorio, notas y resumen (filas, ciclos perdidos, líneas corruptas) |

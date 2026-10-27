@@ -28,7 +28,7 @@ const uint8_t PIN_SS = 4;   // spi select pin
 #define AI_TRAINING false           // (Old TFG format, 6 fixed links. Superseded by RAW_DATA_OUTPUT)
 #define COMPOSITION_OUTPUT true     // Shows, every cycle, the train composition, the state of each link and the observed chain
 #define RAW_DATA_OUTPUT true        // Prints every cycle a CSV row ("RAW_DATA:") with the same columns as the simulator's raw CSV
-#define FEATURES_OUTPUT true        // Prints every cycle the 37 model inputs ("FEATURES:"), same columns as the training CSVs
+#define FEATURES_OUTPUT false       // DEBUG: prints every cycle the 37 model inputs ("FEATURES:"). Not needed to record datasets
 #define AI_DEPLOYMENT false         // Uses the trained ML model to predict the train's status
                                     // (OFF: the model currently in src/ is the TFG one, which expects the old 6-link format. It will be replaced.)
 
