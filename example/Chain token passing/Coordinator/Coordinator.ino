@@ -21,12 +21,10 @@ const uint8_t PIN_SS = 4;   // spi select pin
 #define READABLE_OUTPUT true        // Shows the data reports in a human readable format.
 #define KAMADA_KAWAI_PLOTTING false // Shows a JSON file to draw the nodes using Kamada-Kawai's algorithm
 #define RX_DISTANCE_PLOTTING false  // Shows a CSV output to graph the relationship between RX power & distance
-#define AI_TRAINING false           // (Old TFG format, 6 fixed links. Superseded by RAW_DATA_OUTPUT)
 #define COMPOSITION_OUTPUT true     // Shows, every cycle, the train composition, the state of each link and the observed chain
 #define RAW_DATA_OUTPUT true        // Prints every cycle a CSV row ("RAW_DATA:") with the same columns as the simulator's raw CSV
 #define FEATURES_OUTPUT false       // DEBUG: prints every cycle the 37 model inputs ("FEATURES:"). Not needed to record datasets
-#define AI_DEPLOYMENT false         // Uses the trained ML model to predict the train's status
-                                    // (OFF: the model currently in src/ is the TFG one, which expects the old 6-link format. It will be replaced.)
+#define AI_DEPLOYMENT true          // Runs the TinyML model every cycle (src/tinyML_inferencing.h) and shows the predicted train status
 
 
 #define DEVICE_ADDR "C1:00:5B:D5:A9:9A:E2:9C" 
@@ -90,23 +88,6 @@ static bool return_received = false; // To avoid processing the same report more
 unsigned long wait_for_return_start = 0;
 const unsigned long WAIT_FOR_RETURN_TIMEOUT = 3000;
 
-/*Used in AI Training and deployment*/
-const uint8_t ID_C1 = 0xC1;
-const uint8_t ID_B2 = 0xB2;
-const uint8_t ID_B3 = 0xB3;
-const uint8_t ID_B4 = 0xB4;
-
-const uint8_t links[6][2] = {
-    {ID_C1, ID_B2}, // Link 0
-    {ID_C1, ID_B3}, // Link 1
-    {ID_C1, ID_B4}, // Link 2
-    {ID_B2, ID_B3}, // Link 3
-    {ID_B2, ID_B4}, // Link 4
-    {ID_B3, ID_B4}  // Link 5
-};
-
-uint8_t cycle_count = 0;
-
 /*Composition analysis (see composition.h)*/
 CompositionState composition;
 int16_t coordinator_son = -1;          // Node that accepted the coordinator's token in this cycle (-1: none)
@@ -128,8 +109,6 @@ ImuSample imu_received[MAX_IMU_SAMPLES];
 uint8_t amount_imu_received = 0;
 
 /*Used to print results*/
-unsigned long last_shown_AI_data_timestamp = 0;
-unsigned long last_shown_AI_prediction_timestamp = 0;
 unsigned long last_shown_data_timestamp = 0;    
 unsigned long last_KK_plot_timestamp = 0;       //Last moment the Kamada-Kawai (KK) plot was made.
 
@@ -930,128 +909,67 @@ void showRXDistData(){
 
 }
 
-void showAITrainingData(){
-
-    /*This function prints the collected data in a CSV format, which will be collected by a python script to train a tinyML model
-    IMPORTANT: THIS MODEL IS ONLY VALID WITH 4 DEVICES
-    
-    The CSV format is: [Timestamp - Cycle time - Link 0 Active - Link 0 Distance - Link 0 RX Power - Link 1 Active - (...)]
-    Link 0 --> C1-B2
-    Link 1 --> C1-B3
-    Link 2 --> C1-B4
-    Link 3 --> B2-B3
-    Link 4 --> B2-B4
-    Link 5 --> B3-B4  
-    */
-
-    
-
-    unsigned long time_between_AI_prints = current_time - last_shown_AI_data_timestamp;
-    last_shown_AI_data_timestamp = current_time;
-    
-    Serial.print("AI_DATA:");
-    Serial.print(last_shown_AI_data_timestamp); Serial.print(",");
-    Serial.print(time_between_AI_prints); 
-
-
-    for (int i = 0; i < 6; i++) {
-        uint16_t addr_a = links[i][0];
-        uint16_t addr_b = links[i][1];
-
-        // Search the measure between the two devices (each link)
-        int idx = searchMeasure(addr_a, addr_b);
-        
-        Serial.print(",");
-        if (idx != -1 && measurements[idx].active) {
-            // Active Link: show its distance and RX Power
-            Serial.print("1,");
-            Serial.print(measurements[idx].distance); Serial.print(",");
-            Serial.print(measurements[idx].rxPower); 
-        } else {
-            // Link inactive or not found. Shows 'junk' values
-            Serial.print("0,-999,-999");
-        }
-    }
-
-    Serial.println(); //End of this cycle's line
-
-}
-
-
 void showAIPrediction(){
 
-    //Only uses the model after a couple of cycles, to let the model "warm up"
+    // Runs the model with this cycle's 37 features (model_features, computed in processCycle()).
+    // The standard scaler normalization trained in Edge Impulse is part of the exported model:
+    // the features are passed exactly as they are computed, like in the training CSVs.
 
-    if(cycle_count < 2){
-        Serial.println("\nSkipping AI prediction. Model Warming up");
+    static bool size_checked = false, size_ok = false;
+    if(!size_checked){
+        size_checked = true;
+        size_ok = (EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE == NUM_FEATURES);
+        Serial.print("AI model: \""); Serial.print(EI_CLASSIFIER_PROJECT_NAME);
+        Serial.print("\" (project "); Serial.print(EI_CLASSIFIER_PROJECT_ID);
+        Serial.print(", deploy v"); Serial.print(EI_CLASSIFIER_PROJECT_DEPLOY_VERSION);
+        Serial.print("). Inputs expected: "); Serial.print(EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE);
+        Serial.print(" | computed: "); Serial.println(NUM_FEATURES);
+        if(!size_ok) Serial.println("ERROR: the model in src/ doesn't match the 37 features. Predictions disabled.");
     }
-    else{
+    if(!size_ok) return;
 
-        unsigned long time_between_AI_predictions = current_time - last_shown_AI_prediction_timestamp;
-        last_shown_AI_prediction_timestamp = current_time;
-
-        //The model needs a buffer containing all of the data used to train it
-        float features[19];
-        int feat_index = 0;
-
-        features[feat_index++] = float(time_between_AI_predictions); //First element is the timestamp
-
-        //Now, I fill the buffer with the link's info:
-        for(int i = 0; i<6; i++){
-            uint8_t addr_a = links[i][0];
-            uint8_t addr_b = links[i][1];
-
-            int meas_idx = searchMeasure(addr_a,addr_b);
-
-            if((meas_idx != -1) && (measurements[meas_idx].active)){
-                features[feat_index++] = 1.0;
-                features[feat_index++] = (float)measurements[meas_idx].distance;
-                features[feat_index++] = (float)measurements[meas_idx].rxPower;
-
-            }
-            else{
-                //The link is inactive
-                features[feat_index++] = 0.0;
-                features[feat_index++] = -999.0;
-                features[feat_index++] = -999.0;
-            }
-        }
-
-        //Now the buffer is ready. I prepare it for what edge impulse expects
-        signal_t signal;
-        int err = numpy::signal_from_buffer(features,EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE,&signal);
-        if(err!=0){
-            Serial.println("ERROR: The signal for the model wasn't created propperly");
-            return;
-        }
-        
-
-        ei_impulse_result_t result = {0};
-        err = run_classifier(&signal,&result,false);
-        if(err!= EI_IMPULSE_OK){
-            Serial.println("ERROR: Failed while running the classifier");
-            return;
-        }
-
-        //Now, I print the prediction:
-        Serial.println("\n----------------------------------");
-        Serial.println("AI prediction on train status: ");
-
-        float max_value = 0.0;
-        const char* winning_label = "unknown";
-
-        for (size_t i = 0; i < EI_CLASSIFIER_LABEL_COUNT; i++){
-            Serial.print(result.classification[i].label);
-            Serial.print(": "); Serial.print(result.classification[i].value *100.0,1);
-            Serial.println("%");
-        }
-        Serial.println("----------------------------------\n");
-
-
+    signal_t signal;
+    int err = numpy::signal_from_buffer(model_features, EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE, &signal);
+    if(err != 0){
+        Serial.println("ERROR: the signal for the model couldn't be created");
+        return;
     }
 
-    cycle_count++;
+    ei_impulse_result_t result = {0};
+    unsigned long start_us = micros();
+    EI_IMPULSE_ERROR ei_err = run_classifier(&signal, &result, false);
+    unsigned long inference_us = micros() - start_us;
 
+    if(ei_err != EI_IMPULSE_OK){
+        Serial.print("ERROR: run_classifier failed ("); Serial.print((int)ei_err); Serial.println(")");
+        return;
+    }
+
+    // Winning class. Below the confidence threshold set in Edge Impulse, it is reported as UNCERTAIN
+    size_t best = 0;
+    for(size_t i = 1; i < EI_CLASSIFIER_LABEL_COUNT; i++){
+        if(result.classification[i].value > result.classification[best].value) best = i;
+    }
+    bool confident = result.classification[best].value >= EI_CLASSIFIER_THRESHOLD;
+
+    // While a reference of the model's links is still calibrating, the deviations aren't final yet
+    bool calibrating = false;
+    for(int i = 0; i < RAW_LINKS; i++){
+        if(!cycle_row.position_used[i] || !cycle_row.position_used[i+1]){ calibrating = true; continue; }
+        LinkReference* ref = findLinkReference(link_references, cycle_row.ids[i], cycle_row.ids[i+1]);
+        if(ref == nullptr || !ref->fixed) calibrating = true;
+    }
+
+    Serial.print("AI_PREDICTION: cycle "); Serial.print(cycle_row.cycle);
+    Serial.print(" | "); Serial.print(confident ? result.classification[best].label : "UNCERTAIN");
+    Serial.print(" |");
+    for(size_t i = 0; i < EI_CLASSIFIER_LABEL_COUNT; i++){
+        Serial.print(" "); Serial.print(result.classification[i].label); Serial.print(" ");
+        Serial.print(result.classification[i].value * 100.0f, 1); Serial.print("%");
+    }
+    Serial.print(" | inference "); Serial.print(inference_us / 1000.0f, 2); Serial.print(" ms");
+    if(calibrating) Serial.print(" | provisional (references calibrating or composition incomplete)");
+    Serial.println();
 }
 
 
@@ -1475,7 +1393,6 @@ void loop(){
 
         processCycle();            // Composition analysis + raw data row
 
-        if(AI_TRAINING)            showAITrainingData();
         if(AI_DEPLOYMENT)          showAIPrediction();
         if(READABLE_OUTPUT)        showData();
         if(RX_DISTANCE_PLOTTING)   showRXDistData();
