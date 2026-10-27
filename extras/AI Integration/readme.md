@@ -86,7 +86,7 @@ Requisito: `pip install pyserial`.
 - `CARPETA_SALIDA`: dónde se crea la carpeta del ensayo. Ruta absoluta o relativa a la carpeta del script. Por defecto, `extras/AI Integration/grabaciones/`.
 - `PUERTO`, `BAUDIOS`, `FASE_INICIAL`, `TECLAS` (tecla → fase), `TECLA_SALIR`, `VER_MONITOR` y `NOTAS`.
 
-**Ejecución:** con el botón de ejecutar de VS Code (*Run Python File*), o desde la terminal con argumentos opcionales que sustituyen a la configuración (`--ensayo`, `--carpeta`, `--puerto`, `--ver-monitor`, `--notas`). Antes de ejecutarlo, conviene tener el coordinador apagado o reiniciarlo después, para que llegue su cabecera `RAW_HEADER` y se pueda comprobar.
+**Ejecución:** con el botón de ejecutar de VS Code (*Run Python File*), o desde la terminal con argumentos opcionales que sustituyen a la configuración (`--ensayo`, `--carpeta`, `--puerto`, `--ver-monitor`, `--notas`). Con `REINICIAR_COORDINADOR = True` (por defecto), el grabador reinicia el coordinador al abrir el puerto, igual que el botón EN/RST, así que no hace falta cuadrar nada: la grabación empieza siempre en el ciclo 0, con su cabecera `RAW_HEADER` y con la ventana de calibración que usa el exportador. Si la placa no se reinicia sola, a los 5 s el grabador pide pulsar su botón EN/RST.
 
 Durante la grabación:
 - **Marcas de fase con teclas fijas** (por defecto `o` = OK y `l` = LOST_INTEGRITY), pulsadas en el terminal donde corre el script. La marca se guarda con el reloj del coordinador: la fase nueva empieza en el ciclo siguiente al último recibido. Al empezar se marca automáticamente `FASE_INICIAL`.

@@ -43,6 +43,8 @@ CARPETA_SALIDA = '../grabaciones'   # Dónde se crea la carpeta del ensayo. Ruta
                             # r'C:\Users\Jaime\TFM\grabaciones') o relativa a la carpeta de este script
 PUERTO = 'COM4'             # Puerto serie del coordinador
 BAUDIOS = 115200
+REINICIAR_COORDINADOR = True    # Reinicia el coordinador al abrir el puerto (como el botón EN/RST), para que la
+                                # grabación empiece en el ciclo 0, con su cabecera RAW_HEADER y su calibración
 
 FASE_INICIAL = 'OK'         # Fase con la que empieza la grabación
 TECLAS = {                  # Tecla -> fase. Para añadir una fase, añade una línea
@@ -232,6 +234,16 @@ class Teclado:
             self._termios.tcsetattr(self._fd, self._termios.TCSADRAIN, self._antes)
 
 
+def reiniciar_esp32(ser):
+    """Reinicia la ESP32 por el puerto serie, con el mismo pulso que usa esptool ("hard reset").
+    En las placas ESP32 con reinicio automático, RTS controla el pin EN (reset) y DTR el pin GPIO0."""
+    ser.dtr = False     # GPIO0 en alto: al arrancar, ejecuta el programa (no entra en modo de carga)
+    ser.rts = True      # EN a nivel bajo: la placa queda en reset
+    time.sleep(0.2)
+    ser.rts = False     # EN libre: la placa arranca
+    ser.reset_input_buffer()
+
+
 def commit_repositorio():
     try:
         r = subprocess.run(['git', 'rev-parse', '--short', 'HEAD'], capture_output=True, text=True,
@@ -275,6 +287,11 @@ def main():
     motivo = 'tecla de salida'
     try:
         with serial.Serial(args.puerto, BAUDIOS, timeout=0.05) as ser, Teclado() as teclado:
+            if REINICIAR_COORDINADOR:
+                reiniciar_esp32(ser)
+                print('Coordinador reiniciado. Esperando su cabecera RAW_HEADER...')
+            inicio = time.time()
+            aviso_sin_datos = False
             ultimo_estado = 0.0
             while True:
                 linea = ser.readline()
@@ -291,6 +308,11 @@ def main():
                     mensaje = grabador.marcar(t)
                     if mensaje:
                         print('\n' + mensaje)
+
+                if not aviso_sin_datos and grabador.filas == 0 and not grabador.cabecera_validada and time.time() - inicio > 5:
+                    aviso_sin_datos = True
+                    print('\nAVISO: en 5 s no ha llegado la cabecera del coordinador. Si la placa no se ha reiniciado '
+                          'sola, pulsa su botón EN/RST ahora.')
 
                 if not args.ver_monitor and time.time() - ultimo_estado > 0.5:
                     print('\r' + grabador.estado() + '   ', end='', flush=True)
