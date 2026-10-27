@@ -1,24 +1,26 @@
 """
 Grabador del puerto serie: registra un ensayo con las ESP32.
 
-Lee lo que imprime el coordinador y guarda, en grabaciones/<ensayo>/:
+Lee lo que imprime el coordinador y guarda, en CARPETA_SALIDA/<ENSAYO>/:
   crudo_<ensayo>.csv           filas RAW_DATA, con el mismo formato que el CSV en crudo del simulador
   columnas_placa_<ensayo>.csv  filas FEATURES: las 37 columnas que calculó la propia placa
   marcas_<ensayo>.csv          las marcas de fase pulsadas durante el ensayo
   monitor_<ensayo>.txt         todo el monitor serie, tal cual llega (con la hora del PC)
   info_<ensayo>.json           fecha, puerto, commit del repositorio y resumen de la grabación
 
-Marcas de fase: durante la grabación, pulsa una de las teclas definidas en config_grabador.json
+Marcas de fase: durante la grabación, pulsa una de las teclas definidas en TECLAS (configuración)
 (por defecto: o = OK, l = LOST_INTEGRITY). La marca se guarda con el RELOJ DEL COORDINADOR:
 la fase nueva empieza en el ciclo siguiente al último recibido (columna desde_ciclo).
-Al empezar se pone automáticamente una marca con la fase inicial (fase_inicial).
+Al empezar se pone automáticamente una marca con la fase inicial (FASE_INICIAL).
 
 Para terminar: la tecla de salida (por defecto q) o Ctrl+C. Los archivos se escriben línea a
 línea, así que no se pierde nada si el programa se corta.
 
-Uso (desde la carpeta scripts/):
-  python grabador_serie.py ../config_grabador.json --ensayo desconexion_v3
-  python grabador_serie.py ../config_grabador.json --ensayo prueba --puerto COM5 --ver-monitor
+Uso:
+  - Desde VS Code: rellena la CONFIGURACIÓN de abajo y pulsa el botón de ejecutar (Play).
+    Las teclas de las marcas se pulsan en el terminal donde se ejecuta el script.
+  - Desde la terminal (opcional, sustituye los valores de la configuración):
+      python grabador_serie.py --ensayo desconexion_v3 --puerto COM5 --ver-monitor
 
 Requisito: pyserial (pip install pyserial).
 """
@@ -33,6 +35,28 @@ from datetime import datetime
 from pathlib import Path
 
 from formato_crudo import columnas_crudo
+
+
+# ============================== CONFIGURACIÓN ==============================
+
+ENSAYO = 'prueba_01'        # Nombre del ensayo: se usa para la carpeta y para todos los archivos
+CARPETA_SALIDA = '../grabaciones'   # Dónde se crea la carpeta del ensayo. Ruta absoluta (p. ej.
+                            # r'C:\Users\Jaime\TFM\grabaciones') o relativa a la carpeta de este script
+PUERTO = 'COM4'             # Puerto serie del coordinador
+BAUDIOS = 115200
+
+FASE_INICIAL = 'OK'         # Fase con la que empieza la grabación
+TECLAS = {                  # Tecla -> fase. Para añadir una fase, añade una línea
+    'o': 'OK',
+    'l': 'LOST_INTEGRITY',
+}
+TECLA_SALIR = 'q'
+
+VER_MONITOR = False         # True: muestra todo el monitor serie. False: solo una línea de estado
+NOTAS = ''                  # Texto libre que se guarda en info_<ensayo>.json
+
+# ===========================================================================
+
 
 PREFIJO_CABECERA = 'RAW_HEADER:'
 PREFIJO_FILA = 'RAW_DATA:'
@@ -246,35 +270,38 @@ def commit_repositorio():
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('config', help='config_grabador.json')
-    ap.add_argument('--ensayo', required=True, help='nombre del ensayo (se usa en la carpeta y los archivos)')
-    ap.add_argument('--puerto', help='puerto serie (sustituye al de la configuración)')
-    ap.add_argument('--notas', default='', help='texto libre que se guarda en info_<ensayo>.json')
-    ap.add_argument('--ver-monitor', action='store_true', help='mostrar también todo el monitor serie')
+    ap.add_argument('--ensayo', default=ENSAYO, help=f'nombre del ensayo (por defecto: {ENSAYO})')
+    ap.add_argument('--carpeta', default=CARPETA_SALIDA, help=f'carpeta de salida (por defecto: {CARPETA_SALIDA})')
+    ap.add_argument('--puerto', default=PUERTO, help=f'puerto serie (por defecto: {PUERTO})')
+    ap.add_argument('--notas', default=NOTAS, help='texto libre que se guarda en info_<ensayo>.json')
+    ap.add_argument('--ver-monitor', action='store_true', default=VER_MONITOR, help='mostrar todo el monitor serie')
     args = ap.parse_args()
 
-    ruta_config = Path(args.config).resolve()
-    cfg = json.loads(ruta_config.read_text(encoding='utf-8'))
-    teclas = {k.lower(): v for k, v in cfg['teclas'].items()}
-    tecla_salir = cfg.get('tecla_salir', 'q').lower()
+    teclas = {k.lower(): v for k, v in TECLAS.items()}
+    tecla_salir = TECLA_SALIR.lower()
     if tecla_salir in teclas:
         sys.exit(f'La tecla de salida "{tecla_salir}" también está asignada a una fase.')
-    puerto = args.puerto or cfg['puerto']
-    carpeta = ruta_config.parent / cfg['carpeta_salida'] / args.ensayo
+
+    # Una ruta relativa se cuenta desde la carpeta de este script (no desde donde se lance),
+    # para que funcione igual con el botón de VS Code que desde la terminal.
+    base = Path(args.carpeta)
+    if not base.is_absolute():
+        base = Path(__file__).resolve().parent / base
+    carpeta = (base / args.ensayo).resolve()
     if carpeta.exists() and any(carpeta.iterdir()):
-        sys.exit(f'Ya existe una grabación en {carpeta}. Usa otro nombre de ensayo.')
+        sys.exit(f'Ya existe una grabación en {carpeta}. Cambia ENSAYO.')
 
     import serial  # pyserial
-    info = {'puerto': puerto, 'baudios': cfg['baudios'], 'commit_repositorio': commit_repositorio(),
+    info = {'puerto': args.puerto, 'baudios': BAUDIOS, 'commit_repositorio': commit_repositorio(),
             'teclas': teclas, 'notas': args.notas}
-    grabador = Grabador(carpeta, args.ensayo, teclas, cfg.get('fase_inicial'), info)
+    grabador = Grabador(carpeta, args.ensayo, teclas, FASE_INICIAL, info)
 
-    print(f'Grabando "{args.ensayo}" desde {puerto} en {carpeta}')
+    print(f'Grabando "{args.ensayo}" desde {args.puerto} en {carpeta}')
     print('Teclas: ' + ', '.join(f'{k} = {v}' for k, v in teclas.items()) + f', {tecla_salir} = terminar\n')
 
     motivo = 'tecla de salida'
     try:
-        with serial.Serial(puerto, cfg['baudios'], timeout=0.05) as ser, Teclado() as teclado:
+        with serial.Serial(args.puerto, BAUDIOS, timeout=0.05) as ser, Teclado() as teclado:
             ultimo_estado = 0.0
             while True:
                 linea = ser.readline()

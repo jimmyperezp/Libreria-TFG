@@ -83,18 +83,20 @@ Está documentado al principio de `calculo_columnas.py`. En resumen:
 
 `scripts/grabador_serie.py` registra un ensayo leyendo el monitor serie del coordinador. Es la versión nueva de `TinyML data collector.py`, adaptada al formato en crudo.
 
-Requisito: `pip install pyserial`. Desde la carpeta `scripts/`:
+Requisito: `pip install pyserial`.
 
-```
-python grabador_serie.py ../config_grabador.json --ensayo desconexion_v3
-```
+**Configuración:** al principio del script, en el bloque `CONFIGURACIÓN`:
+- `ENSAYO`: nombre del ensayo (carpeta y archivos). Cámbialo en cada grabación: el script no sobrescribe una grabación existente.
+- `CARPETA_SALIDA`: dónde se crea la carpeta del ensayo. Ruta absoluta o relativa a la carpeta del script. Por defecto, `extras/AI Integration/grabaciones/`.
+- `PUERTO`, `BAUDIOS`, `FASE_INICIAL`, `TECLAS` (tecla → fase), `TECLA_SALIR`, `VER_MONITOR` y `NOTAS`.
+
+**Ejecución:** con el botón de ejecutar de VS Code (*Run Python File*), o desde la terminal con argumentos opcionales que sustituyen a la configuración (`--ensayo`, `--carpeta`, `--puerto`, `--ver-monitor`, `--notas`). Antes de ejecutarlo, conviene tener el coordinador apagado o reiniciarlo después, para que llegue su cabecera `RAW_HEADER` y se pueda comprobar.
 
 Durante la grabación:
-- **Marcas de fase con teclas fijas**, definidas en `config_grabador.json` (por defecto `o` = OK y `l` = LOST_INTEGRITY). La marca se guarda con el reloj del coordinador: la fase nueva empieza en el ciclo siguiente al último recibido. Al empezar se marca automáticamente la `fase_inicial`. Para añadir fases, basta con añadir teclas al archivo.
+- **Marcas de fase con teclas fijas** (por defecto `o` = OK y `l` = LOST_INTEGRITY), pulsadas en el terminal donde corre el script. La marca se guarda con el reloj del coordinador: la fase nueva empieza en el ciclo siguiente al último recibido. Al empezar se marca automáticamente `FASE_INICIAL`.
 - **Terminar:** tecla `q` o Ctrl+C.
-- `--ver-monitor` muestra todo el monitor serie; sin él, solo una línea de estado.
 
-Archivos que deja en `grabaciones/<ensayo>/`:
+Archivos que deja en la carpeta del ensayo:
 
 | Archivo | Contenido |
 |---|---|
