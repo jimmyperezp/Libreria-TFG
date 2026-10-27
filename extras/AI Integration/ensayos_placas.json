@@ -7,17 +7,12 @@
     "tope_ciclos_sin_ver": 10,
     "periodo_nominal_ms": 1000
   },
-  "ensayos": [],
-  "ejemplo_de_ensayo": {
-    "nombre": "desconexion_v3",
-    "descripcion": "Se desconecta V3 y se vuelve a conectar",
-    "crudo": "grabaciones/desconexion_v3/crudo_desconexion_v3.csv",
-    "marcas": "grabaciones/desconexion_v3/marcas_desconexion_v3.csv"
-  },
-  "Prueba funcionalidad 1":{
+  "ensayos": [
+  {
     "nombre" : "Prueba funcionalidad 1",
     "descripcion": "Simplemente veo si el script funciona y capta bien los datos y las marcas.",
     "crudo": "datos placas/ensayos grabados/prueba_03/crudo_prueba_03.csv",
     "marcas": "datos placas/ensayos grabados/prueba_03/marcas_prueba_03.csv"
   }
+  ]
 }
