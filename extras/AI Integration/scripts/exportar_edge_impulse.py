@@ -26,6 +26,12 @@ Para cada ensayo del archivo de configuración:
        columnas/columnas_<ensayo>.csv          todos los ciclos, con uso y etiqueta (para revisar)
        edge_impulse/<ETIQUETA>.<ensayo>.csv    un archivo por etiqueta, listo para Edge Impulse
        resumen.json                            referencias de calibración, recuentos, avisos
+     Por defecto, columnas/ y edge_impulse/ van dentro de "carpeta_salida", con los archivos de
+     todos los ensayos juntos. Con "salida_junto_a_la_grabacion": true (en "general"), los de cada
+     ensayo van a la carpeta de su CSV en crudo (la de su grabación), junto a un resumen_<ensayo>.json;
+     el resumen.json de todos los ensayos sigue en "carpeta_salida".
+     Al reexportar, se borran antes los archivos de Edge Impulse anteriores de ese ensayo, para que no
+     queden tramos de una exportación previa.
      Si los ciclos de una etiqueta no son consecutivos (fases repetidas, o ciclos perdidos
      en la grabación), se escribe un archivo por tramo: <ETIQUETA>.<ensayo>_p1.csv, _p2...
 
@@ -125,8 +131,8 @@ def main():
                  'Añade cada grabación como una entrada DENTRO de "ensayos": [ ... ] '
                  '(con "nombre", "crudo" y "marcas"; o "carpeta_simulador" para el simulador).')
     salida = ruta(base, g['carpeta_salida'])
-    (salida / 'columnas').mkdir(parents=True, exist_ok=True)
-    (salida / 'edge_impulse').mkdir(parents=True, exist_ok=True)
+    salida.mkdir(parents=True, exist_ok=True)
+    junto_a_grabacion = bool(g.get('salida_junto_a_la_grabacion', False))
     parametros = {k: g[k] for k in calculo_columnas.PARAMETROS_POR_DEFECTO if k in g}
     entradas = calculo_columnas.columnas_modelo()
 
@@ -143,10 +149,22 @@ def main():
             raise ValueError(f'{nombre}: hay una fase distinta de OK durante la calibración '
                              f'(ciclos hasta {info["ciclos_calibracion"][1]}): el tren debe estar íntegro al arrancar')
 
+        # Dónde se escriben los archivos de este ensayo
+        if junto_a_grabacion and 'crudo' in ens:
+            dir_ensayo = ruta(base, ens['crudo']).parent
+            dir_columnas, dir_ei = dir_ensayo, dir_ensayo / 'edge_impulse'
+        else:
+            dir_ensayo = None
+            dir_columnas, dir_ei = salida / 'columnas', salida / 'edge_impulse'
+        dir_columnas.mkdir(parents=True, exist_ok=True)
+        dir_ei.mkdir(parents=True, exist_ok=True)
+        for viejo in list(dir_ei.glob(f'*.{nombre}.csv')) + list(dir_ei.glob(f'*.{nombre}_p*.csv')):
+            viejo.unlink()
+
         revision = col.copy()
         revision.insert(2, 'uso', uso)
         revision.insert(3, 'etiqueta', etiqueta)
-        revision.to_csv(salida / 'columnas' / f'columnas_{nombre}.csv', index=False, float_format='%.6f')
+        revision.to_csv(dir_columnas / f'columnas_{nombre}.csv', index=False, float_format='%.6f')
 
         recuentos = {}
         validos = revision[revision.uso == 'entrenamiento']
@@ -158,7 +176,7 @@ def main():
                 sufijo = '' if len(partes) == 1 else f'_p{k}'
                 ei = parte[entradas].copy()
                 ei.insert(0, 'tiempo_ms', parte.ciclo * g['periodo_nominal_ms'])
-                ei.to_csv(salida / 'edge_impulse' / f'{etq}.{nombre}{sufijo}.csv', index=False, float_format='%.6f')
+                ei.to_csv(dir_ei / f'{etq}.{nombre}{sufijo}.csv', index=False, float_format='%.6f')
             recuentos[etq] = {'filas': int(len(grupo)),
                               'ciclos': [int(grupo.ciclo.min()), int(grupo.ciclo.max())]}
             if len(partes) > 1:
@@ -171,6 +189,10 @@ def main():
             'referencias_calibracion_m': {k: round(v, 4) for k, v in info['referencias_m'].items()},
             'avisos_calibracion': info['avisos_calibracion'],
         }
+        if dir_ensayo is not None:
+            (dir_ensayo / f'resumen_{nombre}.json').write_text(
+                json.dumps(dict(resumen['ensayos'][nombre], parametros=g), indent=2, ensure_ascii=False), encoding='utf-8')
+
         print(f"{nombre}: " + ', '.join(f"{k} {v['filas']} filas" + (f" en {len(v['tramos'])} tramos" if 'tramos' in v else '')
                                         for k, v in recuentos.items()))
         for aviso in info['avisos_calibracion']:

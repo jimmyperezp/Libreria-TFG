@@ -83,7 +83,7 @@ Requisito: `pip install pyserial`.
 
 **Configuración:** al principio del script, en el bloque `CONFIGURACIÓN`:
 - `ENSAYO`: nombre del ensayo (carpeta y archivos). Cámbialo en cada grabación: el script no sobrescribe una grabación existente.
-- `CARPETA_SALIDA`: dónde se crea la carpeta del ensayo. Ruta absoluta o relativa a la carpeta del script. Por defecto, `extras/AI Integration/grabaciones/`.
+- `CARPETA_SALIDA`: dónde se crea la carpeta del ensayo. Ruta absoluta o relativa a la carpeta del script. Se usa `'../datos placas/ensayos grabados'`, es decir, `extras/AI Integration/datos placas/ensayos grabados/<ENSAYO>/`.
 - `PUERTO`, `BAUDIOS`, `FASE_INICIAL`, `TECLAS` (tecla → fase), `TECLA_SALIR`, `VER_MONITOR` y `NOTAS`.
 
 **Ejecución:** con el botón de ejecutar de VS Code (*Run Python File*), o desde la terminal con argumentos opcionales que sustituyen a la configuración (`--ensayo`, `--carpeta`, `--puerto`, `--ver-monitor`, `--notas`). Con `REINICIAR_COORDINADOR = True` (por defecto), el grabador reinicia el coordinador al abrir el puerto, igual que el botón EN/RST, así que no hace falta cuadrar nada: la grabación empieza siempre en el ciclo 0, con su cabecera `RAW_HEADER` y con la ventana de calibración que usa el exportador. Si la placa no se reinicia sola, a los 5 s el grabador pide pulsar su botón EN/RST.
@@ -106,25 +106,60 @@ Protecciones:
 - Si el coordinador se reinicia a mitad de grabación (cabecera nueva o el ciclo retrocede), se detiene conservando lo grabado: el reloj vuelve a 0 y las marcas dejarían de cuadrar.
 - Cuenta los ciclos perdidos y las líneas corruptas, y escribe los archivos línea a línea.
 
-## Exportar las grabaciones de las ESP32
+## Exportar las grabaciones de las placas
 
-El mismo exportador convierte las grabaciones en CSV para Edge Impulse, con su propio registro de ensayos, `ensayos_esp32.json`. Cada grabación es una entrada de la lista `"ensayos"` que apunta al CSV en crudo y al archivo de marcas (hay un ejemplo en `"ejemplo_de_ensayo"`):
+El mismo exportador convierte las grabaciones en CSV para Edge Impulse, con su propio registro de ensayos, `ensayos_placas.json`. Cada grabación es una entrada **dentro** de la lista `"ensayos"` que apunta a su CSV en crudo y a su archivo de marcas. Las rutas se cuentan desde la carpeta del JSON:
 
 ```json
 {
-  "nombre": "desconexion_v3",
-  "crudo": "grabaciones/desconexion_v3/crudo_desconexion_v3.csv",
-  "marcas": "grabaciones/desconexion_v3/marcas_desconexion_v3.csv"
+  "general": {
+    "carpeta_salida": "datos placas",
+    "salida_junto_a_la_grabacion": true,
+    "ciclos_descartados_inicio": 0,
+    "calibracion_primer_ciclo": 0,
+    "calibracion_n_ciclos": 30,
+    "tope_ciclos_sin_ver": 10,
+    "periodo_nominal_ms": 1000
+  },
+  "ensayos": [
+    {
+      "nombre": "prueba_03",
+      "descripcion": "Prueba de funcionalidad del grabador",
+      "crudo": "datos placas/ensayos grabados/prueba_03/crudo_prueba_03.csv",
+      "marcas": "datos placas/ensayos grabados/prueba_03/marcas_prueba_03.csv"
+    }
+  ]
 }
 ```
 
-Para exportar: en `scripts/exportar_edge_impulse.py`, `REGISTRO = '../ensayos_esp32.json'` (es el valor por defecto) y botón de ejecutar.
+Para varias grabaciones, una entrada `{ ... }` por grabación, separadas por comas. El `"nombre"` se usa en los archivos de salida: mejor sin espacios y igual que el de la carpeta.
 
-Los resultados van a `datos_esp32/`, separados de los del simulador.
+Para exportar: en `scripts/exportar_edge_impulse.py`, `REGISTRO = '../ensayos_placas.json'` y botón de ejecutar. Si la lista `"ensayos"` está vacía, el script se detiene y lo avisa.
 
+**Dónde quedan los resultados:**
+- Con `"salida_junto_a_la_grabacion": true`, los archivos de cada ensayo van a la carpeta de su grabación:
+  ```
+  datos placas/
+  ├── resumen.json                       ← resumen de todos los ensayos exportados
+  └── ensayos grabados/
+      └── prueba_03/
+          ├── crudo_prueba_03.csv        ← grabador
+          ├── marcas_prueba_03.csv       ← grabador
+          ├── monitor_prueba_03.txt      ← grabador
+          ├── info_prueba_03.json        ← grabador
+          ├── columnas_prueba_03.csv     ← exportador: cada ciclo con su etiqueta
+          ├── resumen_prueba_03.json     ← exportador: filas, tramos y avisos de este ensayo
+          └── edge_impulse/              ← exportador: lo que se sube a Edge Impulse
+              ├── OK.prueba_03.csv
+              └── LOST_INTEGRITY.prueba_03.csv
+  ```
+- Sin esa opción (o a `false`, como en el simulador), los de todos los ensayos van juntos a `carpeta_salida/columnas/` y `carpeta_salida/edge_impulse/`.
+- Al reexportar un ensayo, se borran antes sus archivos de Edge Impulse anteriores, para que no queden tramos de una exportación previa.
+
+**Cómo se etiqueta y se trocea:**
 - **Etiquetas a partir de las marcas:** cada ciclo lleva la fase de la última marca anterior o igual a él. Admite cualquier número de fases. Si una marca se pulsó tarde, se corrige esa línea del archivo de marcas y se vuelve a exportar.
-- **Ciclos perdidos:** si los ciclos de una etiqueta no son consecutivos, se escribe un archivo por tramo (`OK.desconexion_v3_p1.csv`, `_p2`…), para que cada archivo sea equiespaciado. Los tramos quedan listados en `resumen.json`.
-- **Calibración:** misma regla que con el simulador (mediana de la ventana de calibración), aquí desde el ciclo 0, como en la placa. Si falta algún ciclo de la ventana, se calcula con los que hay y se avisa.
+- **Ciclos perdidos o fases repetidas:** si los ciclos de una etiqueta no son consecutivos, se escribe un archivo por tramo (`OK.prueba_03_p1.csv`, `_p2`…), para que cada archivo sea equiespaciado. Los tramos quedan listados en el resumen.
+- **Calibración:** misma regla que con el simulador (mediana de la ventana de calibración), aquí desde el ciclo 0, como en la placa. Si falta algún ciclo de la ventana, se calcula con los que hay y se avisa. `calibracion_n_ciclos` debe coincidir con `LINK_REF_SAMPLES` de la placa (30).
 - **`periodo_nominal_ms` = 1000**, igual que en el simulador, aunque los ciclos reales duren otra cosa: con ventanas de una fila no afecta al modelo, y así todos los datos del proyecto de Edge Impulse tienen la misma frecuencia. La duración real va en `duracion_ciclo_ms`.
 
 ## Diferencias conocidas con las ESP32
