@@ -52,9 +52,9 @@ import calculo_columnas
 # ============================== CONFIGURACIÓN ==============================
 
 # Registro de ensayos que se exporta. Ruta absoluta o relativa a la carpeta de este script:
-#   '../ensayos_esp32.json'       grabaciones de las placas
+#   '../ensayos_placas.json'       grabaciones de las placas
 #   '../ensayos_simulador.json'   ensayos del simulador
-REGISTRO = '../ensayos_esp32.json'
+REGISTRO = '../ensayos_placas.json'
 
 # ===========================================================================
 

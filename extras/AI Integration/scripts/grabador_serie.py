@@ -38,18 +38,18 @@ from formato_crudo import columnas_crudo
 
 # ============================== CONFIGURACIÓN ==============================
 
-ENSAYO = 'prueba_01'        # Nombre del ensayo: se usa para la carpeta y para todos los archivos
-CARPETA_SALIDA = '../grabaciones'   # Dónde se crea la carpeta del ensayo. Ruta absoluta (p. ej.
+ENSAYO = 'prueba_03'        # Nombre del ensayo: se usa para la carpeta y para todos los archivos
+CARPETA_SALIDA = '../datos placas/ensayos grabados'   # Dónde se crea la carpeta del ensayo. Ruta absoluta (p. ej.
                             # r'C:\Users\Jaime\TFM\grabaciones') o relativa a la carpeta de este script
-PUERTO = 'COM4'             # Puerto serie del coordinador
+PUERTO = 'COM15'             # Puerto serie del coordinador
 BAUDIOS = 115200
 REINICIAR_COORDINADOR = True    # Reinicia el coordinador al abrir el puerto (como el botón EN/RST), para que la
                                 # grabación empiece en el ciclo 0, con su cabecera RAW_HEADER y su calibración
 
 FASE_INICIAL = 'OK'         # Fase con la que empieza la grabación
 TECLAS = {                  # Tecla -> fase. Para añadir una fase, añade una línea
-    'o': 'OK',
-    'l': 'LOST_INTEGRITY',
+    '0': 'OK',
+    '1': 'LOST_INTEGRITY',
 }
 TECLA_SALIR = 'q'
 
