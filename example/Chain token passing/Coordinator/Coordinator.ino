@@ -7,11 +7,7 @@
 #include "composition.h"
 #include "link_references.h"
 #include "model_features.h"
-
-
-#include "model-parameters/model_metadata.h"
-#include "edge-impulse-sdk/classifier/ei_run_classifier.h"
-
+#include "tinyML_inferencing.h"
 
 #define SPI_SCK 18
 #define SPI_MISO 19

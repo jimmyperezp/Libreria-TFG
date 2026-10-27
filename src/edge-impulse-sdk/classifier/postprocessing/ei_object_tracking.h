@@ -241,10 +241,13 @@ private:
 
 class Tracker {
 public:
-    Tracker (uint32_t keep_grace = 5, uint16_t max_observations = 5, float threshold = 0.5, bool use_iou = true)
+    Tracker (uint32_t keep_grace = 5, uint16_t max_observations = 5, float threshold = 0.5, bool use_iou = true,
+             const char *const *classes_to_track = nullptr, uint32_t classes_to_track_count = 0)
             : keep_grace(keep_grace),
               max_observations(max_observations),
-              alignment(threshold, use_iou) {
+              alignment(threshold, use_iou),
+              classes_to_track(classes_to_track),
+              classes_to_track_count(classes_to_track_count) {
         trace_seq_id = 0;
         t = 0;
     }
@@ -267,6 +270,18 @@ public:
      * @param detections Bounding boxes, this vector might be reordered.
      */
     void process_new_detections(std::vector<ei_impulse_result_bounding_box_t> detections) {
+        if (classes_to_track != nullptr && classes_to_track_count > 0) {
+            detections.erase(std::remove_if(detections.begin(), detections.end(),
+                [this](const ei_impulse_result_bounding_box_t& detection) {
+                    for (uint32_t cls = 0; cls < classes_to_track_count; cls++) {
+                        if (classes_to_track[cls] != nullptr && std::strcmp(detection.label, classes_to_track[cls]) == 0) {
+                            return false;
+                        }
+                    }
+                    return true;
+                }), detections.end());
+        }
+
         // sort detections by x, y, width, height, label (same in Python code, see ei_tracking/tracking.py)
         // so it doesn't matter in what order we pass in the detections
         std::sort(detections.begin(), detections.end(), [](const ei_impulse_result_bounding_box_t& a, const ei_impulse_result_bounding_box_t& b) {
@@ -405,6 +420,8 @@ private:
     uint32_t trace_seq_id;
     uint32_t t;
     JonkerVolgenantAlignment alignment;
+    const char *const *classes_to_track;
+    uint32_t classes_to_track_count;
     std::vector<std::string> seen_labels;
 };
 
@@ -417,7 +434,9 @@ EI_IMPULSE_ERROR init_object_tracking(ei_impulse_handle_t *handle, void** state,
     Tracker *object_tracker = new Tracker(ei_object_tracking_config->keep_grace,
                                           ei_object_tracking_config->max_observations,
                                           ei_object_tracking_config->threshold,
-                                          ei_object_tracking_config->use_iou);
+                                          ei_object_tracking_config->use_iou,
+                                          ei_object_tracking_config->classes_to_track,
+                                          ei_object_tracking_config->classes_to_track_count);
     if (!object_tracker) {
         return EI_IMPULSE_OUT_OF_MEMORY;
     }
@@ -447,11 +466,16 @@ EI_IMPULSE_ERROR process_object_tracking(ei_impulse_handle_t *handle,
                                          void *state)
 {
     Tracker *object_tracker = (Tracker *)state;
+    const ei_object_tracking_config_t *ei_object_tracking_config = (ei_object_tracking_config_t*)config_ptr;
 
     if((void *)object_tracker != NULL) {
         ei_impulse_result_bounding_box_t *bbs = result->bounding_boxes;
         uint32_t bbs_num = result->bounding_boxes_count;
         std::vector<ei_impulse_result_bounding_box_t> detections(bbs, bbs + bbs_num);
+
+        object_tracker->keep_grace = ei_object_tracking_config->keep_grace;
+        object_tracker->max_observations = ei_object_tracking_config->max_observations;
+        object_tracker->set_threshold(ei_object_tracking_config->threshold);
 
         object_tracker->process_new_detections(detections);
 
@@ -484,49 +508,37 @@ EI_IMPULSE_ERROR display_object_tracking(ei_impulse_result_t *result,
     return EI_IMPULSE_OK;
 }
 
+// Removed object tracking parameter functions (update/read the postprocessing block config directly)
+template <typename T = void>
+[[deprecated("set_post_process_params(ei_impulse_handle_t*, ei_object_tracking_config_t*) has been removed in favor of updating the object tracking postprocessing block config")]]
 EI_IMPULSE_ERROR set_post_process_params(ei_impulse_handle_t* handle, ei_object_tracking_config_t* params) {
-    int16_t block_number = get_block_number(handle, (void*)init_object_tracking);
-    if (block_number == -1) {
-        return EI_IMPULSE_POSTPROCESSING_ERROR;
-    }
-    Tracker *object_tracker = (Tracker*)handle->post_processing_state[block_number];
-
-    object_tracker->keep_grace = params->keep_grace;
-    object_tracker->max_observations = params->max_observations;
-    object_tracker->set_threshold(params->threshold);
-    return EI_IMPULSE_OK;
+    static_assert(ei_dependent_false_v<T>::value,
+        "set_post_process_params(ei_impulse_handle_t*, ei_object_tracking_config_t*) has been removed in favor of updating the object tracking postprocessing block config");
+    return EI_IMPULSE_CALL_SIGNATURE_REMOVED;
 }
 
+template <typename T = void>
+[[deprecated("get_post_process_params(ei_impulse_handle_t*, ei_object_tracking_config_t*) has been removed in favor of reading the object tracking postprocessing block config")]]
 EI_IMPULSE_ERROR get_post_process_params(ei_impulse_handle_t* handle, ei_object_tracking_config_t* params) {
-    int16_t block_number = get_block_number(handle, (void*)init_object_tracking);
-    if (block_number == -1) {
-        return EI_IMPULSE_POSTPROCESSING_ERROR;
-    }
-    Tracker *object_tracker = (Tracker*)handle->post_processing_state[block_number];
-
-    params->keep_grace = object_tracker->keep_grace;
-    params->max_observations = object_tracker->max_observations;
-    params->threshold = object_tracker->get_threshold();
-    return EI_IMPULSE_OK;
+    static_assert(ei_dependent_false_v<T>::value,
+        "get_post_process_params(ei_impulse_handle_t*, ei_object_tracking_config_t*) has been removed in favor of reading the object tracking postprocessing block config");
+    return EI_IMPULSE_CALL_SIGNATURE_REMOVED;
 }
 
-// versions that operate on the default impulse
+template <typename T = void>
+[[deprecated("set_post_process_params(ei_object_tracking_config_t*) has been removed in favor of updating the object tracking postprocessing block config")]]
 EI_IMPULSE_ERROR set_post_process_params(ei_object_tracking_config_t *params) {
-    ei_impulse_handle_t* handle = &ei_default_impulse;
-
-    if(handle->post_processing_state != NULL) {
-        set_post_process_params(handle, params);
-    }
-    return EI_IMPULSE_OK;
+    static_assert(ei_dependent_false_v<T>::value,
+        "set_post_process_params(ei_object_tracking_config_t*) has been removed in favor of updating the object tracking postprocessing block config");
+    return EI_IMPULSE_CALL_SIGNATURE_REMOVED;
 }
 
+template <typename T = void>
+[[deprecated("get_post_process_params(ei_object_tracking_config_t*) has been removed in favor of reading the object tracking postprocessing block config")]]
 EI_IMPULSE_ERROR get_post_process_params(ei_object_tracking_config_t *params) {
-    ei_impulse_handle_t* handle = &ei_default_impulse;
-
-    if(handle->post_processing_state != NULL) {
-        get_post_process_params(handle, params);
-    }
-    return EI_IMPULSE_OK;
+    static_assert(ei_dependent_false_v<T>::value,
+        "get_post_process_params(ei_object_tracking_config_t*) has been removed in favor of reading the object tracking postprocessing block config");
+    return EI_IMPULSE_CALL_SIGNATURE_REMOVED;
 }
 
 #endif // EI_CLASSIFIER_OBJECT_TRACKING_ENABLED

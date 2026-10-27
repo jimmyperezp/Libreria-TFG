@@ -62,6 +62,7 @@
 #define EI_CLASSIFIER_CEVA_NPN                   15
 #define EI_CLASSIFIER_NORDIC_AXON                16
 #define EI_CLASSIFIER_VLM_CONNECTOR              17
+#define EI_CLASSIFIER_QAIC                       18
 
 #define EI_CLASSIFIER_SENSOR_UNKNOWN             255
 #define EI_CLASSIFIER_SENSOR_MICROPHONE          1
@@ -84,25 +85,25 @@
 #define EI_CLASSIFIER_DATATYPE_UINT8             3
 #define EI_CLASSIFIER_DATATYPE_INT8              9
 
-#define EI_CLASSIFIER_PROJECT_ID                 962562
+#define EI_CLASSIFIER_PROJECT_ID                 1148226
 #define EI_CLASSIFIER_PROJECT_OWNER              "jimmyperezp"
-#define EI_CLASSIFIER_PROJECT_NAME               "TinyML for train integrity"
-#define EI_CLASSIFIER_PROJECT_DEPLOY_VERSION     2
-#define EI_CLASSIFIER_NN_INPUT_FRAME_SIZE        57
-#define EI_CLASSIFIER_RAW_SAMPLE_COUNT           3
-#define EI_CLASSIFIER_RAW_SAMPLES_PER_FRAME      19
+#define EI_CLASSIFIER_PROJECT_NAME               "Detección de estados"
+#define EI_CLASSIFIER_PROJECT_DEPLOY_VERSION     1
+#define EI_CLASSIFIER_NN_INPUT_FRAME_SIZE        37
+#define EI_CLASSIFIER_RAW_SAMPLE_COUNT           1
+#define EI_CLASSIFIER_RAW_SAMPLES_PER_FRAME      37
 #define EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE       (EI_CLASSIFIER_RAW_SAMPLE_COUNT * EI_CLASSIFIER_RAW_SAMPLES_PER_FRAME)
 #define EI_CLASSIFIER_INPUT_WIDTH                0
 #define EI_CLASSIFIER_INPUT_HEIGHT               0
 #define EI_CLASSIFIER_RESIZE_MODE                EI_CLASSIFIER_RESIZE_NONE
 #define EI_CLASSIFIER_INPUT_FRAMES               0
-#define EI_CLASSIFIER_INTERVAL_MS                600
+#define EI_CLASSIFIER_INTERVAL_MS                1000
 #define EI_CLASSIFIER_NN_OUTPUT_COUNT            2
 #define EI_CLASSIFIER_LABEL_COUNT                2
 #define EI_CLASSIFIER_SINGLE_FEATURE_INPUT       1
-#define EI_CLASSIFIER_FREQUENCY                  1.6666666666666667
+#define EI_CLASSIFIER_FREQUENCY                  1
 #define EI_CLASSIFIER_SENSOR                     EI_CLASSIFIER_SENSOR_FUSION
-#define EI_CLASSIFIER_FUSION_AXES_STRING         "Time this cycle + Link 0 active + Link 0 distance + Link 0 RX Power + Link 1 active + Link 1 distance + Link 1 RX Power + Link 2 active + Link 2 distance + Link 2 RX Power + Link 3 active + Link 3 distance + Link 3 RX Power + Link 4 active + Link 4 distance + Link 4 RX Power + Link 5 active + Link 5 distance + Link 5 RX Power"
+#define EI_CLASSIFIER_FUSION_AXES_STRING         "duracion_ciclo_ms + enlace_c_v1_visto + enlace_c_v1_ciclos_sin_ver + enlace_c_v1_desviacion_m + enlace_c_v1_dif_acel_x_ms2 + enlace_v1_v2_visto + enlace_v1_v2_ciclos_sin_ver + enlace_v1_v2_desviacion_m + enlace_v1_v2_dif_acel_x_ms2 + enlace_v2_v3_visto + enlace_v2_v3_ciclos_sin_ver + enlace_v2_v3_desviacion_m + enlace_v2_v3_dif_acel_x_ms2 + enlace_v3_v4_visto + enlace_v3_v4_ciclos_sin_ver + enlace_v3_v4_desviacion_m + enlace_v3_v4_dif_acel_x_ms2 + v1_dev_media_acel_y_ms2 + v1_dev_media_acel_z_ms2 + v1_dev_media_giro_x_rads + v1_dev_media_giro_y_rads + v1_dev_media_giro_z_rads + v2_dev_media_acel_y_ms2 + v2_dev_media_acel_z_ms2 + v2_dev_media_giro_x_rads + v2_dev_media_giro_y_rads + v2_dev_media_giro_z_rads + v3_dev_media_acel_y_ms2 + v3_dev_media_acel_z_ms2 + v3_dev_media_giro_x_rads + v3_dev_media_giro_y_rads + v3_dev_media_giro_z_rads + v4_dev_media_acel_y_ms2 + v4_dev_media_acel_z_ms2 + v4_dev_media_giro_x_rads + v4_dev_media_giro_y_rads + v4_dev_media_giro_z_rads"
 #define EI_CLASSIFIER_HAS_ANOMALY                EI_ANOMALY_TYPE_UNKNOWN
 
 #define EI_CLASSIFIER_TFLITE_INPUT_DATATYPE      EI_CLASSIFIER_DATATYPE_INT8
@@ -131,10 +132,11 @@
 #define EI_CLASSIFIER_QUANTIZATION_ENABLED          1
 #define EI_CLASSIFIER_HAS_VISUAL_ANOMALY            0
 #define EI_CLASSIFIER_HAS_MODEL_VARIABLES           1
-#define EI_CLASSIFIER_HAS_DATA_NORMALIZATION        0
+#define EI_CLASSIFIER_HAS_DATA_NORMALIZATION        1
 #define EI_CLASSIFIER_CALIBRATION_ENABLED           0
 #define EI_CLASSIFIER_OBJECT_TRACKING_ENABLED       0
-#define EI_CLASSIFIER_TFLITE_LARGEST_ARENA_SIZE     3001
+#define EI_CLASSIFIER_OBJECT_TRACKING_SORT_ENABLED  0
+#define EI_CLASSIFIER_TFLITE_LARGEST_ARENA_SIZE     2982
 #define EI_CLASSIFIER_LOAD_IMAGE_SCALING            0
 #define EI_CLASSIFIER_DSP_AXES_INDEX_TYPE           uint8_t
 #define EI_CLASSIFIER_HR_ENABLED                    0
@@ -163,6 +165,7 @@
 #define EI_HAS_YOLOV11                              0
 #define EI_HAS_QC_FACE_DET_LITE                     0
 #define EI_HAS_PADDLEOCR_DETECTOR                   0
+#define EI_HAS_QC_YOLOX                             0
 
 #ifndef EI_CLASSIFIER_SLICES_PER_MODEL_WINDOW
 #define EI_CLASSIFIER_SLICES_PER_MODEL_WINDOW    4
@@ -171,8 +174,8 @@
 #define EI_CLASSIFIER_SLICE_SIZE                 (EI_CLASSIFIER_RAW_SAMPLE_COUNT / EI_CLASSIFIER_SLICES_PER_MODEL_WINDOW)
 
 #define EI_STUDIO_VERSION_MAJOR             1
-#define EI_STUDIO_VERSION_MINOR             92
-#define EI_STUDIO_VERSION_PATCH             21
+#define EI_STUDIO_VERSION_MINOR             96
+#define EI_STUDIO_VERSION_PATCH             3
 
 #if ((EI_CLASSIFIER_INFERENCING_ENGINE == EI_CLASSIFIER_TFLITE) ||      (EI_CLASSIFIER_INFERENCING_ENGINE == EI_CLASSIFIER_DRPAI)) &&      EI_CLASSIFIER_USE_FULL_TFLITE == 1
 

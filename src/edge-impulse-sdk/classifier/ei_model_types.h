@@ -64,6 +64,7 @@
 #define EI_CLASSIFIER_CEVA_NPN                   15
 #define EI_CLASSIFIER_NORDIC_AXON                16
 #define EI_CLASSIFIER_VLM_CONNECTOR              17
+#define EI_CLASSIFIER_QAIC                       18
 
 #define EI_CLASSIFIER_SENSOR_UNKNOWN             255
 #define EI_CLASSIFIER_SENSOR_MICROPHONE          1
@@ -142,7 +143,19 @@ typedef struct {
     uint16_t max_observations;
     float threshold;
     bool use_iou;
+    const char **classes_to_track;
+    uint32_t classes_to_track_count;
 } ei_object_tracking_config_t;
+
+typedef struct {
+    uint16_t implementation_version;
+    uint32_t max_age;
+    uint16_t min_hits;
+    float iou_threshold;
+    bool use_iou;
+    const char **classes_to_track;
+    uint32_t classes_to_track_count;
+} ei_object_tracking_sort_config_t;
 
 typedef struct {
     uint16_t implementation_version;
@@ -297,6 +310,19 @@ typedef struct {
     size_t arena_size;
 } ei_config_tflite_graph_t;
 
+/** Configuration for the qaic.h */
+typedef struct {
+    const unsigned char *model;
+    size_t model_size;
+    const char *model_filename;
+    const char *provider_options;
+    const char *onnx_define_symbol;
+    uint32_t device_id;
+    uint32_t aic_num_cores;
+    bool aic_hw;
+    bool convert_to_fp16;
+} ei_qaic_model_config_t;
+
 /** Configuration for the tflite_eon.h */
 typedef struct {
     uint16_t implementation_version;
@@ -326,13 +352,16 @@ typedef struct {
 typedef struct {
     uint16_t implementation_version;
     uint32_t block_id;
-    const char* prompt;
+    const char* user_prompt;
+    const char* system_prompt;
+    const char* response_schema;
     const char** class_descriptions;
     const char* model;
     const char* model_download_url;
     uint32_t max_tokens;
     float temperature;
     const char* server_url;
+    const char* labeling_method;
 } ei_learning_block_config_vlm_connection_t;
 
 typedef struct {
