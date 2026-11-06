@@ -1494,7 +1494,7 @@ void DW1000RangingClass::transmitLocalDataReport(Measurement* measurements, int 
     data[index++] = active_measures;
 
     // Before sending, I check if there's enough space for the full message:
-    size_t totalPayloadSize = 1 + active_measures * 5;  // 3 "constant" bytes + 10 for each measure sent.
+    size_t totalPayloadSize = 1 + active_measures * 5;  // [M] + 5 bytes per measure sent (destination 1 + distance 2 + RX power 2).
     size_t totalMessageSize = SHORT_MAC_LEN + 1 + totalPayloadSize; //+1 because of the message type.
 
     if (totalMessageSize > LEN_DATA) {
@@ -1510,8 +1510,11 @@ void DW1000RangingClass::transmitLocalDataReport(Measurement* measurements, int 
 			//1 byte for the destiny's short Address
     		data[index++] = (uint8_t)measurements[i].short_addr_dest;
 			
-    		// Distante measured (sent as cm to reduce message length)
-    		uint16_t distance_cm = (uint16_t)(measurements[i].distance * 100.0f);
+    		// Distance measured, sent in cm and saturated to the uint16 range (0 - 655.35 m) so it never wraps around
+    		float distance_cm_f = measurements[i].distance * 100.0f;
+    		if(distance_cm_f < 0.0f) distance_cm_f = 0.0f;
+    		if(distance_cm_f > 65535.0f) distance_cm_f = 65535.0f;
+    		uint16_t distance_cm = (uint16_t)distance_cm_f;
     		memcpy(data + index, &distance_cm, 2); 
     		index += 2;
 			
@@ -1524,7 +1527,7 @@ void DW1000RangingClass::transmitLocalDataReport(Measurement* measurements, int 
 	}
 	
 
-    transmit(data); //Finally, sends the message
+    transmit(data, index); //Finally, sends the message (only the bytes written: [MAC][type][M][M x 5 bytes])
 }
 
 void DW1000RangingClass::transmitAggregatedDataReport(Measurement* measurements, int numMeasures, DW1000Device* device, ImuSample* imu_samples, int num_imu) {
@@ -1601,7 +1604,7 @@ void DW1000RangingClass::transmitAggregatedDataReport(Measurement* measurements,
 		index += 6;
 	}
 
-	transmit(data);
+	transmit(data, index); // Only the bytes written: 12 + 6M + 13N
 }
 
 int DW1000RangingClass::readAggregatedImu(byte* report, ImuSample* out, int max_out) {
