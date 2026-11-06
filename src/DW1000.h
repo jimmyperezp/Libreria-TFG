@@ -249,6 +249,9 @@ public:
 	static void         getData(byte data[], uint16_t n);
 	static void         getData(String& data);
 	static uint16_t     getDataLength();
+	// Length of the last RECEIVED frame (without the 2 CRC bytes), read from the RX frame info register.
+	// Unlike getDataLength(), it doesn't depend on the current device mode (TX/RX).
+	static uint16_t     getReceivedDataLength();
 	static void         getTransmitTimestamp(DW1000Time& time);
 	static void         getReceiveTimestamp(DW1000Time& time);
 	static void         getSystemTimestamp(DW1000Time& time);

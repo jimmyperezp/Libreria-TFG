@@ -23,7 +23,7 @@ DW1000RangingClass::RangingMode DW1000RangingClass::_ranging_mode = DW1000Rangin
 //To enable/disable ranging. Starts enabled.
 bool DW1000RangingClass:: _ranging_enabled = true;
 
-uint8_t DW1000RangingClass::_own_cycle_id = 0; 
+uint8_t DW1000RangingClass::_own_cycle_id = 0; // Never changed in the CHAIN token passing (always 0). Kept for the MESH token passing.
 
 // message flow state
 volatile byte    DW1000RangingClass::_expectedMsgId;
@@ -422,7 +422,12 @@ void DW1000RangingClass::loop() {
 
 		_receivedAck = false;
 
-		DW1000.getData(data, LEN_DATA); //getData returns the valuable info + its length
+		// Reads only the real length of the received frame (without the 2 CRC bytes), and clears the rest of the buffer.
+		// This way, any code that reads past the end of a short message finds zeros instead of leftovers of a previous one.
+		uint16_t rx_len = DW1000.getReceivedDataLength();
+		if(rx_len > LEN_DATA) rx_len = LEN_DATA;
+		DW1000.getData(data, rx_len);
+		memset(data + rx_len, 0, LEN_DATA - rx_len);
 		
 		int messageType = detectMessageType(data); //Extracts message type from the data buffer.
 		
@@ -1018,20 +1023,38 @@ void DW1000RangingClass::copyShortAddress(byte address1[], byte address2[]) {
  * ######################################################################### */
 
 void DW1000RangingClass::transmitInit() {
+	//Must be called any time a message is about to be sent via UWB
+	// Clears the buffer, so that no leftovers of a previous message are ever sent.
+	// IMPORTANT: the buffer is shared with reception. A received message must be completely read BEFORE replying to it.
+	memset(data, 0, LEN_DATA);
 	DW1000.newTransmit();
 	DW1000.setDefaults();
 }
 
-void DW1000RangingClass::transmit(byte datas[]) {
-	DW1000.setData(data, LEN_DATA);
+void DW1000RangingClass::transmit(byte datas[], uint16_t len) {
+	//Final step of the transmitting sequence. After building up the data buffer, this method actually sends the constructed message.
+	//Only the first "len" bytes are sent (the real length of the message). The bytes left in the buffer after them are not sent.
+	if(len == 0 || len > LEN_DATA) {
+		// Safety net: a message that doesn't fit in the buffer is never sent. Always reported, so the problem is visible.
+		Serial.print("Error: message length out of range ("); Serial.print(len);
+		Serial.print(" bytes, max "); Serial.print(LEN_DATA); Serial.println("). Message not sent.");
+		return;
+	}
+	DW1000.setData(datas, len);
 	_is_transmitting = true;
 	_tx_start_time = millis();
 	DW1000.startTransmit();
 }
 
-void DW1000RangingClass::transmit(byte datas[], DW1000Time time) {
+void DW1000RangingClass::transmit(byte datas[], DW1000Time time, uint16_t len) {
+	//Same as the previous method, with an extra parameter: a time delay to send the message.
+	if(len == 0 || len > LEN_DATA) {
+		Serial.print("Error: message length out of range ("); Serial.print(len);
+		Serial.print(" bytes, max "); Serial.print(LEN_DATA); Serial.println("). Message not sent.");
+		return;
+	}
 	DW1000.setDelay(time);
-	DW1000.setData(data, LEN_DATA);
+	DW1000.setData(datas, len);
 	_is_transmitting = true;
 	_tx_start_time = millis(); 
 	DW1000.startTransmit();
@@ -1040,7 +1063,7 @@ void DW1000RangingClass::transmit(byte datas[], DW1000Time time) {
 void DW1000RangingClass::transmitBlink() {
 	transmitInit();
 	_globalMac.generateBlinkFrame(data, _currentAddress, _currentShortAddress);
-	transmit(data);
+	transmit(data, 12); // Length: [frame control (1)][seq number (1)][long address (8)][short address (2)] = 12 (blink frame, see generateBlinkFrame)
 	
 }
 
@@ -1053,14 +1076,25 @@ void DW1000RangingClass::transmitRangingInit(DW1000Device* myDistantDevice) {
 	data[LONG_MAC_LEN + 1] = _device_type;
 	copyShortAddress(_lastSentToShortAddress, myDistantDevice->getByteShortAddress());
 	delay(random(5, 25)); //This delay prevents colissions in responding to the blinks from the master. This way, library auto re-enables after master's reset.
-	transmit(data);
+	transmit(data, LONG_MAC_LEN + 2); // Length: [long MAC (15)][type (1)][device type (1)]
 }
 
 void DW1000RangingClass::transmitPoll(DW1000Device* myDistantDevice) {
 	
 	transmitInit();
+
+	uint16_t len; // Real length of the message, set in each branch
 	
 	if(myDistantDevice == nullptr) { //Polling via broadcast.
+
+		// Length: [MAC (9)][type (1)][n (1)][n x (short address (2) + reply time (2))][device type (1)] = SHORT_MAC_LEN + 3 + 4n.
+		// Checked before writing anything: it must fit in the buffer.
+		len = SHORT_MAC_LEN + 3 + 4*_networkDevicesNumber;
+		if(len > LEN_DATA) {
+			Serial.print("Error: broadcast POLL for "); Serial.print(_networkDevicesNumber);
+			Serial.print(" devices doesn't fit in the buffer ("); Serial.print(len); Serial.print(" > "); Serial.print(LEN_DATA); Serial.println(" bytes). Not sent.");
+			return;
+		}
 		
 		_ranging_mode = DW1000RangingClass::BROADCAST;
 		//we need to set our timerDelay:
@@ -1122,28 +1156,41 @@ void DW1000RangingClass::transmitPoll(DW1000Device* myDistantDevice) {
 
 		//6 --> Save last sent to address for future reference
 		copyShortAddress(_lastSentToShortAddress, myDistantDevice->getByteShortAddress());
+
+		len = SHORT_MAC_LEN + 7; // Length: [MAC (9)][type (1)][n = 1 (1)][short address (2)][reply time (2)][device type (1)]
 	}
 	
-	transmit(data);
+	transmit(data, len);
 }
 
 void DW1000RangingClass::transmitPollAck(DW1000Device* myDistantDevice) {
 	transmitInit();
 	_globalMac.generateShortMACFrame(data, _currentShortAddress, myDistantDevice->getByteShortAddress());
 	data[SHORT_MAC_LEN] = POLL_ACK;
-	data[SHORT_MAC_LEN+1] = _own_cycle_id; //Used in token passing. Controls all of the device's cycle, so that all of them receive the token in each one
+	data[SHORT_MAC_LEN+1] = _own_cycle_id; // Reserved for the MESH token passing (all devices receive the token in each cycle). In the CHAIN token passing it is always 0 and it is not used.
 
 	// delay the same amount as ranging initiator
 	DW1000Time deltaTime = DW1000Time(_replyDelayTimeUS, DW1000Time::MICROSECONDS);
 	copyShortAddress(_lastSentToShortAddress, myDistantDevice->getByteShortAddress());
-	transmit(data, deltaTime);
+	transmit(data, deltaTime, SHORT_MAC_LEN + 2); // Length: [MAC (9)][type (1)][cycle_id (1)]
 }
 
 void DW1000RangingClass::transmitRange(DW1000Device* myDistantDevice) {
 
 	transmitInit();
 
+	uint16_t len; // Real length of the message, set in each branch
+
 	if(myDistantDevice == nullptr) { //Range via broadcast.
+
+		// Length: [MAC (9)][type (1)][n (1)][n x (short address (2) + 3 timestamps x (5))] = SHORT_MAC_LEN + 2 + 17n.
+		// Checked before writing anything: it must fit in the buffer (17 bytes per device: with LEN_DATA = 90, up to 4 devices).
+		len = SHORT_MAC_LEN + 2 + 17*_networkDevicesNumber;
+		if(len > LEN_DATA) {
+			Serial.print("Error: broadcast RANGE for "); Serial.print(_networkDevicesNumber);
+			Serial.print(" devices doesn't fit in the buffer ("); Serial.print(len); Serial.print(" > "); Serial.print(LEN_DATA); Serial.println(" bytes). Not sent.");
+			return;
+		}
 
 		//1st --> Set the timer delay:
 		_timerDelay = DEFAULT_TIMER_DELAY+(uint16_t)(_networkDevicesNumber*3*DEFAULT_REPLY_DELAY_TIME/1000);
@@ -1208,10 +1255,12 @@ void DW1000RangingClass::transmitRange(DW1000Device* myDistantDevice) {
 		//7 --> Save last sent to address for future reference
 		
 		copyShortAddress(_lastSentToShortAddress, myDistantDevice->getByteShortAddress());
+
+		len = SHORT_MAC_LEN + 19; // Length: [MAC (9)][type (1)][n = 1 (1)][short address (2)][3 timestamps x (5)]
 	}
 	
 	
-	transmit(data);
+	transmit(data, len);
 }
 
 void DW1000RangingClass::transmitRangeReport(DW1000Device* myDistantDevice) {
@@ -1225,7 +1274,7 @@ void DW1000RangingClass::transmitRangeReport(DW1000Device* myDistantDevice) {
 	memcpy(data+1+SHORT_MAC_LEN, &curRange, 4);
 	memcpy(data+5+SHORT_MAC_LEN, &curRXPower, 4);
 	copyShortAddress(_lastSentToShortAddress, myDistantDevice->getByteShortAddress());
-	transmit(data, DW1000Time(_replyDelayTimeUS, DW1000Time::MICROSECONDS));
+	transmit(data, DW1000Time(_replyDelayTimeUS, DW1000Time::MICROSECONDS), SHORT_MAC_LEN + 9); // Length: [MAC (9)][type (1)][range, float (4)][RX power, float (4)]
 }
 
 void DW1000RangingClass::transmitRangeFailed(DW1000Device* myDistantDevice) {
@@ -1234,7 +1283,7 @@ void DW1000RangingClass::transmitRangeFailed(DW1000Device* myDistantDevice) {
 	data[SHORT_MAC_LEN] = RANGE_FAILED;
 	
 	copyShortAddress(_lastSentToShortAddress, myDistantDevice->getByteShortAddress());
-	transmit(data);
+	transmit(data, SHORT_MAC_LEN + 1); // Length: [MAC (9)][type (1)]
 }
 
 
@@ -1274,7 +1323,7 @@ void DW1000RangingClass::transmitStopRanging(DW1000Device* device){
 	_globalMac.generateShortMACFrame(data, _currentShortAddress, dest);
 	
 	data[SHORT_MAC_LEN ] = STOP_RANGING;
-	transmit(data);
+	transmit(data, SHORT_MAC_LEN + 1); // Length: [MAC (9)][type (1)]
 	
 }
 
@@ -1294,7 +1343,7 @@ void DW1000RangingClass::transmitStopRangingAck(DW1000Device* device){
 
 	_globalMac.generateShortMACFrame(data, _currentShortAddress, dest);
 	data[SHORT_MAC_LEN] = STOP_RANGING_ACK;
-	transmit(data);
+	transmit(data, SHORT_MAC_LEN + 1); // Length: [MAC (9)][type (1)]
 }
 
 
@@ -1345,7 +1394,7 @@ void DW1000RangingClass::transmitModeSwitch(bool toInitiator, DW1000Device* devi
 		
 	}
 
-	transmit(data); //the data is sent via UWB
+	transmit(data, index); //the data is sent via UWB. Length: [MAC (9)][type (1)][toInitiator (1)][rangingViaBroadcast (1)][sentByBroadcast (1)] = 13
 }
 
 void DW1000RangingClass::transmitModeSwitchAck(DW1000Device* device,bool isInitiator){
@@ -1367,7 +1416,7 @@ void DW1000RangingClass::transmitModeSwitchAck(DW1000Device* device,bool isIniti
 	data[SHORT_MAC_LEN] = MODE_SWITCH_ACK;
 	data[SHORT_MAC_LEN+1] = (isInitiator ? 1:0);
 
-	transmit(data);
+	transmit(data, SHORT_MAC_LEN + 2); // Length: [MAC (9)][type (1)][isInitiator (1)]
 }
 
 void DW1000RangingClass::transmitDataRequest(DW1000Device* device){
@@ -1390,7 +1439,7 @@ void DW1000RangingClass::transmitDataRequest(DW1000Device* device){
 	_globalMac.generateShortMACFrame(data, _currentShortAddress, dest);
 	data[SHORT_MAC_LEN] = REQUEST_DATA;
 	
-	transmit(data); //the data is sent via UWB
+	transmit(data, SHORT_MAC_LEN + 1); //the data is sent via UWB. Length: [MAC (9)][type (1)]
 }
 
 void DW1000RangingClass::transmitLocalDataReport(Measurement* measurements, int numMeasures, DW1000Device* device) {
@@ -1435,7 +1484,7 @@ void DW1000RangingClass::transmitLocalDataReport(Measurement* measurements, int 
     data[index++] = active_measures;
 
     // Before sending, I check if there's enough space for the full message:
-    size_t totalPayloadSize = 1 + active_measures * 5;  // 3 "constant" bytes + 10 for each measure sent.
+    size_t totalPayloadSize = 1 + active_measures * 5;  // [M] + 5 bytes per measure sent (destination 1 + distance 2 + RX power 2).
     size_t totalMessageSize = SHORT_MAC_LEN + 1 + totalPayloadSize; //+1 because of the message type.
 
     if (totalMessageSize > LEN_DATA) {
@@ -1451,8 +1500,11 @@ void DW1000RangingClass::transmitLocalDataReport(Measurement* measurements, int 
 			//1 byte for the destiny's short Address
     		data[index++] = (uint8_t)measurements[i].short_addr_dest;
 			
-    		// Distante measured (sent as cm to reduce message length)
-    		uint16_t distance_cm = (uint16_t)(measurements[i].distance * 100.0f);
+    		// Distance measured, sent in cm and saturated to the uint16 range (0 - 655.35 m) so it never wraps around
+    		float distance_cm_f = measurements[i].distance * 100.0f;
+    		if(distance_cm_f < 0.0f) distance_cm_f = 0.0f;
+    		if(distance_cm_f > 65535.0f) distance_cm_f = 65535.0f;
+    		uint16_t distance_cm = (uint16_t)distance_cm_f;
     		memcpy(data + index, &distance_cm, 2); 
     		index += 2;
 			
@@ -1465,7 +1517,7 @@ void DW1000RangingClass::transmitLocalDataReport(Measurement* measurements, int 
 	}
 	
 
-    transmit(data); //Finally, sends the message
+    transmit(data, index); //Finally, sends the message (only the bytes written). Length: [MAC (9)][type (1)][M (1)][M x (destination (1) + distance (2) + RX power (2))] = 11 + 5M
 }
 
 void DW1000RangingClass::transmitAggregatedDataReport(Measurement* measurements, int numMeasures, DW1000Device* device) {
@@ -1512,7 +1564,11 @@ void DW1000RangingClass::transmitAggregatedDataReport(Measurement* measurements,
 
 			data[index++] = (uint8_t)measurements[i].short_addr_origin;
 			data[index++] = (uint8_t)measurements[i].short_addr_dest;
-			uint16_t distance_cm = (uint16_t)(measurements[i].distance * 100.0f);
+			// Distance in cm, saturated to the uint16 range (0 - 655.35 m) so it never wraps around
+			float distance_cm_f = measurements[i].distance * 100.0f;
+			if(distance_cm_f < 0.0f) distance_cm_f = 0.0f;
+			if(distance_cm_f > 65535.0f) distance_cm_f = 65535.0f;
+			uint16_t distance_cm = (uint16_t)distance_cm_f;
 			memcpy(data + index, &distance_cm, 2); 
 			index += 2;
 			int16_t rxPower_tx = (int16_t)(measurements[i].rxPower * 100.0f); 
@@ -1522,7 +1578,7 @@ void DW1000RangingClass::transmitAggregatedDataReport(Measurement* measurements,
 		
 	}
 	
-	transmit(data);
+	transmit(data, index); // Only the bytes written. Length: [MAC (9)][type (1)][M (1)][M x (origin (1) + destination (1) + distance (2) + RX power (2))] = 11 + 6M
 }
 
 void DW1000RangingClass::transmitDataReportAck(DW1000Device* device){
@@ -1537,7 +1593,7 @@ void DW1000RangingClass::transmitDataReportAck(DW1000Device* device){
 	else memcpy(dest,device->getByteShortAddress(),2);
 	_globalMac.generateShortMACFrame(data, _currentShortAddress, dest);
 	data[SHORT_MAC_LEN] = DATA_REPORT_ACK;
-	transmit(data);
+	transmit(data, SHORT_MAC_LEN + 1); // Length: [MAC (9)][type (1)]
 }
 
 void DW1000RangingClass::transmitTokenHandoff(DW1000Device* device){
@@ -1552,8 +1608,8 @@ void DW1000RangingClass::transmitTokenHandoff(DW1000Device* device){
 	else memcpy(dest,device->getByteShortAddress(),2);
 	_globalMac.generateShortMACFrame(data, _currentShortAddress, dest);
 	data[SHORT_MAC_LEN] = TOKEN_HANDOFF;
-	data[SHORT_MAC_LEN+1] = _own_cycle_id;
-	transmit(data);
+	data[SHORT_MAC_LEN+1] = _own_cycle_id; // Reserved for the MESH token passing. In the CHAIN token passing it is always 0 and it is not used.
+	transmit(data, SHORT_MAC_LEN + 2); // Length: [MAC (9)][type (1)][cycle_id (1)]
 }
 
 void DW1000RangingClass::transmitTokenHandoffAck(DW1000Device* device){
@@ -1568,7 +1624,7 @@ void DW1000RangingClass::transmitTokenHandoffAck(DW1000Device* device){
 	else memcpy(dest,device->getByteShortAddress(),2);
 	_globalMac.generateShortMACFrame(data, _currentShortAddress, dest);
 	data[SHORT_MAC_LEN] = TOKEN_HANDOFF_ACK;
-	transmit(data);
+	transmit(data, SHORT_MAC_LEN + 1); // Length: [MAC (9)][type (1)]
 }
 
 void DW1000RangingClass::transmitTokenHandoffNack(DW1000Device* device){
@@ -1583,7 +1639,7 @@ void DW1000RangingClass::transmitTokenHandoffNack(DW1000Device* device){
 	else memcpy(dest,device->getByteShortAddress(),2);
 	_globalMac.generateShortMACFrame(data, _currentShortAddress, dest);
 	data[SHORT_MAC_LEN] = TOKEN_HANDOFF_NACK;
-	transmit(data);
+	transmit(data, SHORT_MAC_LEN + 1); // Length: [MAC (9)][type (1)]
 }
 
 
