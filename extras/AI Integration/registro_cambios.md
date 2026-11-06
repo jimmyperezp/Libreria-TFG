@@ -103,6 +103,34 @@ todo lo que cruza el corte).
 enviados), saturación de distancias y aceleraciones, informes cortados o mal formados (-1 sin leer fuera), informe que
 no cabe (no se envía) y tipo de informe en el TOKEN_HANDOFF.
 
+**Firmware.**
+- Coordinador: `#define REPORT_TYPE` (por defecto `DATA_REPORT_MODEL`) y `setReportType(REPORT_TYPE)` al arrancar: es
+  el único sitio donde se elige el informe, y viaja con el testigo a toda la cadena.
+- Nodo: `buildReport()` construye el informe del tipo que llegó con el testigo (`buildModelReport()` o
+  `buildAggregatedReport()`). En el de modo modelo, su bloque va delante de los recibidos del hijo, que se reenvían sin
+  modificar. Los reintentos reenvían la misma copia.
+- Nodo: el nieto es el hijo que trae el bloque del hijo (el primero recibido); se usa la medida propia con él si se
+  midió en el ciclo. `readImu()` lee la IMU en unidades físicas para los dos informes (ceros mientras no haya sensor).
+- Nodo y coordinador: las comprobaciones comunes del informe recibido (remitente esperado, informe repetido, informe
+  ya no esperado) pasan a `acceptIncomingReport()`, compartida por los callbacks de los dos tipos de informe.
+- Coordinador: cada bloque se convierte en sus medidas (`hop` 1 y 2, sin RX Power) y su muestra de IMU (solo ax y ay).
+- **Composición: ignora las medidas con `hop = 2`.** `buildObservedChain()` avanza por la primera medida activa que
+  sale del último nodo hacia uno que no esté en la cadena: con las medidas del nieto encontraría atajos. Ejemplo
+  comprobado: si el sistema arranca con B2 caído, B1-B3 entra en la lista como medida con el hijo, por delante de
+  B1-B2; cuando B2 vuelve, sin el filtro la cadena observada es C1 > B1 > B3 > B4 > B2.
+- Salidas: el informe legible marca cada medida como hijo o nieto, omite la RX Power cuando el informe no la trae y
+  muestra los bloques recibidos; la fila en crudo deja vacía la RX Power que no llega.
+- `AI_DEPLOYMENT` desactivado hasta reentrenar el modelo con las nuevas entradas.
+
+**Verificación del firmware (PC).** Nodo y coordinador compilan con stubs de Arduino. Simulación de tres ciclos con el
+código real de `Node.ino` (4 nodos) y `Coordinator.ino`, cada uno en su propio espacio de nombres:
+1. Arranque con B2 caído: B1 salta a B3 (hijo B3, nieto B4); composición observada C1 > B1 > B3 > B4.
+2. B2 vuelve: informe de 50 B; B1 con hijo B2 y nieto B3 (el hijo de su hijo, no B4 aunque también lo mida);
+   composición C1 > B1 > B2 > B3 > B4 (sin el filtro de `hop = 2`, falla).
+3. B2 no alcanza a su nieto: su bloque va solo con el hijo; informe de 47 B; composición correcta.
+
+**Pendiente:** formato en crudo y scripts de Python; las 16 columnas del modelo en el coordinador; reentrenar.
+
 **Decisiones de diseño.**
 - El nieto es **el hijo del hijo**, sacado del informe que llega del hijo (no el segundo más cercano, que puede fallar
   en curvas o con nodos juntos).

@@ -108,6 +108,15 @@ ImuSample report_imu[MAX_IMU_SAMPLES];
 uint8_t amount_report_imu = 0;
 
 
+/*DATA_REPORT_MODEL (see the library: NodeBlock)*/
+#define MAX_NODE_BLOCKS MAX_DEVICES
+NodeBlock received_blocks[MAX_NODE_BLOCKS];   // Blocks received in the son's report (this node's son and the nodes after it)
+uint8_t amount_received_blocks = 0;
+NodeBlock report_blocks[MAX_NODE_BLOCKS];     // Snapshot sent to the parent: own block + received blocks (resent as-is on retries)
+uint8_t amount_report_blocks = 0;
+uint8_t report_type_sent = DATA_REPORT_AGGREGATED; // Type of report of the snapshot (the one requested in the token when it was built)
+
+
 /*MODE SWITCHING control*/
 static bool _switch_to_initiator_pending = false; //Used inside tokenHandoff. Checks if has to switch or not (need to send ack before switching)
 static bool device_is_initiator = false;
@@ -134,9 +143,15 @@ const unsigned long WAITING_RETURN_TIME = 2500;
 /*Function prototypes*/
 //transmitUnicast presents errors as one of the parameters is set as null
 void transmitUnicast(uint8_t message_type, DW1000Device* explicit_target = nullptr);
+void readImu(float acc_ms2[3], float gyro_rads[3]);
 void readOwnImu(ImuSample &sample);
 void storeReceivedImu(ImuSample* incoming, int num_incoming);
 void buildReport();
+void buildAggregatedReport();
+void buildModelReport();
+bool acceptIncomingReport(DW1000Device* reporting_device);
+int searchActiveMeasure(uint8_t a, uint8_t b);
+void logMeasure(uint8_t own_sa, uint8_t dest_sa, float dist, float rx_pwr, uint8_t hop = 0);
 
 /*CODE*/
 
@@ -171,6 +186,7 @@ void attachCallbacks(){
     DW1000Ranging.attachTokenHandoffAck(tokenHandoffAck);
 
     DW1000Ranging.attachAggregatedDataReport(aggregatedDataReport);  
+    DW1000Ranging.attachModelDataReport(modelDataReport);
     DW1000Ranging.attachDataReportAck(dataReportAck);
 }
 
@@ -395,6 +411,7 @@ void tokenHandoff(uint8_t incoming_cycle_id){
     // New cycle for this node: no son yet and no IMU blocks received from further devices.
     son_address = -1;
     amount_imu_received = 0;
+    amount_received_blocks = 0;
 
     
     if(!(i_have_token)){
@@ -541,7 +558,9 @@ void newRange(){
     }
 }
 
-void logMeasure(uint8_t own_sa,uint8_t dest_sa, float dist, float rx_pwr){
+void logMeasure(uint8_t own_sa,uint8_t dest_sa, float dist, float rx_pwr, uint8_t hop){
+
+    // hop: 1 = measure with the son, 2 = with the grandson, 0 = own measure / old aggregated report (see Measurement)
 
     // Firstly, checks if that communication has been logged before
     int index = searchMeasure(own_sa,dest_sa);
@@ -554,6 +573,7 @@ void logMeasure(uint8_t own_sa,uint8_t dest_sa, float dist, float rx_pwr){
         measurements[index].distance = dist; 
         measurements[index].rxPower = rx_pwr; 
         measurements[index].active = true;
+        measurements[index].hop = hop;
 
     }
     else if (amount_measurements < MAX_MEASURES){
@@ -564,6 +584,7 @@ void logMeasure(uint8_t own_sa,uint8_t dest_sa, float dist, float rx_pwr){
         measurements[amount_measurements].distance = dist;
         measurements[amount_measurements].rxPower = rx_pwr;
         measurements[amount_measurements].active = true;
+        measurements[amount_measurements].hop = hop;
         amount_measurements ++; // And increase the devices number in 1.
         
     }
@@ -694,7 +715,8 @@ void transmitUnicast(uint8_t message_type,DW1000Device* explicit_target){
                     Serial.print(parent_address,HEX);
                     Serial.print("] via unicast");
                 }
-            DW1000Ranging.transmitAggregatedDataReport(report_measures, amount_report_measures, parent, report_imu, amount_report_imu);
+            if(report_type_sent == DATA_REPORT_MODEL) DW1000Ranging.transmitModelDataReport(report_blocks, amount_report_blocks, parent);
+            else DW1000Ranging.transmitAggregatedDataReport(report_measures, amount_report_measures, parent, report_imu, amount_report_imu);
         }
 
 
@@ -704,7 +726,8 @@ void transmitUnicast(uint8_t message_type,DW1000Device* explicit_target){
                 Serial.print(parent_address,HEX);
                 Serial.println("] not found. Data report sent via broadcast. ");
             }
-            DW1000Ranging.transmitAggregatedDataReport(report_measures, amount_report_measures, nullptr, report_imu, amount_report_imu);
+            if(report_type_sent == DATA_REPORT_MODEL) DW1000Ranging.transmitModelDataReport(report_blocks, amount_report_blocks, nullptr);
+            else DW1000Ranging.transmitAggregatedDataReport(report_measures, amount_report_measures, nullptr, report_imu, amount_report_imu);
         }
 
         // The report is sent from the snapshot built in buildReport(). Retries resend the same snapshot.
@@ -802,9 +825,11 @@ void TokenHandoffFailed(){
 
 /*DATA REPORTING*/
 
-void aggregatedDataReport(byte* data){
+bool acceptIncomingReport(DW1000Device* reporting_device){
 
-    DW1000Device* reporting_device = DW1000Ranging.getDistantDevice();
+    // Common checks for every type of data report received from the son. Returns true if the report must be read.
+    // If it must not be read (unexpected sender, repeated report, report no longer awaited), it sends the ACK
+    // (so the sender doesn't keep retrying) and returns false.
 
     uint8_t reporting_node_short_addr = reporting_device->getShortAddressHeader();
 
@@ -838,7 +863,7 @@ void aggregatedDataReport(byte* data){
         }
         transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
         delay(10);
-        return;
+        return false;
     }
 
     else{ //The report comes from the valid device
@@ -881,7 +906,7 @@ void aggregatedDataReport(byte* data){
             if(DEBUG_NODE) Serial.print(" but already received before. Only need to send ACK...");
             transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
             delay(10);
-            return;
+            return false;
 
         }
 
@@ -889,57 +914,92 @@ void aggregatedDataReport(byte* data){
             if(DEBUG_NODE) Serial.print(" but I wasn't waiting for it anymore. Sending ack of reception but ignoring data");
             transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
             delay(10);
-            return;
+            return false;
         }
-
-        // The report is read BEFORE sending the ACK: "data" is the shared buffer of the library, and
-        // building the ACK overwrites it (transmitInit() clears it), so the report must be read first.
 
         return_received = true; //To avoid processing the same report more than once in case it is received multiple times due to retries and ACK failures.
-
-        uint8_t index = SHORT_MAC_LEN+1; // Variable "index" is used to go through all the payload.
-        uint8_t num_measures = data[index++];
-
-        if(num_measures*6>LEN_DATA-SHORT_MAC_LEN-4){
-            // x6 because every measure takes 6 bytes.
-            Serial.println("DATA REPORT RECEIVED IS TOO LONG");
-            transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device); // ACK anyway, so the son doesn't keep retrying a report that will never be accepted
-            delay(10);
-            return;
-        }
-
-        for(int i=0; i<num_measures;i++){
-
-            uint8_t short_addr_origin = data[index++];
-            uint8_t short_addr_dest = data[index++];
-
-            uint16_t distance_cm;
-            memcpy(&distance_cm, data+index, 2);
-            index += 2;
-            float distance_m = (float)distance_cm/100;
-            int16_t _rxPower; //Already has a sign (int, not uint)
-            memcpy(&_rxPower, data+index, 2);
-            index += 2;
-            float rxPower = (float)_rxPower/100;
-
-            logMeasure(short_addr_origin,short_addr_dest,distance_m,rxPower);
-
-        }
-
-        // IMU blocks of the devices further down the chain (they are forwarded to the parent)
-        ImuSample incoming_imu[MAX_IMU_SAMPLES];
-        int num_incoming_imu = DW1000Ranging.readAggregatedImu(data, incoming_imu, MAX_IMU_SAMPLES);
-        storeReceivedImu(incoming_imu, num_incoming_imu);
-
-        // The report has been read: now the ACK can be sent (it overwrites the buffer)
-        transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
-        delay(10);
+        return true;
     }
+}
+
+void aggregatedDataReport(byte* data){
+
+    DW1000Device* reporting_device = DW1000Ranging.getDistantDevice();
+    if(!acceptIncomingReport(reporting_device)) return;
+
+    // The report is read BEFORE sending the ACK: "data" is the shared buffer of the library, and
+    // building the ACK overwrites it (transmitInit() clears it), so the report must be read first.
+
+    uint8_t index = SHORT_MAC_LEN+1; // Variable "index" is used to go through all the payload.
+    uint8_t num_measures = data[index++];
+
+    if(num_measures*6>LEN_DATA-SHORT_MAC_LEN-4){
+        // x6 because every measure takes 6 bytes.
+        Serial.println("DATA REPORT RECEIVED IS TOO LONG");
+        transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device); // ACK anyway, so the son doesn't keep retrying a report that will never be accepted
+        delay(10);
+        return;
+    }
+
+    for(int i=0; i<num_measures;i++){
+
+        uint8_t short_addr_origin = data[index++];
+        uint8_t short_addr_dest = data[index++];
+
+        uint16_t distance_cm;
+        memcpy(&distance_cm, data+index, 2);
+        index += 2;
+        float distance_m = (float)distance_cm/100;
+        int16_t _rxPower; //Already has a sign (int, not uint)
+        memcpy(&_rxPower, data+index, 2);
+        index += 2;
+        float rxPower = (float)_rxPower/100;
+
+        logMeasure(short_addr_origin,short_addr_dest,distance_m,rxPower);
+
+    }
+
+    // IMU blocks of the devices further down the chain (they are forwarded to the parent)
+    ImuSample incoming_imu[MAX_IMU_SAMPLES];
+    int num_incoming_imu = DW1000Ranging.readAggregatedImu(data, incoming_imu, MAX_IMU_SAMPLES);
+    storeReceivedImu(incoming_imu, num_incoming_imu);
+
+    // The report has been read: now the ACK can be sent (it overwrites the buffer)
+    transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
+    delay(10);
 
     _wait_for_return = false;
     state = RETURN_TO_PARENT;
 
     
+}
+
+void modelDataReport(byte* data){
+
+    // DATA_REPORT_MODEL received from the son: its blocks are kept as they are, to be forwarded after this node's own block.
+
+    DW1000Device* reporting_device = DW1000Ranging.getDistantDevice();
+    if(!acceptIncomingReport(reporting_device)) return;
+
+    // The report is read BEFORE sending the ACK ("data" is the shared buffer, and building the ACK overwrites it).
+    int n = DW1000Ranging.readModelDataReport(data, received_blocks, MAX_NODE_BLOCKS);
+
+    if(n < 0){
+        Serial.println("MODEL DATA REPORT RECEIVED IS MALFORMED. Ignored");
+        transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device); // ACK anyway, so the son doesn't keep retrying a report that will never be accepted
+        delay(10);
+        return;
+    }
+    amount_received_blocks = n;
+
+    // The report has been read: now the ACK can be sent (it overwrites the buffer)
+    transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
+    delay(10);
+
+    if(DEBUG_NODE){ Serial.print(" Blocks received: "); Serial.println(amount_received_blocks); }
+
+    _wait_for_return = false;
+    state = RETURN_TO_PARENT;
 }
 
 void dataReportAck(){
@@ -972,14 +1032,20 @@ void clearMeasures(){
 
 /*IMU*/
 
+void readImu(float acc_ms2[3], float gyro_rads[3]){
+
+    // Reads this node's IMU, in physical units (acc in m/s^2, gyro in rad/s). Used by both data reports.
+    // The boards don't have an IMU yet: all values are 0. When the sensor is added, only this function must be filled in.
+
+    for(int i = 0; i < 3; i++){ acc_ms2[i] = 0.0f; gyro_rads[i] = 0.0f; }
+}
+
 void readOwnImu(ImuSample &sample){
 
-    // Reads this node's IMU and encodes it as it travels in the report.
-    // The boards don't have an IMU yet: all values are 0. When the sensor is added, only the
-    // six physical values below must be filled in (acc in m/s^2, gyro in rad/s).
+    // This node's IMU, encoded as it travels in the aggregated data report (6 axes).
 
-    float acc_ms2[3]  = {0.0f, 0.0f, 0.0f};
-    float gyro_rads[3] = {0.0f, 0.0f, 0.0f};
+    float acc_ms2[3], gyro_rads[3];
+    readImu(acc_ms2, gyro_rads);
 
     sample.short_addr = own_short_addr;
     for(int i = 0; i < 3; i++){
@@ -1015,6 +1081,16 @@ void storeReceivedImu(ImuSample* incoming, int num_incoming){
 /*REPORT TO PARENT*/
 
 void buildReport(){
+
+    // Builds the snapshot of the report that will be sent to the parent (and resent as-is on retries),
+    // in the type of report requested by the coordinator (it arrives with the token, see the library).
+
+    report_type_sent = DW1000Ranging.getReportType();
+    if(report_type_sent == DATA_REPORT_MODEL) buildModelReport();
+    else buildAggregatedReport();
+}
+
+void buildAggregatedReport(){
 
     // Builds the snapshot that will be sent to the parent (and resent as-is on retries):
     //  - Measures: ONLY this node's measure with its son, plus the measures received from the son.
@@ -1065,6 +1141,76 @@ void buildReport(){
         for(int i = 0; i < amount_report_imu; i++){ Serial.print(" "); Serial.print(report_imu[i].short_addr,HEX); }
         Serial.println();
     }
+}
+
+void buildModelReport(){
+
+    // DATA_REPORT_MODEL: this node's own block first, then the blocks received from the son (as they arrived).
+    //  - Son: the node that accepted this node's token (son_address), with this node's measure with it.
+    //  - Grandson: the son of the son. It is taken from the son's block (the first block received), and this node's
+    //    own measure with it is used. If this node didn't measure with it (e.g. out of range), the block has no grandson.
+    // Afterwards, this cycle's measures and received blocks are cleared.
+
+    NodeBlock own;
+    own.addr = own_short_addr;
+    own.num_measures = 0;
+    own.son_addr = 0; own.son_dist = 0.0f;
+    own.grandson_addr = 0; own.grandson_dist = 0.0f;
+
+    int son_measure = (son_address != -1) ? searchActiveMeasure(own_short_addr, (uint8_t)son_address) : -1;
+    if(son_measure != -1){
+
+        own.num_measures = 1;
+        own.son_addr = (uint8_t)son_address;
+        own.son_dist = measurements[son_measure].distance;
+
+        bool son_block = (amount_received_blocks > 0 && received_blocks[0].addr == (uint8_t)son_address);
+        if(son_block && received_blocks[0].num_measures >= 1){
+            uint8_t grandson = received_blocks[0].son_addr;
+            int grandson_measure = searchActiveMeasure(own_short_addr, grandson);
+            if(grandson_measure != -1){
+                own.num_measures = 2;
+                own.grandson_addr = grandson;
+                own.grandson_dist = measurements[grandson_measure].distance;
+            }
+        }
+    }
+
+    float acc_ms2[3], gyro_rads[3];
+    readImu(acc_ms2, gyro_rads);
+    own.acc_x = acc_ms2[0];
+    own.acc_y = acc_ms2[1];
+
+    amount_report_blocks = 0;
+    report_blocks[amount_report_blocks++] = own;
+    for(int i = 0; i < amount_received_blocks && amount_report_blocks < MAX_NODE_BLOCKS; i++){
+        report_blocks[amount_report_blocks++] = received_blocks[i];
+    }
+
+    clearMeasures();
+    amount_received_blocks = 0;
+
+    if(DEBUG_NODE){
+        int report_bytes = MODEL_REPORT_HEADER_LEN;
+        for(int i = 0; i < amount_report_blocks; i++) report_bytes += MODEL_BLOCK_BASE_LEN + MODEL_MEASURE_LEN * report_blocks[i].num_measures;
+
+        Serial.print("\nModel report built --> Blocks: "); Serial.print(amount_report_blocks);
+        Serial.print("  Size: "); Serial.print(report_bytes); Serial.print("/"); Serial.print(LEN_DATA); Serial.println(" bytes");
+        for(int i = 0; i < amount_report_blocks; i++){
+            NodeBlock &b = report_blocks[i];
+            Serial.print("   ["); Serial.print(b.addr,HEX); Serial.print("] measures: "); Serial.print(b.num_measures);
+            if(b.num_measures >= 1){ Serial.print("  son ["); Serial.print(b.son_addr,HEX); Serial.print("] "); Serial.print(b.son_dist); Serial.print(" m"); }
+            else Serial.print("  (tail)");
+            if(b.num_measures == 2){ Serial.print("  grandson ["); Serial.print(b.grandson_addr,HEX); Serial.print("] "); Serial.print(b.grandson_dist); Serial.print(" m"); }
+            Serial.print("  acc: "); Serial.print(b.acc_x,3); Serial.print(", "); Serial.println(b.acc_y,3);
+        }
+    }
+}
+
+int searchActiveMeasure(uint8_t a, uint8_t b){
+    // Index of the ACTIVE measure between a and b (in any direction), or -1
+    int idx = searchMeasure(a, b);
+    return (idx != -1 && measurements[idx].active) ? idx : -1;
 }
 
 void dataReportFailed(){

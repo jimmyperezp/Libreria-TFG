@@ -51,8 +51,11 @@ Chain buildObservedChain(uint8_t coordinator, int16_t coordinator_son, const Mea
 		// The direction of the measure is NOT used: the coordinator stores each pair once (logMeasure searches
 		// both directions), so a measure reported as B3->B2 may be stored as B2->B3 from a previous cycle.
 		// The coordinator's own measures are skipped: its son is known from the token handoff ACK.
+		// Measures of a node with its grandson (hop = 2) are skipped: they would be a shortcut (e.g. B1 -> B3) and
+		// the chain would skip a device. The chain is built only with the measures of each node with its son.
 		for(int i = 0; i < num_measures; i++){
 			if(!measures[i].active) continue;
+			if(measures[i].hop == 2) continue;
 			uint8_t a = measures[i].short_addr_origin;
 			uint8_t b = measures[i].short_addr_dest;
 			if(a == coordinator || b == coordinator) continue;
