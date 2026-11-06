@@ -34,7 +34,7 @@ bool DW1000RangingClass:: _ranging_enabled = true;
 
 /*CYCLE ID*/
 //Used in Mesh Token passing. This saves my own current cycle_id. This is used to make sure that all of the devices receive the token in a same cycle
-uint8_t DW1000RangingClass::_own_cycle_id = 0; 
+uint8_t DW1000RangingClass::_own_cycle_id = 0; // Never changed in the CHAIN token passing (always 0). Kept for the MESH token passing.
 
 /*TWR Flags & variables*/
 
@@ -1202,7 +1202,7 @@ void DW1000RangingClass::transmitPollAck(DW1000Device* myDistantDevice) {
 	transmitInit();
 	_globalMac.generateShortMACFrame(data, _currentShortAddress, myDistantDevice->getByteShortAddress());
 	data[SHORT_MAC_LEN] = POLL_ACK;
-	data[SHORT_MAC_LEN+1] = _own_cycle_id; //Used in token passing. Controls all of the device's cycle, so that all of them receive the token in each one
+	data[SHORT_MAC_LEN+1] = _own_cycle_id; // Reserved for the MESH token passing (all devices receive the token in each cycle). In the CHAIN token passing it is always 0 and it is not used.
 
 	// delay the same amount as ranging initiator
 	DW1000Time deltaTime = DW1000Time(_replyDelayTimeUS, DW1000Time::MICROSECONDS);
@@ -1334,7 +1334,7 @@ void DW1000RangingClass::transmitStopRanging(DW1000Device* device){
 	_globalMac.generateShortMACFrame(data, _currentShortAddress, dest);
 	
 	data[SHORT_MAC_LEN ] = STOP_RANGING;
-	transmit(data);
+	transmit(data, SHORT_MAC_LEN + 1); // [MAC][type]
 	
 }
 
@@ -1354,7 +1354,7 @@ void DW1000RangingClass::transmitStopRangingAck(DW1000Device* device){
 
 	_globalMac.generateShortMACFrame(data, _currentShortAddress, dest);
 	data[SHORT_MAC_LEN] = STOP_RANGING_ACK;
-	transmit(data);
+	transmit(data, SHORT_MAC_LEN + 1); // [MAC][type]
 }
 
 void DW1000RangingClass::transmitModeSwitch(bool toInitiator, DW1000Device* device, bool _is_ranging_done_via_broadcast){
@@ -1404,7 +1404,7 @@ void DW1000RangingClass::transmitModeSwitch(bool toInitiator, DW1000Device* devi
 		
 	}
 
-	transmit(data); //the data is sent via UWB
+	transmit(data, index); //the data is sent via UWB. [MAC][type][toInitiator][rangingViaBroadcast][sentByBroadcast]
 }
 
 void DW1000RangingClass::transmitModeSwitchAck(DW1000Device* device,bool isInitiator){
@@ -1426,7 +1426,7 @@ void DW1000RangingClass::transmitModeSwitchAck(DW1000Device* device,bool isIniti
 	data[SHORT_MAC_LEN] = MODE_SWITCH_ACK;
 	data[SHORT_MAC_LEN+1] = (isInitiator ? 1:0);
 
-	transmit(data);
+	transmit(data, SHORT_MAC_LEN + 2); // [MAC][type][isInitiator]
 }
 
 void DW1000RangingClass::transmitDataRequest(DW1000Device* device){
@@ -1449,7 +1449,7 @@ void DW1000RangingClass::transmitDataRequest(DW1000Device* device){
 	_globalMac.generateShortMACFrame(data, _currentShortAddress, dest);
 	data[SHORT_MAC_LEN] = REQUEST_DATA;
 	
-	transmit(data); //the data is sent via UWB
+	transmit(data, SHORT_MAC_LEN + 1); //the data is sent via UWB. [MAC][type]
 }
 
 void DW1000RangingClass::transmitLocalDataReport(Measurement* measurements, int numMeasures, DW1000Device* device) {
@@ -1655,7 +1655,7 @@ void DW1000RangingClass::transmitDataReportAck(DW1000Device* device){
 	else memcpy(dest,device->getByteShortAddress(),2);
 	_globalMac.generateShortMACFrame(data, _currentShortAddress, dest);
 	data[SHORT_MAC_LEN] = DATA_REPORT_ACK;
-	transmit(data);
+	transmit(data, SHORT_MAC_LEN + 1); // [MAC][type]
 }
 
 void DW1000RangingClass::transmitTokenHandoff(DW1000Device* device){
@@ -1670,8 +1670,8 @@ void DW1000RangingClass::transmitTokenHandoff(DW1000Device* device){
 	else memcpy(dest,device->getByteShortAddress(),2);
 	_globalMac.generateShortMACFrame(data, _currentShortAddress, dest);
 	data[SHORT_MAC_LEN] = TOKEN_HANDOFF;
-	data[SHORT_MAC_LEN+1] = _own_cycle_id;
-	transmit(data);
+	data[SHORT_MAC_LEN+1] = _own_cycle_id; // Reserved for the MESH token passing. In the CHAIN token passing it is always 0 and it is not used.
+	transmit(data, SHORT_MAC_LEN + 2); // [MAC][type][cycle_id]
 }
 
 void DW1000RangingClass::transmitTokenHandoffAck(DW1000Device* device){
@@ -1686,7 +1686,7 @@ void DW1000RangingClass::transmitTokenHandoffAck(DW1000Device* device){
 	else memcpy(dest,device->getByteShortAddress(),2);
 	_globalMac.generateShortMACFrame(data, _currentShortAddress, dest);
 	data[SHORT_MAC_LEN] = TOKEN_HANDOFF_ACK;
-	transmit(data);
+	transmit(data, SHORT_MAC_LEN + 1); // [MAC][type]
 }
 
 void DW1000RangingClass::transmitTokenHandoffNack(DW1000Device* device){
@@ -1701,7 +1701,7 @@ void DW1000RangingClass::transmitTokenHandoffNack(DW1000Device* device){
 	else memcpy(dest,device->getByteShortAddress(),2);
 	_globalMac.generateShortMACFrame(data, _currentShortAddress, dest);
 	data[SHORT_MAC_LEN] = TOKEN_HANDOFF_NACK;
-	transmit(data);
+	transmit(data, SHORT_MAC_LEN + 1); // [MAC][type]
 }
 
 
