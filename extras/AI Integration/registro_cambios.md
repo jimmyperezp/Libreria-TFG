@@ -94,10 +94,10 @@ todo lo que cruza el corte).
   con más de 2 medidas.
 - `readModelDataReport(informe, salida, max)`: lee bloque a bloque con el byte de control; nunca lee más allá de la
   longitud recibida; devuelve -1 si el informe está mal formado.
-- `Measurement.hop`: 1 = medida con el hijo, 2 = con el nieto, 0 = propia o del informe antiguo.
+- `Measurement.hop`: 1 = medida con el hijo, 2 = con el nieto, 0 = medida propia.
 - Tipo de informe: lo fija el coordinador (`setReportType()`), viaja en cada TOKEN_HANDOFF (+1 byte) y cada nodo lo
-  toma del testigo que recibe y lo reenvía con el suyo. Un tipo desconocido se sustituye por el agregado, con aviso.
-- El informe agregado se mantiene sin cambios (se rehará cuando se definan los distintos tipos de informe).
+  toma del testigo que recibe y lo reenvía con el suyo. Un tipo desconocido se sustituye por el de modo modelo, con aviso.
+- Los informes local y agregado se eliminan (ver apartado 4).
 
 **Verificación (PC).** Envío y lectura de informes con 0, 1 y 2 medidas por bloque (valores leídos iguales a los
 enviados), saturación de distancias y aceleraciones, informes cortados o mal formados (-1 sin leer fuera), informe que
@@ -106,14 +106,14 @@ no cabe (no se envía) y tipo de informe en el TOKEN_HANDOFF.
 **Firmware.**
 - Coordinador: `#define REPORT_TYPE` (por defecto `DATA_REPORT_MODEL`) y `setReportType(REPORT_TYPE)` al arrancar: es
   el único sitio donde se elige el informe, y viaja con el testigo a toda la cadena.
-- Nodo: `buildReport()` construye el informe del tipo que llegó con el testigo (`buildModelReport()` o
-  `buildAggregatedReport()`). En el de modo modelo, su bloque va delante de los recibidos del hijo, que se reenvían sin
+- Nodo: `buildReport()` construye el informe del tipo que llegó con el testigo (por ahora solo `buildModelReport()`). En el de modo modelo, su bloque va delante de los recibidos del hijo, que se reenvían sin
   modificar. Los reintentos reenvían la misma copia.
 - Nodo: el nieto es el hijo que trae el bloque del hijo (el primero recibido); se usa la medida propia con él si se
-  midió en el ciclo. `readImu()` lee la IMU en unidades físicas para los dos informes (ceros mientras no haya sensor).
+  midió en el ciclo. `readImu()` lee la aceleración en m/s² (ceros mientras no haya sensor).
 - Nodo y coordinador: las comprobaciones comunes del informe recibido (remitente esperado, informe repetido, informe
   ya no esperado) pasan a `acceptIncomingReport()`, compartida por los callbacks de los dos tipos de informe.
-- Coordinador: cada bloque se convierte en sus medidas (`hop` 1 y 2, sin RX Power) y su muestra de IMU (solo ax y ay).
+- Coordinador: cada bloque se convierte en sus medidas (`hop` 1 y 2, sin RX Power); su ax y ay se toman del bloque al
+  construir la fila en crudo.
 - **Composición: ignora las medidas con `hop = 2`.** `buildObservedChain()` avanza por la primera medida activa que
   sale del último nodo hacia uno que no esté en la cadena: con las medidas del nieto encontraría atajos. Ejemplo
   comprobado: si el sistema arranca con B2 caído, B1-B3 entra en la lista como medida con el hijo, por delante de
@@ -142,3 +142,32 @@ código real de `Node.ino` (4 nodos) y `Coordinator.ino`, cada uno en su propio 
 - Bits de estado en el byte de control (cola por tiempo agotado, IMU no válida, reintentos).
 - Distintos tipos de informe según la funcionalidad (todas las medidas con RX Power, solo IMU, modelo...), con
   `readXxx()` para cada uno en la librería.
+
+
+## 4. Eliminación de los informes local y agregado
+
+El informe de modo modelo es ahora el único informe de datos. Se eliminan los dos anteriores, que ya no se usaban:
+
+- `DATA_REPORT_LOCAL` (9): solo las medidas propias, pensado para la topología en estrella.
+- `DATA_REPORT_AGGREGATED` (10): medidas con el hijo + RX Power y bloques de IMU de 6 ejes (82 B con 5 dispositivos).
+
+Los códigos 9 y 10 quedan libres. `REQUEST_DATA` y `DATA_REPORT_ACK` se mantienen.
+
+**Librería.** Fuera `transmitLocalDataReport()`, `transmitAggregatedDataReport()`, `readAggregatedImu()`, sus callbacks
+(`attachLocalDataReport()`, `attachAggregatedDataReport()`), `ImuSample`, `IMU_BLOCK_LEN` y la codificación del giróscopo
+(`encodeGyro()`, `decodeGyro()`, `IMU_GYRO_UNITS_PER_RADS`). Se mantienen `encodeAcc()` / `decodeAcc()`.
+El tipo de informe en el TOKEN_HANDOFF se mantiene, con `DATA_REPORT_MODEL` como único tipo válido y por defecto: así,
+añadir un tipo nuevo no cambia el formato del testigo.
+
+**Nodo.** Fuera el callback del informe agregado, `buildAggregatedReport()`, la copia de medidas e IMU que se enviaba
+(`report_measures`, `report_imu`), los bloques de IMU recibidos (`imu_received`, `storeReceivedImu()`) y `readOwnImu()`.
+`readImu()` devuelve solo la aceleración.
+
+**Coordinador.** Fuera el callback del informe agregado y la lista de muestras de IMU (`imu_received`). La fila en
+crudo toma ax y ay de los bloques recibidos (`searchBlock()`) y del propio coordinador (`readImu()`); az y el giróscopo
+quedan a 0 hasta rehacer el formato en crudo. El informe legible ya no tiene la sección de bloques de IMU (los bloques
+de nodo ya muestran ax y ay).
+
+**Verificación (PC).** Librería, nodo y coordinador compilan. Longitudes de todos los mensajes correctas (informe de
+modo modelo con 4 nodos: 50 B); tipo desconocido o 9/10 en el testigo → modo modelo; simulación de los tres ciclos de
+la cadena sin cambios en el resultado.

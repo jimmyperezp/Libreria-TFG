@@ -35,7 +35,7 @@ bool DW1000RangingClass:: _ranging_enabled = true;
 /*CYCLE ID*/
 //Used in Mesh Token passing. This saves my own current cycle_id. This is used to make sure that all of the devices receive the token in a same cycle
 uint8_t DW1000RangingClass::_own_cycle_id = 0; // Never changed in the CHAIN token passing (always 0). Kept for the MESH token passing.
-uint8_t DW1000RangingClass::_report_type = DATA_REPORT_AGGREGATED; // Set by the coordinator; nodes take it from the TOKEN_HANDOFF
+uint8_t DW1000RangingClass::_report_type = DATA_REPORT_MODEL; // Set by the coordinator; nodes take it from the TOKEN_HANDOFF
 uint16_t DW1000RangingClass::_rx_length = 0;
 
 /*TWR Flags & variables*/
@@ -104,8 +104,6 @@ void (* DW1000RangingClass::_handleModeSwitchRequest)(bool toInitiator,bool _bro
 void (* DW1000RangingClass::_handleModeSwitchAck)(bool isInitiator) = 0;
 
 void (* DW1000RangingClass::_handleDataRequest)(void) = 0;
-void (* DW1000RangingClass::_handleLocalDataReport)(byte*) = 0;
-void (* DW1000RangingClass::_handleAggregatedDataReport)(byte*) = 0;
 void (* DW1000RangingClass::_handleModelDataReport)(byte*) = 0;
 void (* DW1000RangingClass::_handleDataReportAck)(void) = 0;
 
@@ -500,7 +498,7 @@ void DW1000RangingClass::loop() {
 		
 		int messageType = detectMessageType(data); //Extracts message type from the data buffer.
 		
-		if (messageType == MODE_SWITCH || messageType == REQUEST_DATA ||messageType == DATA_REPORT_LOCAL || messageType == DATA_REPORT_ACK || messageType == DATA_REPORT_AGGREGATED || messageType == DATA_REPORT_MODEL || messageType == STOP_RANGING || messageType == POLL || messageType == RANGE || messageType == TOKEN_HANDOFF|| messageType == TOKEN_HANDOFF_ACK) {
+		if (messageType == MODE_SWITCH || messageType == REQUEST_DATA || messageType == DATA_REPORT_ACK || messageType == DATA_REPORT_MODEL || messageType == STOP_RANGING || messageType == POLL || messageType == RANGE || messageType == TOKEN_HANDOFF|| messageType == TOKEN_HANDOFF_ACK) {
 
 			bool is_broadcast = (data[5] == 0xFF && data[6] == 0xFF);
             bool is_for_me = (data[6] == _currentShortAddress[0] && data[5] == _currentShortAddress[1]);
@@ -677,32 +675,6 @@ void DW1000RangingClass::loop() {
 			}
 			return;
 
-		}
-		else if(messageType == DATA_REPORT_LOCAL){
-			
-			byte shortAddress[2]; //Creates 2 bytes to save 'shortAddress'
-			_globalMac.decodeShortMACFrame(data, shortAddress); //To extract the shortAddress from the frame data[]
-			DW1000Device* dev = searchDistantDevice(shortAddress);
-    		if (dev){ dev->noteActivity(); _lastDistantDevice = dev->getIndex();}
-			// The master anchor requests the slaves for a data report.
-			// Slaves will have to send their measurements struct
-			
-			if(_handleLocalDataReport){
-				(* _handleLocalDataReport)(data);
-			}
-			return;
-		}
-		else if(messageType == DATA_REPORT_AGGREGATED){
-
-			byte shortAddress[2]; //Creates 2 bytes to save 'shortAddress'
-			_globalMac.decodeShortMACFrame(data, shortAddress); //To extract the shortAddress from the frame data[]
-			DW1000Device* dev = searchDistantDevice(shortAddress);
-    		if (dev){ dev->noteActivity(); _lastDistantDevice = dev->getIndex();}
-			
-			if(_handleAggregatedDataReport){
-				(* _handleAggregatedDataReport)(data);
-			}
-			return;
 		}
 		else if(messageType == DATA_REPORT_MODEL){
 
@@ -1503,194 +1475,13 @@ void DW1000RangingClass::transmitDataRequest(DW1000Device* device){
 	transmit(data, SHORT_MAC_LEN + 1); //the data is sent via UWB. Length: [MAC (9)][type (1)]
 }
 
-void DW1000RangingClass::transmitLocalDataReport(Measurement* measurements, int numMeasures, DW1000Device* device) {
-
-	uint8_t active_measures = 0;
-    byte dest[2];
-
-    // Destiny selection: broadcast or unicast
-    if (device == nullptr) {
-
-        dest[0] = 0xFF;
-        dest[1] = 0xFF;
-    } 
-	else {
-        memcpy(dest, device->getByteShortAddress(), 2);
-    }
-
-    transmitInit(); //Start a new transmit to clean up the data buffer
-
-	//First, generate MACFrame in short Mode.
-    _globalMac.generateShortMACFrame(data, _currentShortAddress, dest);
-	
-	//The MAC address is saved from byte 0 to the length of short_mac_len -1. 
-
-    // Then, first byte is reserved to the type of message.
-	// It is stored in the index with value short_mac_len
-    data[SHORT_MAC_LEN] = DATA_REPORT_LOCAL;
-
-    // Variable "index" is used to fill up the data buffer.
-    uint8_t index = SHORT_MAC_LEN + 1;
-
-	
-    // 1 byte for number of measurements that are going to be sent:
-	// I only send the active ones.
-
-	for (int i = 0; i<numMeasures;i++){
-		//From all the measures known to the device, only sends the active ones
-		if(measurements[i].active == true){
-			active_measures++;
-		}
-	}
-    data[index++] = active_measures;
-
-    // Before sending, I check if there's enough space for the full message:
-    size_t totalPayloadSize = 1 + active_measures * 5;  // [M] + 5 bytes per measure sent (destination 1 + distance 2 + RX power 2).
-    size_t totalMessageSize = SHORT_MAC_LEN + 1 + totalPayloadSize; //+1 because of the message type.
-
-    if (totalMessageSize > LEN_DATA) {
-        if (DEBUG) {
-            Serial.println("Error: DATA REPORT exceeds the size of the data[] buffer");
-        }
-        return;  // If there isn't enough space, I return without sending it.
-    }
-
-	for (uint8_t i = 0; i < numMeasures; i++) {
-    	if(measurements[i].active == true){
-
-			//1 byte for the destiny's short Address
-    		data[index++] = (uint8_t)measurements[i].short_addr_dest;
-			
-    		// Distance measured, sent in cm and saturated to the uint16 range (0 - 655.35 m) so it never wraps around
-    		float distance_cm_f = measurements[i].distance * 100.0f;
-    		if(distance_cm_f < 0.0f) distance_cm_f = 0.0f;
-    		if(distance_cm_f > 65535.0f) distance_cm_f = 65535.0f;
-    		uint16_t distance_cm = (uint16_t)distance_cm_f;
-    		memcpy(data + index, &distance_cm, 2); 
-    		index += 2;
-			
-    		// 2 bytes for the rx power. Sent as 2 bytes.
-    		int16_t rxPower_tx = (int16_t)(measurements[i].rxPower * 100.0f); // Using a signed integer (int instead o uint), the negative sign is saved correctly.
-    		memcpy(data + index, &rxPower_tx, 2); 
-    		index += 2;
-		}
-		
-	}
-	
-	//When finishing, the value stored in index "points" to the last position of the buffer, meaning that index has the whole message's length.
-    transmit(data, index); //Finally, sends the message (only the bytes written). Length: [MAC (9)][type (1)][M (1)][M x (destination (1) + distance (2) + RX power (2))] = 11 + 5M
-}
-
-void DW1000RangingClass::transmitAggregatedDataReport(Measurement* measurements, int numMeasures, DW1000Device* device, ImuSample* imu_samples, int num_imu) {
-
-	//Works same as local data report, but includes the origin short Address in the payload, as this message is aggregated and can be sent by other devices that are not the origin of the measures.
-	//After the measures, it carries the IMU blocks of the devices included in the report:
-	//	[MAC header][type][M][M x 6 bytes measures][N][N x 13 bytes IMU blocks]
-
-	if(imu_samples == nullptr) num_imu = 0;
-
-	uint8_t active_measures = 0;
-	byte dest[2];
-
-	if (device == nullptr) {
-		dest[0] = 0xFF;
-		dest[1] = 0xFF;
-	} 
-	else memcpy(dest, device->getByteShortAddress(), 2);
-	
-	transmitInit(); 
-
-	_globalMac.generateShortMACFrame(data, _currentShortAddress, dest);
-
-	data[SHORT_MAC_LEN] = DATA_REPORT_AGGREGATED;
-
-	uint8_t index = SHORT_MAC_LEN + 1;
-
-	for (int i = 0; i<numMeasures;i++){
-		if(measurements[i].active == true){
-			active_measures++;
-		}
-	}
-	data[index++] = active_measures;
-
-	// [type] + [M] + measures + [N] + IMU blocks
-	size_t totalPayloadSize = 1 + 1 + active_measures * 6 + 1 + num_imu * IMU_BLOCK_LEN;
-	size_t totalMessageSize = SHORT_MAC_LEN + totalPayloadSize;
-
-	if (totalMessageSize > LEN_DATA) {
-		// Always reported (not only in DEBUG): a report that doesn't fit is never sent, so the problem must be visible.
-		Serial.print("Error: DATA REPORT exceeds the size of the data[] buffer (");
-		Serial.print(totalMessageSize); Serial.print(" > "); Serial.print(LEN_DATA); Serial.println(" bytes). Report not sent.");
-		return;
-	}
-
-	for (int i = 0; i < numMeasures; i++) {
-		if(measurements[i].active == true){
-
-			data[index++] = (uint8_t)measurements[i].short_addr_origin;
-			data[index++] = (uint8_t)measurements[i].short_addr_dest;
-
-			// Distance in cm, saturated to the uint16 range (0 - 655.35 m) so it never wraps around
-			float distance_cm_f = measurements[i].distance * 100.0f;
-			if(distance_cm_f < 0.0f) distance_cm_f = 0.0f;
-			if(distance_cm_f > 65535.0f) distance_cm_f = 65535.0f;
-			uint16_t distance_cm = (uint16_t)distance_cm_f;
-			memcpy(data + index, &distance_cm, 2);
-			index += 2;
-			int16_t rxPower_tx = (int16_t)(measurements[i].rxPower * 100.0f);
-			memcpy(data + index, &rxPower_tx, 2);
-			index += 2;
-		}
-
-	}
-
-	// IMU blocks
-	data[index++] = (uint8_t)num_imu;
-
-	for (int i = 0; i < num_imu; i++) {
-		data[index++] = imu_samples[i].short_addr;
-		memcpy(data + index, imu_samples[i].acc, 6);
-		index += 6;
-		memcpy(data + index, imu_samples[i].gyro, 6);
-		index += 6;
-	}
-
-	//When finishing, the value stored in index "points" to the last position of the buffer, meaning that index has the whole message's length.
-	transmit(data, index); // Only the bytes written. Length: [MAC (9)][type (1)][M (1)][M x measure (6)][N (1)][N x IMU block (13)] = 12 + 6M + 13N
-}
-
-int DW1000RangingClass::readAggregatedImu(byte* report, ImuSample* out, int max_out) {
-
-	// Layout: [MAC header][type][M][M x 6][N][N x 13]
-	int index = SHORT_MAC_LEN + 1;
-	uint8_t num_measures = report[index++];
-	index += num_measures * 6;
-
-	if (index >= LEN_DATA) return 0;	// Malformed report: no room left for the IMU count
-
-	uint8_t num_imu = report[index++];
-
-	if (index + num_imu * IMU_BLOCK_LEN > LEN_DATA) return 0;	// Malformed report: blocks don't fit in the buffer
-
-	int copied = 0;
-	for (int i = 0; i < num_imu && copied < max_out; i++) {
-		out[copied].short_addr = report[index++];
-		memcpy(out[copied].acc, report + index, 6);
-		index += 6;
-		memcpy(out[copied].gyro, report + index, 6);
-		index += 6;
-		copied++;
-	}
-	return copied;
-}
-
 void DW1000RangingClass::setReportType(uint8_t report_type){
 
 	// Unknown types are never used: a configuration error must not break the cycle.
 	if(!isValidReportType(report_type)){
 		Serial.print("Warning: unknown data report type ("); Serial.print(report_type);
-		Serial.println("). Using the aggregated data report.");
-		report_type = DATA_REPORT_AGGREGATED;
+		Serial.println("). Using the model data report.");
+		report_type = DATA_REPORT_MODEL;
 	}
 	_report_type = report_type;
 }
@@ -1826,13 +1617,6 @@ uint16_t DW1000RangingClass::encodeDistance(float distance_m){
 int16_t DW1000RangingClass::encodeAcc(float acc_ms2) {
 	float units = acc_ms2 * IMU_ACC_UNITS_PER_MS2;
 	if (units > 32767.0f)  units = 32767.0f;	// Saturation: a value out of range is clipped, never wrapped
-	if (units < -32768.0f) units = -32768.0f;
-	return (int16_t)lroundf(units);
-}
-
-int16_t DW1000RangingClass::encodeGyro(float gyro_rads) {
-	float units = gyro_rads * IMU_GYRO_UNITS_PER_RADS;
-	if (units > 32767.0f)  units = 32767.0f;
 	if (units < -32768.0f) units = -32768.0f;
 	return (int16_t)lroundf(units);
 }

@@ -29,7 +29,7 @@ const uint8_t PIN_SS = 4;   // spi select pin
 
 // Type of data report the nodes must send. It travels inside the token (TOKEN_HANDOFF) to every node of the chain.
 //   DATA_REPORT_MODEL       --> one block per node: measure with its son and grandson + acc x/y (used to feed the model)
-//   DATA_REPORT_AGGREGATED  --> measures with the son + RX power, and 6-axis IMU blocks
+// For now it is the only type (new types of report will be added here).
 #define REPORT_TYPE DATA_REPORT_MODEL
 
 
@@ -108,11 +108,6 @@ float model_features[NUM_FEATURES];    // This cycle's 37 model inputs
 /*Raw data row: fixed positions for RAW_VEHICLES (5) vehicles, as in the simulator's raw CSV*/
 const char* RAW_POSITION_NAMES[RAW_VEHICLES] = {"c", "v1", "v2", "v3", "v4"};
 const char* RAW_IMU_AXES[6] = {"acel_x_ms2", "acel_y_ms2", "acel_z_ms2", "giro_x_rads", "giro_y_rads", "giro_z_rads"};
-
-/*IMU blocks received in the data report (one per node in the chain)*/
-#define MAX_IMU_SAMPLES MAX_DEVICES
-ImuSample imu_received[MAX_IMU_SAMPLES];
-uint8_t amount_imu_received = 0;
 
 /*DATA_REPORT_MODEL*/
 #define MAX_NODE_BLOCKS MAX_DEVICES
@@ -196,7 +191,6 @@ void attachCallbacks(){
     DW1000Ranging.attachNewDevice(newDevice);
     DW1000Ranging.attachInactiveDevice(inactiveDevice); 
     DW1000Ranging.attachTokenHandoffAck(tokenHandoffAck); 
-    DW1000Ranging.attachAggregatedDataReport(aggregatedDataReport);
     DW1000Ranging.attachModelDataReport(modelDataReport);
     
 }
@@ -460,7 +454,7 @@ void newRange(){
 
 void logMeasure(uint8_t own_sa,uint8_t dest_sa, float dist, float rx_pwr, uint8_t hop){
 
-    // hop: 1 = measure of a node with its son, 2 = with its grandson, 0 = own measure / old aggregated report (see Measurement)
+    // hop: 1 = measure of a node with its son, 2 = with its grandson, 0 = own measure (see Measurement)
     // rx_pwr: NAN when the report doesn't carry it (DATA_REPORT_MODEL)
 
     // Firstly, checks if that communication has been logged before
@@ -745,60 +739,11 @@ bool acceptIncomingReport(DW1000Device* reporting_device){
     }
 }
 
-void aggregatedDataReport(byte* data){
-
-    DW1000Device* reporting_device = DW1000Ranging.getDistantDevice();
-    if(!acceptIncomingReport(reporting_device)) return;
-
-    // The report is read BEFORE sending the ACK: "data" is the shared buffer of the library, and
-    // building the ACK overwrites it (transmitInit() clears it), so the report must be read first.
-
-    uint8_t index = SHORT_MAC_LEN+1; // Variable "index" is used to go through all the payload.
-    uint8_t num_measures = data[index++];
-
-    if(num_measures*6>LEN_DATA-SHORT_MAC_LEN-4){
-        // x6 because every measure takes 6 bytes.
-        Serial.println("DATA REPORT RECEIVED IS TOO LONG");
-        transmitUnicast(MSG_DATA_REPORT_ACK, reporting_device); // ACK anyway, so the node doesn't keep retrying a report that will never be accepted
-        delay(10);
-        return;
-    }
-
-    for(int i=0; i<num_measures;i++){
-
-        uint8_t short_addr_origin = data[index++];
-        uint8_t short_addr_dest = data[index++];
-
-        uint16_t distance_cm;
-        memcpy(&distance_cm, data+index, 2);
-        index += 2;
-        float distance_m = (float)distance_cm/100;
-        int16_t _rxPower; //Already has a sign (int, not uint)
-        memcpy(&_rxPower, data+index, 2);
-        index += 2;
-        float rxPower = (float)_rxPower/100;
-
-        logMeasure(short_addr_origin,short_addr_dest,distance_m,rxPower);
-
-    }
-
-    // IMU blocks of the nodes in the chain
-    amount_imu_received = DW1000Ranging.readAggregatedImu(data, imu_received, MAX_IMU_SAMPLES);
-
-    // The report has been read: now the ACK can be sent (it overwrites the buffer)
-    transmitUnicast(MSG_DATA_REPORT_ACK, reporting_device);
-    delay(10);
-
-    _wait_for_return = false; // To restart the timer next time state is WAIT_FOR_RETURN.
-    state = END_CYCLE;
-    
-}
-
 void modelDataReport(byte* data){
 
     // DATA_REPORT_MODEL: one block per node, in chain order. Each block becomes:
     //  - its measure with its son (hop = 1) and with its grandson (hop = 2). No RX power in this report.
-    //  - its IMU sample (only acc x and y travel; the rest of axes are 0)
+    //  - its acc x and y (kept in received_blocks, used to build the raw data row)
 
     DW1000Device* reporting_device = DW1000Ranging.getDistantDevice();
     if(!acceptIncomingReport(reporting_device)) return;
@@ -814,21 +759,11 @@ void modelDataReport(byte* data){
     }
     amount_received_blocks = n;
 
-    amount_imu_received = 0;
     for(int i = 0; i < n; i++){
 
         NodeBlock &b = received_blocks[i];
         if(b.num_measures >= 1) logMeasure(b.addr, b.son_addr,      b.son_dist,      NAN, 1);
         if(b.num_measures == 2) logMeasure(b.addr, b.grandson_addr, b.grandson_dist, NAN, 2);
-
-        if(amount_imu_received < MAX_IMU_SAMPLES){
-            ImuSample &imu = imu_received[amount_imu_received++];
-            imu.short_addr = b.addr;
-            imu.acc[0] = DW1000Ranging.encodeAcc(b.acc_x);
-            imu.acc[1] = DW1000Ranging.encodeAcc(b.acc_y);
-            imu.acc[2] = 0;
-            for(int k = 0; k < 3; k++) imu.gyro[k] = 0;
-        }
     }
 
     // The report has been read: now the ACK can be sent (it overwrites the buffer)
@@ -845,7 +780,7 @@ void showData(){
 
     Serial.println("\n--------------------------- DATA REPORT ---------------------------");
     Serial.print("                    Report type: ");
-    Serial.println(REPORT_TYPE == DATA_REPORT_MODEL ? "MODEL (son + grandson, acc x/y)" : "AGGREGATED");
+    Serial.println(REPORT_TYPE == DATA_REPORT_MODEL ? "MODEL (son + grandson, acc x/y)" : "UNKNOWN");
     
     unsigned long time_between_prints = current_time - last_shown_data_timestamp;
     last_shown_data_timestamp = current_time;
@@ -891,16 +826,6 @@ void showData(){
             if(b.num_measures == 2){ Serial.print("\t Grandson: "); Serial.print(b.grandson_addr,HEX); }
             Serial.print("\t Acc x, y [m/s2]: "); Serial.print(b.acc_x,3); Serial.print(", "); Serial.println(b.acc_y,3);
         }
-    }
-
-    Serial.print("\n IMU blocks received: "); Serial.println(amount_imu_received);
-    for (int i = 0; i < amount_imu_received; i++){
-        Serial.print(" Node: "); Serial.print(imu_received[i].short_addr,HEX);
-        Serial.print("\t Acc [m/s2]: ");
-        for (int k = 0; k < 3; k++){ Serial.print(DW1000Ranging.decodeAcc(imu_received[i].acc[k]),3); Serial.print(k < 2 ? ", " : ""); }
-        Serial.print("\t Gyro [rad/s]: ");
-        for (int k = 0; k < 3; k++){ Serial.print(DW1000Ranging.decodeGyro(imu_received[i].gyro[k]),4); Serial.print(k < 2 ? ", " : ""); }
-        Serial.println();
     }
 
     if(inactive_measures_exist == true){
@@ -1140,22 +1065,24 @@ void buildRawRow(RawRow &row, unsigned long cycle_end_time, unsigned long cycle_
         row.link_rx_power[i] = row.link_seen[i] ? measurements[idx].rxPower  : 0.0f;
     }
 
-    // IMU of each position (coordinator: its own IMU; nodes: the blocks received in the report)
+    // IMU of each position (coordinator: its own IMU; nodes: the blocks received in the report).
+    // Only acc x and y travel in the report: acc z and gyro are always 0 (the raw row keeps them for now).
     for(int v = 0; v < RAW_VEHICLES; v++){
 
-        ImuSample sample;
+        float acc_ms2[3] = {0.0f, 0.0f, 0.0f};
         bool available = false;
 
-        if(v == 0){ readOwnImu(sample); available = true; }
+        if(v == 0){ readImu(acc_ms2); acc_ms2[2] = 0.0f; available = true; }
         else if(row.position_used[v]){
-            int idx = searchImu(row.ids[v]);
-            if(idx != -1){ sample = imu_received[idx]; available = true; }
+            int idx = searchBlock(row.ids[v]);
+            if(idx != -1){ acc_ms2[0] = received_blocks[idx].acc_x; acc_ms2[1] = received_blocks[idx].acc_y; available = true; }
         }
 
         row.imu_received[v] = available;
         for(int k = 0; k < 3; k++){
-            row.acc[v][k]  = available ? DW1000Ranging.decodeAcc(sample.acc[k])   : 0.0f;
-            row.gyro[v][k] = available ? DW1000Ranging.decodeGyro(sample.gyro[k]) : 0.0f;
+            // Rounded to the report's resolution (1 mm/s^2), so the coordinator's own values look like the nodes' ones
+            row.acc[v][k]  = available ? DW1000Ranging.decodeAcc(DW1000Ranging.encodeAcc(acc_ms2[k])) : 0.0f;
+            row.gyro[v][k] = 0.0f;
         }
     }
 }
@@ -1174,22 +1101,17 @@ int activeMeasureBetween(uint8_t a, uint8_t b){
     return -1;
 }
 
-int searchImu(uint8_t short_addr){
-    for(int i = 0; i < amount_imu_received; i++){
-        if(imu_received[i].short_addr == short_addr) return i;
+int searchBlock(uint8_t short_addr){
+    // Index of the node's block in the last model data report, or -1 if it didn't arrive
+    for(int i = 0; i < amount_received_blocks; i++){
+        if(received_blocks[i].addr == short_addr) return i;
     }
     return -1;
 }
 
-void readOwnImu(ImuSample &sample){
-    // The coordinator doesn't have an IMU yet: all values are 0 (same encoding as the nodes' blocks).
-    float acc_ms2[3]   = {0.0f, 0.0f, 0.0f};
-    float gyro_rads[3] = {0.0f, 0.0f, 0.0f};
-    sample.short_addr = own_short_addr;
-    for(int i = 0; i < 3; i++){
-        sample.acc[i]  = DW1000Ranging.encodeAcc(acc_ms2[i]);
-        sample.gyro[i] = DW1000Ranging.encodeGyro(gyro_rads[i]);
-    }
+void readImu(float acc_ms2[3]){
+    // Coordinator's IMU acceleration, in m/s^2 (x, y, z). It doesn't have an IMU yet: all values are 0.
+    for(int i = 0; i < 3; i++) acc_ms2[i] = 0.0f;
 }
 
 void showComposition(const Chain &observed, ChainComparison comparison, CompositionEvent event, unsigned long cycle_duration){
@@ -1303,8 +1225,7 @@ void resetMeasures(){
     for(int i = 0;i<amount_measurements;i++){
         measurements[i].active = false; //This way, only prints active measures next time showData() is called
     }
-    amount_imu_received = 0; // IMU blocks belong to a single cycle as well
-    amount_received_blocks = 0;
+    amount_received_blocks = 0; // Node blocks belong to a single cycle as well
 }
 
 /*LOOP*/

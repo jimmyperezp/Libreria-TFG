@@ -31,8 +31,7 @@
 #define MODE_SWITCH_ACK 7 			// Informs the requester that the petition was received
 
 #define REQUEST_DATA 8    			// Requests a data report. These reports include the measurements made by the requested device
-#define DATA_REPORT_LOCAL 9 		// Only sends its own measurements. Used in hub & spoke (star) topology. Each device answers to the coordinator directly
-#define DATA_REPORT_AGGREGATED 10   // Receives previous reports, adds its measurements, and sends them to the requester. 
+// 9 and 10: free (they were the old local and aggregated data reports, removed)
 #define DATA_REPORT_ACK 11  		// The requester sends this to the sender once the report is received
 
 #define STOP_RANGING 12				// Requests a device to stop its ranging, without caring if it's an initiator or responder 
@@ -68,27 +67,13 @@ struct Measurement {
     float rxPower;      		// Last RX power measured with the destiny (in dBm)
     bool active;        		// Controls if the measurement is active (made in current cycle or previous ones) 
     uint8_t hop;				// Position of the destination in the chain, seen from the origin: 1 = son, 2 = grandson.
-    							// 0 = unknown (own measures of the device, or measures received in the old aggregated report)
+    							// 0 = own measure of the device
 };
 
 
-/* IMU data carried inside the aggregated data reports */
-
-// Each IMU block inside a DATA_REPORT_AGGREGATED takes 13 bytes:
-//   [0]      short address header of the node the sample belongs to
-//   [1..6]   acc x, y, z   --> int16, 1 unit = 1 mm/s^2     (range +-32.767 m/s^2, ~ +-3.3 g)
-//   [7..12]  gyro x, y, z  --> int16, 1 unit = 0.1 mrad/s   (range +-3.2767 rad/s, ~ +-187 deg/s)
-// Values outside the range are saturated (never wrapped).
-#define IMU_BLOCK_LEN 13
+/* Encoding of the IMU acceleration inside the reports */
+// int16, 1 unit = 1 mm/s^2 (range +-32.767 m/s^2, ~ +-3.3 g). Values outside the range are saturated (never wrapped).
 #define IMU_ACC_UNITS_PER_MS2   1000.0f		// 1 unit = 1 mm/s^2
-#define IMU_GYRO_UNITS_PER_RADS 10000.0f	// 1 unit = 0.1 mrad/s
-
-// IMU sample of one device, already encoded as it travels in the report.
-struct ImuSample {
-	uint8_t short_addr;		// Short address header of the device that produced the sample
-	int16_t acc[3];			// x, y, z in mm/s^2
-	int16_t gyro[3];		// x, y, z in 0.1 mrad/s
-};
 
 
 /* DATA_REPORT_MODEL: report used to feed the AI model */
@@ -200,8 +185,6 @@ class DW1000RangingClass {
 		static void attachModeSwitchRequested	(void (* handleModeSwitch)(bool toInitiator,bool _broadcast_ranging))	{ _handleModeSwitchRequest = handleModeSwitch;				}
 		static void attachModeSwitchAck			(void (* handleModeSwitchAck)(bool isInitiator))						{ _handleModeSwitchAck = handleModeSwitchAck;				}
 		static void attachDataRequested			(void (* handleDataRequest)(void))										{ _handleDataRequest = handleDataRequest; 					}
-		static void attachLocalDataReport		(void (* handleLocalDataReport)(byte* dataReport))						{ _handleLocalDataReport = handleLocalDataReport;			}
-		static void attachAggregatedDataReport	(void (* handleAggregatedDataReport)(byte* dataReport))					{ _handleAggregatedDataReport = handleAggregatedDataReport;	}
 		static void attachModelDataReport		(void (* handleModelDataReport)(byte* dataReport))						{ _handleModelDataReport = handleModelDataReport;			}
 		static void attachDataReportAck			(void (* handleDataReportAck)(void))									{ _handleDataReportAck = handleDataReportAck;				}
 		static void attachStopRangingRequested	(void (* handleStopRanging)(void))										{ _handleStopRanging = handleStopRanging;					}
@@ -230,9 +213,6 @@ class DW1000RangingClass {
 		void transmitTokenHandoffAck		(DW1000Device* device = nullptr); 
 		void transmitTokenHandoffNack		(DW1000Device* device = nullptr);
 		
-		void transmitLocalDataReport		(Measurement* measurements, int num_measures, DW1000Device* device = nullptr); 
-		void transmitAggregatedDataReport	(Measurement* measurements, int num_measures, DW1000Device* device = nullptr, ImuSample* imu_samples = nullptr, int num_imu = 0);
-
 		// DATA_REPORT_MODEL. Sends the blocks in the order given (the sender's own block must be the first one).
 		// Returns false (and doesn't send anything) if the report doesn't fit in the buffer or a block is not valid.
 		bool transmitModelDataReport		(NodeBlock* blocks, int num_blocks, DW1000Device* device = nullptr);
@@ -240,23 +220,17 @@ class DW1000RangingClass {
 		// malformed or has more blocks than 'max_out'.
 		static int readModelDataReport(byte* report, NodeBlock* out, int max_out);
 
-		// Type of data report the nodes must send (DATA_REPORT_AGGREGATED or DATA_REPORT_MODEL).
+		// Type of data report the nodes must send (for now, only DATA_REPORT_MODEL).
 		// The coordinator sets it, it travels inside every TOKEN_HANDOFF, and each node takes it from the token it receives
-		// (and forwards it with its own token). By default, DATA_REPORT_AGGREGATED.
+		// (and forwards it with its own token). By default, DATA_REPORT_MODEL.
 		static void    setReportType(uint8_t report_type);
 		static uint8_t getReportType() { return _report_type; }
-		static bool    isValidReportType(uint8_t report_type) { return report_type == DATA_REPORT_AGGREGATED || report_type == DATA_REPORT_MODEL; }
-
-		// Reads the IMU blocks placed after the measurements of a received DATA_REPORT_AGGREGATED.
-		// Returns the number of blocks copied into 'out' (0 if there are none or the report is malformed).
-		static int readAggregatedImu(byte* report, ImuSample* out, int max_out);
+		static bool    isValidReportType(uint8_t report_type) { return report_type == DATA_REPORT_MODEL; }
 
 		// Physical units <--> encoded int16 (with saturation)
 		static uint16_t encodeDistance(float distance_m);	// m --> cm in uint16, saturated (0 - 655.35 m)
 		static int16_t encodeAcc(float acc_ms2);
-		static int16_t encodeGyro(float gyro_rads);
 		static float   decodeAcc(int16_t acc_units)   { return (float)acc_units / IMU_ACC_UNITS_PER_MS2;   }
-		static float   decodeGyro(int16_t gyro_units) { return (float)gyro_units / IMU_GYRO_UNITS_PER_RADS; }
 
 
 		//	For ranging protocol: transmitPoll has to be public so that the devices can locally call it to target their known devices via unicast
@@ -296,8 +270,6 @@ class DW1000RangingClass {
 		static void (* _handleInactiveDevice)		(DW1000Device*);
 		static void (* _handleModeSwitchRequest)	(bool toInitiator, bool _broadcast_ranging);
 		static void (* _handleModeSwitchAck)		(bool isInitiator);		
-		static void (* _handleLocalDataReport)		(byte* dataReport);
-		static void (* _handleAggregatedDataReport)	(byte* dataReport);
 		static void (* _handleModelDataReport)		(byte* dataReport);
 		
 
