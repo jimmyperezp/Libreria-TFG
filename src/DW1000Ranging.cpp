@@ -1394,6 +1394,7 @@ void DW1000RangingClass::transmitModeSwitch(bool toInitiator, DW1000Device* devi
 		
 	}
 
+	//When finishing, the value stored in index "points" to the last position of the buffer, meaning that index has the whole message's length.
 	transmit(data, index); //the data is sent via UWB. Length: [MAC (9)][type (1)][toInitiator (1)][rangingViaBroadcast (1)][sentByBroadcast (1)] = 13
 }
 
@@ -1516,7 +1517,7 @@ void DW1000RangingClass::transmitLocalDataReport(Measurement* measurements, int 
 		
 	}
 	
-
+	//When finishing, the value stored in index "points" to the last position of the buffer, meaning that index has the whole message's length.
     transmit(data, index); //Finally, sends the message (only the bytes written). Length: [MAC (9)][type (1)][M (1)][M x (destination (1) + distance (2) + RX power (2))] = 11 + 5M
 }
 
@@ -1578,6 +1579,7 @@ void DW1000RangingClass::transmitAggregatedDataReport(Measurement* measurements,
 		
 	}
 	
+	//When finishing, the value stored in index "points" to the last position of the buffer, meaning that index has the whole message's length.
 	transmit(data, index); // Only the bytes written. Length: [MAC (9)][type (1)][M (1)][M x (origin (1) + destination (1) + distance (2) + RX power (2))] = 11 + 6M
 }
 
