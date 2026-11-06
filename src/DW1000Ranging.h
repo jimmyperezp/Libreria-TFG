@@ -42,6 +42,8 @@
 #define TOKEN_HANDOFF_ACK 15		// Informs the requester that the token was received.
 #define TOKEN_HANDOFF_NACK 16		// Informs the requester that the token was NOT accepted. Used in MESH topologies. Nodes may have received the token from other requester before. 
 
+#define DATA_REPORT_MODEL 17		// Data report used to feed the AI model: one block per node, with its measures with its son and grandson + acc x/y. See NodeBlock
+
 /* Board types (see TWR diagram in repository's readme to understand) */
 
 #define INITIATOR 0   // Starts the TWR transmissions
@@ -65,6 +67,8 @@ struct Measurement {
     float distance;     		// Last measured distance (in meters)
     float rxPower;      		// Last RX power measured with the destiny (in dBm)
     bool active;        		// Controls if the measurement is active (made in current cycle or previous ones) 
+    uint8_t hop;				// Position of the destination in the chain, seen from the origin: 1 = son, 2 = grandson.
+    							// 0 = unknown (own measures of the device, or measures received in the old aggregated report)
 };
 
 
@@ -84,6 +88,33 @@ struct ImuSample {
 	uint8_t short_addr;		// Short address header of the device that produced the sample
 	int16_t acc[3];			// x, y, z in mm/s^2
 	int16_t gyro[3];		// x, y, z in 0.1 mrad/s
+};
+
+
+/* DATA_REPORT_MODEL: report used to feed the AI model */
+
+// Message:   [MAC (9)][type (1)][N (1)] + N node blocks, in chain order (first the node closest to the coordinator).
+// Node block: [address (1)][control (1)][son: dest (1) + distance (2)][grandson: dest (1) + distance (2)][acc x (2)][acc y (2)]
+//   - control, bits 0-1: number of measures in the block (0, 1 or 2). Bits 2-7: reserved (0).
+//   - The son measure is present if there are 1 or 2 measures; the grandson measure, only if there are 2.
+//   - Distance: cm in uint16 (saturated to 0 - 655.35 m). Acc: as in the IMU blocks (mm/s^2 in int16, saturated).
+//   Block size: 6 (no measures, the tail), 9 (only son) or 12 bytes (son and grandson).
+#define MODEL_REPORT_HEADER_LEN   (SHORT_MAC_LEN + 2)	// [MAC][type][N]
+#define MODEL_BLOCK_BASE_LEN      6						// [address][control][acc x (2)][acc y (2)]
+#define MODEL_MEASURE_LEN         3						// [dest (1)][distance (2)]
+#define MODEL_CONTROL_MEASURES    0x03					// Bits 0-1 of the control byte
+
+// One node block of a DATA_REPORT_MODEL, with its values already decoded (physical units).
+// The library encodes / decodes it when sending / reading the report: the ".ino" never deals with the bytes.
+struct NodeBlock {
+	uint8_t addr;				// Short address header of the node the block belongs to
+	uint8_t num_measures;		// 0 (tail), 1 (only son) or 2 (son and grandson)
+	uint8_t son_addr;			// Son of the node (valid if num_measures >= 1)
+	float   son_dist;			// Distance to the son, in m
+	uint8_t grandson_addr;		// Grandson of the node: the son of its son (valid if num_measures == 2)
+	float   grandson_dist;		// Distance to the grandson, in m
+	float   acc_x;				// Longitudinal acceleration of the node, in m/s^2
+	float   acc_y;				// Lateral acceleration of the node, in m/s^2
 };
 
 
@@ -171,6 +202,7 @@ class DW1000RangingClass {
 		static void attachDataRequested			(void (* handleDataRequest)(void))										{ _handleDataRequest = handleDataRequest; 					}
 		static void attachLocalDataReport		(void (* handleLocalDataReport)(byte* dataReport))						{ _handleLocalDataReport = handleLocalDataReport;			}
 		static void attachAggregatedDataReport	(void (* handleAggregatedDataReport)(byte* dataReport))					{ _handleAggregatedDataReport = handleAggregatedDataReport;	}
+		static void attachModelDataReport		(void (* handleModelDataReport)(byte* dataReport))						{ _handleModelDataReport = handleModelDataReport;			}
 		static void attachDataReportAck			(void (* handleDataReportAck)(void))									{ _handleDataReportAck = handleDataReportAck;				}
 		static void attachStopRangingRequested	(void (* handleStopRanging)(void))										{ _handleStopRanging = handleStopRanging;					}
 		static void attachStopRangingAck		(void (* handleStopRangingAck)(void))									{ _handleStopRangingAck = handleStopRangingAck;				}
@@ -201,11 +233,26 @@ class DW1000RangingClass {
 		void transmitLocalDataReport		(Measurement* measurements, int num_measures, DW1000Device* device = nullptr); 
 		void transmitAggregatedDataReport	(Measurement* measurements, int num_measures, DW1000Device* device = nullptr, ImuSample* imu_samples = nullptr, int num_imu = 0);
 
+		// DATA_REPORT_MODEL. Sends the blocks in the order given (the sender's own block must be the first one).
+		// Returns false (and doesn't send anything) if the report doesn't fit in the buffer or a block is not valid.
+		bool transmitModelDataReport		(NodeBlock* blocks, int num_blocks, DW1000Device* device = nullptr);
+		// Reads a received DATA_REPORT_MODEL into 'out'. Returns the number of blocks read, or -1 if the report is
+		// malformed or has more blocks than 'max_out'.
+		static int readModelDataReport(byte* report, NodeBlock* out, int max_out);
+
+		// Type of data report the nodes must send (DATA_REPORT_AGGREGATED or DATA_REPORT_MODEL).
+		// The coordinator sets it, it travels inside every TOKEN_HANDOFF, and each node takes it from the token it receives
+		// (and forwards it with its own token). By default, DATA_REPORT_AGGREGATED.
+		static void    setReportType(uint8_t report_type);
+		static uint8_t getReportType() { return _report_type; }
+		static bool    isValidReportType(uint8_t report_type) { return report_type == DATA_REPORT_AGGREGATED || report_type == DATA_REPORT_MODEL; }
+
 		// Reads the IMU blocks placed after the measurements of a received DATA_REPORT_AGGREGATED.
 		// Returns the number of blocks copied into 'out' (0 if there are none or the report is malformed).
 		static int readAggregatedImu(byte* report, ImuSample* out, int max_out);
 
 		// Physical units <--> encoded int16 (with saturation)
+		static uint16_t encodeDistance(float distance_m);	// m --> cm in uint16, saturated (0 - 655.35 m)
 		static int16_t encodeAcc(float acc_ms2);
 		static int16_t encodeGyro(float gyro_rads);
 		static float   decodeAcc(int16_t acc_units)   { return (float)acc_units / IMU_ACC_UNITS_PER_MS2;   }
@@ -251,6 +298,7 @@ class DW1000RangingClass {
 		static void (* _handleModeSwitchAck)		(bool isInitiator);		
 		static void (* _handleLocalDataReport)		(byte* dataReport);
 		static void (* _handleAggregatedDataReport)	(byte* dataReport);
+		static void (* _handleModelDataReport)		(byte* dataReport);
 		
 
 		
@@ -263,6 +311,8 @@ class DW1000RangingClass {
 		
 		/*Cycle ID*/
 		static uint8_t _own_cycle_id; 		// Used in MESH topologies. Used to make sure all of the devices in the system have received the token in the current cycle.
+		static uint8_t _report_type;		// Type of data report requested by the coordinator (travels in the TOKEN_HANDOFF). See setReportType()
+		static uint16_t _rx_length;			// Length of the last received message (without the CRC). Used to read the variable-length reports safely
 
 		// message flow state
 		static volatile byte    _expectedMsgId;  // Saves next expected message. If I get a different one, then protocolFailed = true
