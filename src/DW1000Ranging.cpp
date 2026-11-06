@@ -487,7 +487,12 @@ void DW1000RangingClass::loop() {
 
 		_receivedAck = false;
 
-		DW1000.getData(data, LEN_DATA); //getData returns the valuable info + its length
+		// Reads only the real length of the received frame (without the 2 CRC bytes), and clears the rest of the buffer.
+		// This way, any code that reads past the end of a short message finds zeros instead of leftovers of a previous one.
+		uint16_t rx_len = DW1000.getReceivedDataLength();
+		if(rx_len > LEN_DATA) rx_len = LEN_DATA;
+		DW1000.getData(data, rx_len);
+		memset(data + rx_len, 0, LEN_DATA - rx_len);
 		
 		int messageType = detectMessageType(data); //Extracts message type from the data buffer.
 		
@@ -1071,21 +1076,33 @@ void DW1000RangingClass::transmitInit() {
 	DW1000.setDefaults();
 }
 
-void DW1000RangingClass::transmit(byte datas[]) {
+void DW1000RangingClass::transmit(byte datas[], uint16_t len) {
 	//Final step of the transmitting sequence. After building up the data buffer, this method actually sends the constructed message.
-	DW1000.setData(data, LEN_DATA);
+	//Only the first "len" bytes are sent (the real length of the message). The bytes left in the buffer after them are not sent.
+	if(len == 0 || len > LEN_DATA) {
+		// Safety net: a message that doesn't fit in the buffer is never sent. Always reported, so the problem is visible.
+		Serial.print("Error: message length out of range ("); Serial.print(len);
+		Serial.print(" bytes, max "); Serial.print(LEN_DATA); Serial.println("). Message not sent.");
+		return;
+	}
+	DW1000.setData(datas, len);
 	_is_transmitting = true;
 	_tx_start_time = millis();
 	DW1000.startTransmit();
 }
 
-void DW1000RangingClass::transmit(byte datas[], DW1000Time time) {
+void DW1000RangingClass::transmit(byte datas[], DW1000Time time, uint16_t len) {
 	//Final step of the transmitting sequence. After building up the data buffer, this method actually sends the constructed message.
 	//This is just as the previous method, only that this receives an extra parameter: a time delay to send the message.
+	if(len == 0 || len > LEN_DATA) {
+		Serial.print("Error: message length out of range ("); Serial.print(len);
+		Serial.print(" bytes, max "); Serial.print(LEN_DATA); Serial.println("). Message not sent.");
+		return;
+	}
 	DW1000.setDelay(time);
-	DW1000.setData(data, LEN_DATA);
+	DW1000.setData(datas, len);
 	_is_transmitting = true;
-	_tx_start_time = millis(); 
+	_tx_start_time = millis();
 	DW1000.startTransmit();
 }
 

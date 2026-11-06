@@ -317,8 +317,10 @@ class DW1000RangingClass {
 		
 		//Ranging protocole (responder)
 		static void transmitInit();
-		static void transmit(byte datas[]);
-		static void transmit(byte datas[], DW1000Time time);
+		// len = real length of the message (MAC header + payload, without the 2 CRC bytes).
+		// Defaults to LEN_DATA so that any message not yet adapted keeps being sent as before (full buffer).
+		static void transmit(byte datas[], uint16_t len = LEN_DATA);
+		static void transmit(byte datas[], DW1000Time time, uint16_t len = LEN_DATA);
 		static void transmitBlink();
 		static void transmitRangingInit(DW1000Device* myDistantDevice);
 		static void transmitPollAck(DW1000Device* myDistantDevice);

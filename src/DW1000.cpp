@@ -1327,6 +1327,16 @@ uint16_t DW1000Class::getDataLength() {
 	return len;
 }
 
+uint16_t DW1000Class::getReceivedDataLength() {
+	byte rxFrameInfo[LEN_RX_FINFO];
+	readBytes(RX_FINFO, NO_SUB, rxFrameInfo, LEN_RX_FINFO);
+	uint16_t len = ((((uint16_t)rxFrameInfo[1] << 8) | (uint16_t)rxFrameInfo[0]) & 0x03FF);
+	if(_frameCheck && len > 2) {
+		return len-2;
+	}
+	return len;
+}
+
 void DW1000Class::getData(byte data[], uint16_t n) {
 	if(n <= 0) {
 		return;
