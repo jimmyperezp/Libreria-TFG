@@ -671,7 +671,8 @@ void aggregatedDataReport(byte* data){
             return;
         }
 
-        transmitUnicast(MSG_DATA_REPORT_ACK, reporting_device);
+        // The report is read BEFORE sending the ACK: "data" is the shared buffer of the library, and
+        // building the ACK overwrites it (transmitInit() clears it), so the report must be read first.
         
 
         return_received = true; //To avoid processing the same report more than once in case it is received multiple times due to retries and ACK failures.
@@ -679,8 +680,9 @@ void aggregatedDataReport(byte* data){
         uint8_t num_measures = data[index++];
 
         if(num_measures*6>LEN_DATA-SHORT_MAC_LEN-4){
-            // x5 because every measure takes 5 bytes.
+            // x6 because every measure takes 6 bytes.
             Serial.println("DATA REPORT RECEIVED IS TOO LONG");
+            transmitUnicast(MSG_DATA_REPORT_ACK, reporting_device); // ACK anyway, so the sender doesn't keep retrying a report that will never be accepted
             return;
         }
 
@@ -701,6 +703,9 @@ void aggregatedDataReport(byte* data){
             logMeasure(short_addr_origin,short_addr_dest,distance_m,rxPower);
 
         }
+
+        // The report has been read: now the ACK can be sent (it overwrites the buffer)
+        transmitUnicast(MSG_DATA_REPORT_ACK, reporting_device);
     }
 
     _wait_for_return = false; // To restart the timer next time state is WAIT_FOR_RETURN.
