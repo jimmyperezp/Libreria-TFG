@@ -1698,13 +1698,16 @@ void DW1000RangingClass::setReportType(uint8_t report_type){
 
 bool DW1000RangingClass::transmitModelDataReport(NodeBlock* blocks, int num_blocks, DW1000Device* device){
 
-	// Message: [MAC (9)][type (1)][N (1)] + N blocks: [address (1)][control (1)][son (3)]?[grandson (3)]?[acc x (2)][acc y (2)]
-	// The whole length is computed and checked BEFORE writing anything in the buffer.
+	// Message: [MAC (9)][type (1)][N (1)] + N blocks.
+	// Each block has:  [address (1)][control (1)][son (3)](maybe [grandson (3)]) [acc x (2)][acc y (2)]
+	// The whole length is checked BEFORE writing anything in the buffer.
 
 	if(blocks == nullptr || num_blocks < 0 || num_blocks > 255) return false;
 
 	uint16_t total_len = MODEL_REPORT_HEADER_LEN;
 	for(int i = 0; i < num_blocks; i++){
+		// If any of the blocks includes more than 2 measures: error. 
+		// The max is 2 (with son and with grandson)
 		if(blocks[i].num_measures > 2){
 			Serial.print("Error: model data report block with "); Serial.print(blocks[i].num_measures);
 			Serial.println(" measures (max 2). Report not sent.");
@@ -1713,12 +1716,13 @@ bool DW1000RangingClass::transmitModelDataReport(NodeBlock* blocks, int num_bloc
 		total_len += MODEL_BLOCK_BASE_LEN + MODEL_MEASURE_LEN * blocks[i].num_measures;
 	}
 	if(total_len > LEN_DATA){
-		// Always reported: a report that doesn't fit is never sent, so the problem must be visible.
+		//The report doesn't fit: So I don't send it.
 		Serial.print("Error: model data report doesn't fit in the buffer ("); Serial.print(total_len);
 		Serial.print(" > "); Serial.print(LEN_DATA); Serial.print(" bytes, "); Serial.print(num_blocks); Serial.println(" blocks). Not sent.");
 		return false;
 	}
 
+	//If code reaches here, the format is valid. Now I build the report:
 	byte dest[2];
 	if(device == nullptr){ dest[0] = 0xFF; dest[1] = 0xFF; }
 	else memcpy(dest, device->getByteShortAddress(), 2);
@@ -1728,7 +1732,7 @@ bool DW1000RangingClass::transmitModelDataReport(NodeBlock* blocks, int num_bloc
 	data[SHORT_MAC_LEN] = DATA_REPORT_MODEL;
 	data[SHORT_MAC_LEN+1] = (uint8_t)num_blocks;
 
-	uint16_t index = MODEL_REPORT_HEADER_LEN;
+	uint16_t index = MODEL_REPORT_HEADER_LEN; //I place myself right after the header to start filling the message.
 	for(int i = 0; i < num_blocks; i++){
 
 		NodeBlock &b = blocks[i];
@@ -1736,11 +1740,13 @@ bool DW1000RangingClass::transmitModelDataReport(NodeBlock* blocks, int num_bloc
 		data[index++] = b.num_measures & MODEL_CONTROL_MEASURES;	// Bits 2-7 reserved (0)
 
 		if(b.num_measures >= 1){
+			//If there's one or more, I start by writing the son's data
 			data[index++] = b.son_addr;
 			uint16_t d = encodeDistance(b.son_dist);
 			memcpy(data + index, &d, 2); index += 2;
 		}
 		if(b.num_measures == 2){
+			//And if there's actually 2, then I also write the grandson's data.
 			data[index++] = b.grandson_addr;
 			uint16_t d = encodeDistance(b.grandson_dist);
 			memcpy(data + index, &d, 2); index += 2;
@@ -1759,7 +1765,10 @@ int DW1000RangingClass::readModelDataReport(byte* report, NodeBlock* out, int ma
 
 	// Reads it block by block: the control byte of each block says how many measures it carries, and so where it ends.
 	// Never reads past the end of the received message: if the report is malformed, returns -1.
-
+	// The max out parameter is set beforehand to determine the maximum of measures that could fit in the report. It's set locally at each device.
+	
+	// It returns the amount of valid blocks that have been read. This way, if the return is <0, then the report isn't valid.
+	
 	if(report == nullptr || out == nullptr) return -1;
 
 	uint16_t end = (report == data) ? _rx_length : LEN_DATA;	// Real length of the received message
@@ -1800,6 +1809,7 @@ int DW1000RangingClass::readModelDataReport(byte* report, NodeBlock* out, int ma
 		b.acc_x = decodeAcc(ax);
 		b.acc_y = decodeAcc(ay);
 	}
+
 	return num_blocks;
 }
 
