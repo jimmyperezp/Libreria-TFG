@@ -599,9 +599,9 @@ void DW1000RangingClass::loop() {
 			_globalMac.decodeShortMACFrame(data, shortAddress);
 			uint8_t incoming_cycle_id = data[SHORT_MAC_LEN+1];
 
-			// Type of data report requested by the coordinator. It's taken by this node, and forwarded with its own token.
-			uint8_t incoming_report_type = (_rx_length >= SHORT_MAC_LEN + 3) ? data[SHORT_MAC_LEN+2] : DATA_REPORT_AGGREGATED;
-			setReportType(incoming_report_type);
+			// Type of data report requested by the coordinator (mandatory field of the TOKEN_HANDOFF).
+			// It's taken by this node, and forwarded with its own token.
+			setReportType(data[SHORT_MAC_LEN+2]);
 
 			DW1000Device* ackDevice = searchDistantDevice(shortAddress);
 			if (ackDevice) {
