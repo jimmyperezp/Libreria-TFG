@@ -1072,6 +1072,9 @@ void DW1000RangingClass::copyShortAddress(byte address1[], byte address2[]) {
 
 void DW1000RangingClass::transmitInit() {
 	//Must be called any time a message is about to be sent via UWB
+	// Clears the buffer, so that no leftovers of a previous message are ever sent.
+	// IMPORTANT: the buffer is shared with reception. A received message must be completely read BEFORE replying to it.
+	memset(data, 0, LEN_DATA);
 	DW1000.newTransmit();
 	DW1000.setDefaults();
 }

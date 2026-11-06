@@ -1309,17 +1309,15 @@ void DW1000Class::setData(const String& data) {
 	free(dataBytes);
 }
 
-// TODO reorder
+// Length of the frame in the CURRENT device mode: in TX mode, the frame about to be sent; in RX mode, the last received one.
 uint16_t DW1000Class::getDataLength() {
+	if(_deviceMode == RX_MODE) {
+		return getReceivedDataLength();
+	}
 	uint16_t len = 0;
 	if(_deviceMode == TX_MODE) {
 		// 10 bits of TX frame control register
 		len = ((((uint16_t)_txfctrl[1] << 8) | (uint16_t)_txfctrl[0]) & 0x03FF);
-	} else if(_deviceMode == RX_MODE) {
-		// 10 bits of RX frame control register
-		byte rxFrameInfo[LEN_RX_FINFO];
-		readBytes(RX_FINFO, NO_SUB, rxFrameInfo, LEN_RX_FINFO);
-		len = ((((uint16_t)rxFrameInfo[1] << 8) | (uint16_t)rxFrameInfo[0]) & 0x03FF);
 	}
 	if(_frameCheck && len > 2) {
 		return len-2;
@@ -1327,6 +1325,7 @@ uint16_t DW1000Class::getDataLength() {
 	return len;
 }
 
+// Length of the last RECEIVED frame, whatever the current device mode is (10 bits of the RX frame info register, without the CRC).
 uint16_t DW1000Class::getReceivedDataLength() {
 	byte rxFrameInfo[LEN_RX_FINFO];
 	readBytes(RX_FINFO, NO_SUB, rxFrameInfo, LEN_RX_FINFO);
