@@ -1111,7 +1111,7 @@ void DW1000RangingClass::transmit(byte datas[], DW1000Time time, uint16_t len) {
 void DW1000RangingClass::transmitBlink() {
 	transmitInit();
 	_globalMac.generateBlinkFrame(data, _currentAddress, _currentShortAddress);
-	transmit(data);
+	transmit(data, 12); // Blink frame: [FC 1][seq 1][long address 8][short address 2] (see generateBlinkFrame)
 	
 }
 
@@ -1124,14 +1124,24 @@ void DW1000RangingClass::transmitRangingInit(DW1000Device* myDistantDevice) {
 	data[LONG_MAC_LEN + 1] = _device_type;
 	copyShortAddress(_lastSentToShortAddress, myDistantDevice->getByteShortAddress());
 	delay(random(5, 25)); //This delay prevents colissions in responding to the blinks from the master. This way, library auto re-enables after master's reset.
-	transmit(data);
+	transmit(data, LONG_MAC_LEN + 2); // [long MAC][type][device type]
 }
 
 void DW1000RangingClass::transmitPoll(DW1000Device* myDistantDevice) {
 	
 	transmitInit();
+
+	uint16_t len; // Real length of the message, set in each branch
 	
 	if(myDistantDevice == nullptr) { //Polling via broadcast.
+
+		// [MAC][type][n][n x (short address 2 + reply time 2)][device type]. Checked before writing anything: it must fit in the buffer.
+		len = SHORT_MAC_LEN + 3 + 4*_networkDevicesNumber;
+		if(len > LEN_DATA) {
+			Serial.print("Error: broadcast POLL for "); Serial.print(_networkDevicesNumber);
+			Serial.print(" devices doesn't fit in the buffer ("); Serial.print(len); Serial.print(" > "); Serial.print(LEN_DATA); Serial.println(" bytes). Not sent.");
+			return;
+		}
 		
 		_ranging_mode = DW1000RangingClass::BROADCAST;
 		//we need to set our timerDelay:
@@ -1193,9 +1203,11 @@ void DW1000RangingClass::transmitPoll(DW1000Device* myDistantDevice) {
 
 		//6 --> Save last sent to address for future reference
 		copyShortAddress(_lastSentToShortAddress, myDistantDevice->getByteShortAddress());
+
+		len = SHORT_MAC_LEN + 7; // [MAC][type][n = 1][short address 2][reply time 2][device type]
 	}
 	
-	transmit(data);
+	transmit(data, len);
 }
 
 void DW1000RangingClass::transmitPollAck(DW1000Device* myDistantDevice) {
@@ -1207,14 +1219,25 @@ void DW1000RangingClass::transmitPollAck(DW1000Device* myDistantDevice) {
 	// delay the same amount as ranging initiator
 	DW1000Time deltaTime = DW1000Time(_replyDelayTimeUS, DW1000Time::MICROSECONDS);
 	copyShortAddress(_lastSentToShortAddress, myDistantDevice->getByteShortAddress());
-	transmit(data, deltaTime);
+	transmit(data, deltaTime, SHORT_MAC_LEN + 2); // [MAC][type][cycle_id]
 }
 
 void DW1000RangingClass::transmitRange(DW1000Device* myDistantDevice) {
 
 	transmitInit();
 
+	uint16_t len; // Real length of the message, set in each branch
+
 	if(myDistantDevice == nullptr) { //Range via broadcast.
+
+		// [MAC][type][n][n x (short address 2 + 3 timestamps x 5)]. Checked before writing anything: it must fit in the buffer
+		// (17 bytes per device: with LEN_DATA = 90, up to 4 devices).
+		len = SHORT_MAC_LEN + 2 + 17*_networkDevicesNumber;
+		if(len > LEN_DATA) {
+			Serial.print("Error: broadcast RANGE for "); Serial.print(_networkDevicesNumber);
+			Serial.print(" devices doesn't fit in the buffer ("); Serial.print(len); Serial.print(" > "); Serial.print(LEN_DATA); Serial.println(" bytes). Not sent.");
+			return;
+		}
 
 		//1st --> Set the timer delay:
 		_timerDelay = DEFAULT_TIMER_DELAY+(uint16_t)(_networkDevicesNumber*3*DEFAULT_REPLY_DELAY_TIME/1000);
@@ -1279,10 +1302,12 @@ void DW1000RangingClass::transmitRange(DW1000Device* myDistantDevice) {
 		//7 --> Save last sent to address for future reference
 		
 		copyShortAddress(_lastSentToShortAddress, myDistantDevice->getByteShortAddress());
+
+		len = SHORT_MAC_LEN + 19; // [MAC][type][n = 1][short address 2][3 timestamps x 5]
 	}
 	
 	
-	transmit(data);
+	transmit(data, len);
 }
 
 void DW1000RangingClass::transmitRangeReport(DW1000Device* myDistantDevice) {
@@ -1296,7 +1321,7 @@ void DW1000RangingClass::transmitRangeReport(DW1000Device* myDistantDevice) {
 	memcpy(data+1+SHORT_MAC_LEN, &curRange, 4);
 	memcpy(data+5+SHORT_MAC_LEN, &curRXPower, 4);
 	copyShortAddress(_lastSentToShortAddress, myDistantDevice->getByteShortAddress());
-	transmit(data, DW1000Time(_replyDelayTimeUS, DW1000Time::MICROSECONDS));
+	transmit(data, DW1000Time(_replyDelayTimeUS, DW1000Time::MICROSECONDS), SHORT_MAC_LEN + 9); // [MAC][type][range 4][RX power 4]
 }
 
 void DW1000RangingClass::transmitRangeFailed(DW1000Device* myDistantDevice) {
@@ -1305,7 +1330,7 @@ void DW1000RangingClass::transmitRangeFailed(DW1000Device* myDistantDevice) {
 	data[SHORT_MAC_LEN] = RANGE_FAILED;
 	
 	copyShortAddress(_lastSentToShortAddress, myDistantDevice->getByteShortAddress());
-	transmit(data);
+	transmit(data, SHORT_MAC_LEN + 1); // [MAC][type]
 }
 
 
