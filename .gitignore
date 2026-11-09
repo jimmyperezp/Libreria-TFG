@@ -1,6 +1,8 @@
 .vscode/
 .codex/
 __pycache__/
-# Ensayos completos del simulador: pesan mucho y no se suben (solo su LEEME)
+
+
 **/datasets_simulador/*
-!**/datasets_simulador/LEEME.md
+!**/datasets_simulador/readme.md
+# Ensayos completos del simulador: pesan mucho y no se suben (solo su readme)
