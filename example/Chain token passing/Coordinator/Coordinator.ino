@@ -23,9 +23,9 @@ const uint8_t PIN_SS = 4;   // spi select pin
 #define RX_DISTANCE_PLOTTING false  // Shows a CSV output to graph the relationship between RX power & distance
 #define COMPOSITION_OUTPUT true     // Shows, every cycle, the train composition, the state of each link and the observed chain
 #define RAW_DATA_OUTPUT true        // Prints every cycle a CSV row ("RAW_DATA:") with the same columns as the simulator's raw CSV
-#define FEATURES_OUTPUT false       // DEBUG: prints every cycle the 37 model inputs ("FEATURES:"). Not needed to record datasets
+#define FEATURES_OUTPUT false       // DEBUG: prints every cycle the 16 model inputs ("FEATURES:"). Not needed to record datasets
 #define AI_DEPLOYMENT false         // Runs the TinyML model every cycle (src/tinyML_inferencing.h) and shows the predicted train status
-                                    // (OFF until the model is retrained with the new inputs: the current one expects 37 features)
+                                    // (OFF until the model is retrained with the new inputs: the current one expects 37 features, now there are 16)
 
 // Type of data report the nodes must send. It travels inside the token (TOKEN_HANDOFF) to every node of the chain.
 //   DATA_REPORT_MODEL       --> one block per node: measure with its son and grandson + acc x/y (used to feed the model)
@@ -103,11 +103,11 @@ unsigned long last_cycle_end_time = 0; // To measure each cycle's real duration
 /*Link references & model features (see link_references.h and model_features.h)*/
 LinkReferenceTable link_references;
 RawRow cycle_row;                      // This cycle's observation in fixed positions (printed as RAW_DATA)
-float model_features[NUM_FEATURES];    // This cycle's 37 model inputs
+float model_features[NUM_FEATURES];    // This cycle's 16 model inputs
 
 /*Raw data row: fixed positions for RAW_VEHICLES (5) vehicles, as in the simulator's raw CSV*/
 const char* RAW_POSITION_NAMES[RAW_VEHICLES] = {"c", "v1", "v2", "v3", "v4"};
-const char* RAW_IMU_AXES[6] = {"acel_x_ms2", "acel_y_ms2", "acel_z_ms2", "giro_x_rads", "giro_y_rads", "giro_z_rads"};
+const char* RAW_IMU_AXES[2] = {"acel_x_ms2", "acel_y_ms2"};   // The only axes that travel in the model data report
 
 /*DATA_REPORT_MODEL*/
 #define MAX_NODE_BLOCKS MAX_DEVICES
@@ -934,7 +934,7 @@ void showRXDistData(){
 
 void showAIPrediction(){
 
-    // Runs the model with this cycle's 37 features (model_features, computed in processCycle()).
+    // Runs the model with this cycle's 16 features (model_features, computed in processCycle()).
     // The standard scaler normalization trained in Edge Impulse is part of the exported model:
     // the features are passed exactly as they are computed, like in the training CSVs.
 
@@ -947,7 +947,7 @@ void showAIPrediction(){
         Serial.print(", deploy v"); Serial.print(EI_CLASSIFIER_PROJECT_DEPLOY_VERSION);
         Serial.print("). Inputs expected: "); Serial.print(EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE);
         Serial.print(" | computed: "); Serial.println(NUM_FEATURES);
-        if(!size_ok) Serial.println("ERROR: the model in src/ doesn't match the 37 features. Predictions disabled.");
+        if(!size_ok) Serial.println("ERROR: the model in src/ doesn't match the 16 features. Predictions disabled.");
     }
     if(!size_ok) return;
 
@@ -1014,7 +1014,7 @@ void processCycle(){
     // 2) References & unseen counters of every link of the composition (per pair of devices)
     updateCompositionLinks();
 
-    // 3) This cycle's row in fixed positions, and the 37 model inputs computed from it
+    // 3) This cycle's row in fixed positions, and the 16 model inputs computed from it
     buildRawRow(cycle_row, cycle_end_time, cycle_duration);
     computeFeatures(cycle_row, link_references, model_features);
 
@@ -1065,24 +1065,31 @@ void buildRawRow(RawRow &row, unsigned long cycle_end_time, unsigned long cycle_
         row.link_rx_power[i] = row.link_seen[i] ? measurements[idx].rxPower  : 0.0f;
     }
 
-    // IMU of each position (coordinator: its own IMU; nodes: the blocks received in the report).
-    // Only acc x and y travel in the report: acc z and gyro are always 0 (the raw row keeps them for now).
+    // Two-hop pairs (positions i and i+2): the grandson measures of the nodes, or the coordinator's own measure with v2
+    for(int i = 0; i < RAW_PAIRS; i++){
+        int idx = -1;
+        if(row.position_used[i] && row.position_used[i+2]) idx = activeMeasureBetween(row.ids[i], row.ids[i+2]);
+
+        row.pair_seen[i] = (idx != -1);
+        row.pair_distance[i] = row.pair_seen[i] ? measurements[idx].distance : 0.0f;
+    }
+
+    // IMU of each position (coordinator: its own IMU; nodes: the blocks received in the report). Only acc x and y.
     for(int v = 0; v < RAW_VEHICLES; v++){
 
         float acc_ms2[3] = {0.0f, 0.0f, 0.0f};
         bool available = false;
 
-        if(v == 0){ readImu(acc_ms2); acc_ms2[2] = 0.0f; available = true; }
+        if(v == 0){ readImu(acc_ms2); available = true; }
         else if(row.position_used[v]){
             int idx = searchBlock(row.ids[v]);
             if(idx != -1){ acc_ms2[0] = received_blocks[idx].acc_x; acc_ms2[1] = received_blocks[idx].acc_y; available = true; }
         }
 
         row.imu_received[v] = available;
-        for(int k = 0; k < 3; k++){
+        for(int k = 0; k < 2; k++){
             // Rounded to the report's resolution (1 mm/s^2), so the coordinator's own values look like the nodes' ones
-            row.acc[v][k]  = available ? DW1000Ranging.decodeAcc(DW1000Ranging.encodeAcc(acc_ms2[k])) : 0.0f;
-            row.gyro[v][k] = 0.0f;
+            row.acc[v][k] = available ? DW1000Ranging.decodeAcc(DW1000Ranging.encodeAcc(acc_ms2[k])) : 0.0f;
         }
     }
 }
@@ -1166,17 +1173,25 @@ void showComposition(const Chain &observed, ChainComparison comparison, Composit
 }
 
 void printRawHeader(){
-    // Same column names (and order) as the simulator's raw CSV (extras/AI Integration/scripts/formato_crudo.py)
+    // Same column names (and order) as the raw CSV (extras/AI Integration/scripts_procesado/formato_crudo.py).
+    // If they change, the recorder (grabador_serie.py) refuses to record: firmware and scripts must match.
     Serial.print("RAW_HEADER:ciclo,tiempo_ms,duracion_ciclo_ms");
-    for(int i = 0; i < RAW_VEHICLES - 1; i++){
-        const char* links_cols[3] = {"visto", "distancia_m", "potencia_rx_dbm"};
+    const char* links_cols[3] = {"visto", "distancia_m", "potencia_rx_dbm"};
+    for(int i = 0; i < RAW_LINKS; i++){
         for(int k = 0; k < 3; k++){
             Serial.print(",enlace_"); Serial.print(RAW_POSITION_NAMES[i]); Serial.print("_");
             Serial.print(RAW_POSITION_NAMES[i+1]); Serial.print("_"); Serial.print(links_cols[k]);
         }
     }
+    const char* pairs_cols[2] = {"visto", "distancia_m"};
+    for(int i = 0; i < RAW_PAIRS; i++){
+        for(int k = 0; k < 2; k++){
+            Serial.print(",salto2_"); Serial.print(RAW_POSITION_NAMES[i]); Serial.print("_");
+            Serial.print(RAW_POSITION_NAMES[i+2]); Serial.print("_"); Serial.print(pairs_cols[k]);
+        }
+    }
     for(int v = 0; v < RAW_VEHICLES; v++){
-        for(int k = 0; k < 6; k++){
+        for(int k = 0; k < 2; k++){
             Serial.print(","); Serial.print(RAW_POSITION_NAMES[v]); Serial.print("_"); Serial.print(RAW_IMU_AXES[k]);
         }
     }
@@ -1201,9 +1216,13 @@ void printRawRow(const RawRow &row){
         else Serial.print(",0,,");
     }
 
+    for(int i = 0; i < RAW_PAIRS; i++){
+        if(row.pair_seen[i]){ Serial.print(",1,"); Serial.print(row.pair_distance[i], 3); }
+        else Serial.print(",0,");
+    }
+
     for(int v = 0; v < RAW_VEHICLES; v++){
-        for(int k = 0; k < 3; k++){ Serial.print(","); if(row.imu_received[v]) Serial.print(row.acc[v][k], 3);  }
-        for(int k = 0; k < 3; k++){ Serial.print(","); if(row.imu_received[v]) Serial.print(row.gyro[v][k], 4); }
+        for(int k = 0; k < 2; k++){ Serial.print(","); if(row.imu_received[v]) Serial.print(row.acc[v][k], 3); }
     }
     Serial.println();
 }

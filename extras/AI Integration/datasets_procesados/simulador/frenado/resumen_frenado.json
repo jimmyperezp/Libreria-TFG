@@ -1,0 +1,29 @@
+{
+  "descripcion": "Frenado de parada completa a los 300 s. Es operación normal: todo OK",
+  "procesado": {
+    "ciclos_totales": 340,
+    "descartados": {
+      "descartado_arranque": 3
+    },
+    "archivos_edge_impulse": {
+      "OK": {
+        "filas": 337,
+        "ciclos": [
+          3,
+          339
+        ]
+      }
+    },
+    "referencias_calibracion_m": {
+      "enlace_c_v1": 21.5044,
+      "enlace_v1_v2": 21.0548,
+      "enlace_v2_v3": 21.1299,
+      "enlace_v3_v4": 21.1351
+    },
+    "ciclos_calibracion": [
+      3,
+      32
+    ],
+    "avisos_calibracion": []
+  }
+}

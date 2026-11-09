@@ -1,0 +1,10 @@
+{
+  "general": {
+    "ciclos_descartados_inicio": 0,
+    "calibracion_primer_ciclo": 0,
+    "calibracion_n_ciclos": 30,
+    "tope_ciclos_sin_ver": 10,
+    "periodo_nominal_ms": 1000
+  },
+  "ensayos": []
+}

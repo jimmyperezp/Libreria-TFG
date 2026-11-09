@@ -1,120 +1,131 @@
-# Generación de datasets de entrenamiento a partir del simulador
+# AI Integration: datasets para el modelo de integridad del tren
 
-## Uso
+Scripts que convierten los ensayos (del simulador o grabados con las placas) en los CSV de
+entrenamiento de Edge Impulse, y carpetas donde se guarda cada paso.
 
-Requisitos: Python 3.9 o superior, con `pandas` y `numpy` (`pip install -r requirements.txt`).
+Hay tres documentos:
 
-1. Copia las carpetas de los ensayos del simulador dentro de `datos_simulador/`. De cada ensayo solo hacen falta `config.json`, `coord/rx_coord.csv` y `coord/imu_crd.csv`.
-2. Revisa `ensayos_simulador.json`: en él están las rutas, el instante de cada evento y los parámetros.
-3. Abre `scripts/exportar_edge_impulse.py`, pon `REGISTRO = '../ensayos_simulador.json'` en el bloque de configuración del principio y pulsa el botón de ejecutar de VS Code. Desde la terminal también funciona, pasando el registro como argumento: `python exportar_edge_impulse.py ../ensayos_simulador.json`.
-
-Para añadir un ensayo nuevo basta con añadir una entrada en `ensayos_simulador.json`. No hay que tocar el código.
-
-## Qué hay en cada carpeta
-
-| Carpeta | Contenido |
+| Documento | Para qué |
 |---|---|
-| `scripts/formato_crudo.py` | Definición del CSV en crudo, el formato común al simulador y a las ESP32 |
-| `scripts/adaptador_simulador.py` | Datos del simulador → CSV en crudo. Se puede ejecutar solo |
-| `scripts/calculo_columnas.py` | CSV en crudo → las 37 columnas del modelo. Es el mismo cálculo para los dos orígenes |
-| `scripts/exportar_edge_impulse.py` | Ejecuta la cadena completa y escribe los CSV para Edge Impulse |
-| `datos/crudo/` | Un CSV en crudo por ensayo, más su archivo de composición |
-| `datos/columnas/` | Todos los ciclos con las 37 columnas, su uso y su etiqueta. Sirve para revisar |
-| `datos/edge_impulse/` | **Los CSV de entrenamiento**, uno por ensayo y etiqueta |
-| `datos/revision/` | Figuras de revisión de las columnas principales |
-| `datos/resumen.json` | Referencias de calibración, número de filas, ciclos descartados |
+| `readme.md` (este) | Qué hay en cada carpeta, qué contiene cada archivo y cómo se calcula cada cosa |
+| `guia_uso.md` | Qué pasos seguir: grabar un ensayo, exportarlo, añadir un ensayo del simulador… |
+| `registro_cambios.md` | Cambios hechos en el firmware y en los scripts, con sus motivos (para la memoria) |
+
+Requisitos: Python 3.9 o superior con `pandas`, `numpy` y, para grabar, `pyserial`
+(`pip install pandas numpy pyserial`).
+
+## Estructura de carpetas
+
+```
+AI Integration/
+├── readme.md
+├── guia_uso.md
+├── registro_cambios.md
+│
+├── scripts_procesado/
+│   ├── formato_crudo.py            definición del CSV en crudo (común a simulador y placas)
+│   ├── grabador_serie.py           PASO 1 (placas): monitor serie del coordinador -> crudo + marcas
+│   ├── adaptador_simulador.py      PASO 1 (simulador): ensayo del simulador -> crudo
+│   ├── calculo_columnas.py         PASO 2: crudo -> las 16 columnas del modelo
+│   └── exportar_edge_impulse.py    PASOS 1-3: ejecuta la cadena y escribe los CSV de Edge Impulse
+│
+├── datasets_simulador/             ensayos completos tal como los da el simulador (NO se suben a Git)
+│   ├── LEEME.md
+│   ├── decoupling_w2_150s/         config.json, coord/rx_coord.csv, coord/imu_crd.csv...
+│   └── ...
+│
+└── datasets_procesados/            todo lo que generan los scripts (SÍ se sube a Git)
+    ├── simulador/
+    │   ├── ensayos_simulador.json  registro de ensayos del simulador (se escribe a mano)
+    │   └── <ensayo>/               p. ej. desacople/
+    │       ├── crudo/
+    │       │   ├── crudo_<ensayo>.csv
+    │       │   └── composicion_<ensayo>.json
+    │       ├── revision/
+    │       │   └── revision_<ensayo>.csv
+    │       ├── edge_impulse/
+    │       │   ├── OK.<ensayo>.csv
+    │       │   └── LOST_INTEGRITY.<ensayo>.csv
+    │       └── resumen_<ensayo>.json
+    └── placas/
+        ├── ensayos_placas.json     registro de ensayos de las placas (lo escriben los scripts)
+        └── <ensayo>/               p. ej. prueba_04/
+            ├── crudo/
+            │   ├── crudo_<ensayo>.csv
+            │   ├── marcas_<ensayo>.csv
+            │   └── monitor_<ensayo>.txt
+            ├── revision/
+            │   └── revision_<ensayo>.csv
+            ├── edge_impulse/
+            │   ├── OK.<ensayo>.csv
+            │   └── LOST_INTEGRITY.<ensayo>.csv
+            └── resumen_<ensayo>.json
+```
+
+Las rutas son fijas: los scripts las conocen y no hay que escribirlas en ningún sitio.
+El nombre de cada ensayo es también el de su carpeta y el de sus archivos, así que solo puede
+tener letras sin tildes, números, `_` y `-` (sin espacios). Los scripts lo comprueban.
 
 ## Cadena de procesamiento
 
 ```
-simulador ──adaptador──► CSV en crudo ──cálculo de columnas──► columnas + etiqueta ──► CSV Edge Impulse
-ESP32 ─────grabador────► CSV en crudo ──(el mismo cálculo)───► ...
+                PASO 1                          PASO 2                       PASO 3
+simulador ──adaptador_simulador──►┐
+                                  ├─► crudo ──calculo_columnas──► 16 columnas ──etiquetado──► revision + edge_impulse + resumen
+placas ─────grabador_serie───────►┘
 ```
 
-### 1. Adaptador: del simulador al CSV en crudo
+- **Placas.** El paso 1 (grabador) se ejecuta durante la prueba, con la placa conectada. Los pasos 2 y 3
+  los hace el exportador después, cuando se quiera.
+- **Simulador.** El exportador hace los tres pasos seguidos.
+- `formato_crudo.py` no es un paso: es la definición de las columnas del CSV en crudo, que comparten
+  el grabador, el adaptador y el cálculo de columnas. La misma definición está en el firmware del
+  coordinador (`printRawHeader()`), y el grabador comprueba al empezar que coinciden.
 
-- **Ciclo.** Una vuelta del round robin. Cada vagón tiene una ranura fija de 0,25 s y una vuelta completa dura 1 s. Los mensajes se asignan a su ciclo por el número de ranura, de modo que no depende de redondeos de tiempo.
-- **Tiempo cero.** El inicio de la simulación, que es la referencia de los instantes de fallo del simulador (`FAIL_TIME`).
-- **`tiempo_ms`** es el instante del último mensaje recibido en el ciclo. **`duracion_ciclo_ms`** va desde el inicio de la vuelta hasta el final de la última ranura con respuesta.
-- **Enlace C–V1.** Distancia y potencia medidas por el coordinador a V1.
-- **Enlaces entre vagones.** El simulador solo da distancias al coordinador, así que la separación se obtiene por resta: d(Vk) − d(Vk−1). Solo cuenta como visto si se recibieron los dos vagones.
-- **Potencia RX.** Solo existe para C–V1. En los demás enlaces se deja vacía, porque el simulador no la da. No es una entrada del modelo.
-- **IMU.** La de cada vagón viene en su mensaje. La del coordinador es la muestra de su propia IMU en el instante en que recibe a V1.
-- **Lo no recibido** queda como celda vacía con `visto = 0`.
-- **Último ciclo.** Se descarta si el registro termina a mitad de él.
+## Archivos de cada ensayo
 
-### 2. Cálculo de columnas
+| Archivo | Lo escribe | Contenido |
+|---|---|---|
+| `crudo/crudo_<ensayo>.csv` | grabador / adaptador | Una fila por ciclo con lo observado (formato abajo) |
+| `crudo/marcas_<ensayo>.csv` | grabador (placas) | Una fila por marca de fase: `desde_ciclo`, `tiempo_ms_coordinador`, `fase`, `hora_pc` |
+| `crudo/monitor_<ensayo>.txt` | grabador (placas) | Todo el monitor serie del coordinador, con la hora del PC en cada línea |
+| `crudo/composicion_<ensayo>.json` | adaptador (simulador) | Qué dispositivo ocupa cada posición y cómo se generó el crudo |
+| `revision/revision_<ensayo>.csv` | exportador | **Todos** los ciclos con las 16 columnas del modelo, más `uso` y `etiqueta`. Sirve para revisar el cálculo y el etiquetado, y para hacer figuras. No se sube a Edge Impulse |
+| `edge_impulse/<ETIQUETA>.<ensayo>.csv` | exportador | **Los CSV de entrenamiento**: solo los ciclos de entrenamiento, un archivo por etiqueta |
+| `resumen_<ensayo>.json` | grabador + exportador | El archivo del ensayo que se abre a mano (ver abajo) |
 
-Está documentado al principio de `calculo_columnas.py`. En resumen:
+### `resumen_<ensayo>.json`
 
-- **Calibración.** La distancia de referencia de cada enlace es la mediana de los ciclos 3 a 32. Se hace una sola vez y supone que el tren está íntegro al arrancar.
-- **Por enlace:**
-  - `visto`
-  - `ciclos_sin_ver`, con tope en 10
-  - `desviacion_m`, igual a distancia − referencia
-  - `dif_acel_x_ms2`, igual a la aceleración longitudinal del vehículo trasero menos la del delantero
-- **Por vagón:** desviación respecto a la media de los demás vehículos recibidos (locomotora incluida), en acel_y, acel_z, giro_x, giro_y y giro_z.
-- **Lo no visto vale 0** en todas las columnas numéricas. Su ausencia ya la indican `visto` y `ciclos_sin_ver`.
+```json
+{
+  "fecha": "2026-11-10 10:32",
+  "descripcion": "",
+  "grabacion": { "puerto": "COM15", "commit_repositorio": "1ece0ae", "inicio": "...", "fin": "...",
+                 "motivo_fin": "tecla de salida", "filas_crudo": 412, "ciclos_perdidos": 2,
+                 "lineas_corruptas": 0, "marcas": 2, "cabecera_validada": true, ... },
+  "procesado": { "ciclos_totales": 412, "descartados": {...}, "archivos_edge_impulse": {...},
+                 "referencias_calibracion_m": {...}, "ciclos_calibracion": [0, 29], "avisos_calibracion": [] }
+}
+```
 
-### 3. Etiquetado y exportación
+- `fecha` y `grabacion`: los escribe el grabador al terminar (solo placas).
+- `descripcion`: se rellena **a mano**, describiendo qué se hizo en el ensayo. El exportador no la toca.
+  En el simulador se copia de `ensayos_simulador.json` y no hay `fecha` ni `grabacion`.
+- `procesado`: lo escribe el exportador y lo reescribe en cada exportación. Contiene:
+  - `ciclos_totales` y `descartados`: cuántos ciclos hay y cuántos no van a Edge Impulse, y por qué;
+  - `archivos_edge_impulse`: por etiqueta, filas y ciclos (y los tramos, si hubo ciclos perdidos);
+  - `referencias_calibracion_m`: la distancia de referencia calculada para cada enlace;
+  - `avisos_calibracion`: por ejemplo, si faltaban ciclos en la ventana de calibración.
 
-- **Ciclos 0–2: descartados.** Es el transitorio de arranque de la simulación, con aceleraciones de hasta −125 m/s².
-- **Ciclos de calibración:** se incluyen como OK.
-- **Etiqueta.** OK hasta el evento. A partir del primer ciclo que termina después del evento, `LOST_INTEGRITY`.
-- **`fin_s`** recorta el final del ensayo cuando hace falta.
-- **Formato para Edge Impulse:**
-  - `tiempo_ms` es nominal y equiespaciado (ciclo × 1000 ms), porque Edge Impulse supone muestras equiespaciadas.
-  - La duración real del ciclo va como entrada (`duracion_ciclo_ms`).
-  - Los archivos se llaman `<ETIQUETA>.<ensayo>.csv`, así que Edge Impulse puede tomar la etiqueta del nombre del archivo.
+## Registros de ensayos
 
-## Ensayos y decisiones de etiquetado
+### `datasets_procesados/placas/ensayos_placas.json`
 
-| Ensayo | Evento | OK | LOST_INTEGRITY | Notas |
-|---|---|---|---|---|
-| desacople | Desacople V2–V3 a 150 s | ciclos 3–149 (147) | ciclos 150–454 (305) | Recortado desde 455 s: V3 y V4 vuelven a recibirse en los últimos segundos, un efecto del simulador sin sentido físico |
-| prefallo | Rotura V2–V3 a 130 s | ciclos 3–129 (127) | ciclos 130–399 (270) | La degradación de 100–130 s se etiqueta OK: es unas 30 veces menor que el error UWB y no es detectable |
-| frenado | Frenado a 300 s | ciclos 3–339 (337) | — | El frenado es operación normal: todo OK |
-
-## Grabación de ensayos con las ESP32
-
-`scripts/grabador_serie.py` registra un ensayo leyendo el monitor serie del coordinador. Es la versión nueva de `TinyML data collector.py`, adaptada al formato en crudo.
-
-Requisito: `pip install pyserial`.
-
-**Configuración:** al principio del script, en el bloque `CONFIGURACIÓN`:
-- `ENSAYO`: nombre del ensayo (carpeta y archivos). Cámbialo en cada grabación: el script no sobrescribe una grabación existente.
-- `CARPETA_SALIDA`: dónde se crea la carpeta del ensayo. Ruta absoluta o relativa a la carpeta del script. Se usa `'../datos placas/ensayos grabados'`, es decir, `extras/AI Integration/datos placas/ensayos grabados/<ENSAYO>/`.
-- `PUERTO`, `BAUDIOS`, `FASE_INICIAL`, `TECLAS` (tecla → fase), `TECLA_SALIR`, `VER_MONITOR` y `NOTAS`.
-
-**Ejecución:** con el botón de ejecutar de VS Code (*Run Python File*), o desde la terminal con argumentos opcionales que sustituyen a la configuración (`--ensayo`, `--carpeta`, `--puerto`, `--ver-monitor`, `--notas`). Con `REINICIAR_COORDINADOR = True` (por defecto), el grabador reinicia el coordinador al abrir el puerto, igual que el botón EN/RST, así que no hace falta cuadrar nada: la grabación empieza siempre en el ciclo 0, con su cabecera `RAW_HEADER` y con la ventana de calibración que usa el exportador. Si la placa no se reinicia sola, a los 5 s el grabador pide pulsar su botón EN/RST.
-
-Durante la grabación:
-- **Marcas de fase con teclas fijas** (por defecto `o` = OK y `l` = LOST_INTEGRITY), pulsadas en el terminal donde corre el script. La marca se guarda con el reloj del coordinador: la fase nueva empieza en el ciclo siguiente al último recibido. Al empezar se marca automáticamente `FASE_INICIAL`.
-- **Terminar:** tecla `q` o Ctrl+C.
-
-Archivos que deja en la carpeta del ensayo:
-
-| Archivo | Contenido |
-|---|---|
-| `crudo_<ensayo>.csv` | Filas `RAW_DATA`, con el mismo formato que el CSV en crudo del simulador |
-| `marcas_<ensayo>.csv` | Marcas de fase: desde qué ciclo, tiempo del coordinador, fase y hora del PC |
-| `monitor_<ensayo>.txt` | Todo el monitor serie, con la hora del PC |
-| `info_<ensayo>.json` | Puerto, commit del repositorio, notas y resumen (filas, ciclos perdidos, líneas corruptas) |
-
-Protecciones:
-- Comprueba que la cabecera `RAW_HEADER` del coordinador coincide con `formato_crudo.py`. Si no coincide, el firmware y los scripts son de versiones distintas y se detiene.
-- Si el coordinador se reinicia a mitad de grabación (cabecera nueva o el ciclo retrocede), se detiene conservando lo grabado: el reloj vuelve a 0 y las marcas dejarían de cuadrar.
-- Cuenta los ciclos perdidos y las líneas corruptas, y escribe los archivos línea a línea.
-
-## Exportar las grabaciones de las placas
-
-El mismo exportador convierte las grabaciones en CSV para Edge Impulse, con su propio registro de ensayos, `ensayos_placas.json`. Cada grabación es una entrada **dentro** de la lista `"ensayos"` que apunta a su CSV en crudo y a su archivo de marcas. Las rutas se cuentan desde la carpeta del JSON:
+Lo escriben los scripts. **Solo se edita a mano `"general"`**, que se aplica a lo que se exporte después.
 
 ```json
 {
   "general": {
-    "carpeta_salida": "datos placas",
-    "salida_junto_a_la_grabacion": true,
     "ciclos_descartados_inicio": 0,
     "calibracion_primer_ciclo": 0,
     "calibracion_n_ciclos": 30,
@@ -123,47 +134,160 @@ El mismo exportador convierte las grabaciones en CSV para Edge Impulse, con su p
   },
   "ensayos": [
     {
-      "nombre": "prueba_03",
-      "descripcion": "Prueba de funcionalidad del grabador",
-      "crudo": "datos placas/ensayos grabados/prueba_03/crudo_prueba_03.csv",
-      "marcas": "datos placas/ensayos grabados/prueba_03/marcas_prueba_03.csv"
+      "nombre": "prueba_04",
+      "crudo": "prueba_04/crudo/crudo_prueba_04.csv",
+      "marcas": "prueba_04/crudo/marcas_prueba_04.csv",
+      "resumen": "prueba_04/resumen_prueba_04.json",
+      "parametros_usados": { "...": "copia de general en la última exportación" },
+      "revision": "prueba_04/revision/revision_prueba_04.csv",
+      "edge_impulse": "prueba_04/edge_impulse/"
     }
   ]
 }
 ```
 
-Para varias grabaciones, una entrada `{ ... }` por grabación, separadas por comas. El `"nombre"` se usa en los archivos de salida: mejor sin espacios y igual que el de la carpeta.
+- El **grabador** crea el archivo si no existe (con los valores de arriba en `"general"`) y añade la
+  entrada del ensayo al terminar la grabación (`nombre`, `crudo`, `marcas`, `resumen`). Si el ensayo se
+  sobrescribe, su entrada se sustituye.
+- El **exportador** añade a la entrada los parámetros con los que se exportó y las rutas de los resultados.
+- Las rutas se cuentan desde la carpeta `placas/`.
+- `calibracion_n_ciclos` debe coincidir con `LINK_REF_SAMPLES` del coordinador (30).
 
-Para exportar: en `scripts/exportar_edge_impulse.py`, `REGISTRO = '../ensayos_placas.json'` y botón de ejecutar. Si la lista `"ensayos"` está vacía, el script se detiene y lo avisa.
+### `datasets_procesados/simulador/ensayos_simulador.json`
 
-**Dónde quedan los resultados:**
-- Con `"salida_junto_a_la_grabacion": true`, los archivos de cada ensayo van a la carpeta de su grabación:
-  ```
-  datos placas/
-  ├── resumen.json                       ← resumen de todos los ensayos exportados
-  └── ensayos grabados/
-      └── prueba_03/
-          ├── crudo_prueba_03.csv        ← grabador
-          ├── marcas_prueba_03.csv       ← grabador
-          ├── monitor_prueba_03.txt      ← grabador
-          ├── info_prueba_03.json        ← grabador
-          ├── columnas_prueba_03.csv     ← exportador: cada ciclo con su etiqueta
-          ├── resumen_prueba_03.json     ← exportador: filas, tramos y avisos de este ensayo
-          └── edge_impulse/              ← exportador: lo que se sube a Edge Impulse
-              ├── OK.prueba_03.csv
-              └── LOST_INTEGRITY.prueba_03.csv
-  ```
-- Sin esa opción (o a `false`, como en el simulador), los de todos los ensayos van juntos a `carpeta_salida/columnas/` y `carpeta_salida/edge_impulse/`.
-- Al reexportar un ensayo, se borran antes sus archivos de Edge Impulse anteriores, para que no queden tramos de una exportación previa.
+Se escribe **a mano**: tiene lo que no se puede deducir de los datos del simulador.
 
-**Cómo se etiqueta y se trocea:**
-- **Etiquetas a partir de las marcas:** cada ciclo lleva la fase de la última marca anterior o igual a él. Admite cualquier número de fases. Si una marca se pulsó tarde, se corrige esa línea del archivo de marcas y se vuelve a exportar.
-- **Ciclos perdidos o fases repetidas:** si los ciclos de una etiqueta no son consecutivos, se escribe un archivo por tramo (`OK.prueba_03_p1.csv`, `_p2`…), para que cada archivo sea equiespaciado. Los tramos quedan listados en el resumen.
-- **Calibración:** misma regla que con el simulador (mediana de la ventana de calibración), aquí desde el ciclo 0, como en la placa. Si falta algún ciclo de la ventana, se calcula con los que hay y se avisa. `calibracion_n_ciclos` debe coincidir con `LINK_REF_SAMPLES` de la placa (30).
-- **`periodo_nominal_ms` = 1000**, igual que en el simulador, aunque los ciclos reales duren otra cosa: con ventanas de una fila no afecta al modelo, y así todos los datos del proyecto de Edge Impulse tienen la misma frecuencia. La duración real va en `duracion_ciclo_ms`.
+```json
+{
+  "general": { "ciclos_descartados_inicio": 3, "calibracion_primer_ciclo": 3, "calibracion_n_ciclos": 30,
+               "tope_ciclos_sin_ver": 10, "periodo_nominal_ms": 1000 },
+  "ensayos": [
+    {
+      "nombre": "desacople",
+      "descripcion": "Desacople instantáneo del enganche V2-V3 a los 150 s",
+      "carpeta_simulador": "decoupling_w2_150s",
+      "evento_s": 150.0,
+      "etiqueta_tras_evento": "LOST_INTEGRITY",
+      "fin_s": 455.0
+    }
+  ]
+}
+```
 
-## Diferencias conocidas con las ESP32
+- `carpeta_simulador`: nombre de la carpeta del ensayo dentro de `datasets_simulador/`.
+- `evento_s`: segundo del evento (`null` si no hay). Hasta él, OK; después, `etiqueta_tras_evento`.
+- `fin_s`: a partir de ese segundo los ciclos se descartan (`null` para no recortar).
 
-- **Duración del ciclo.** En el simulador la vuelta es fija: dura 1000 ms y baja a 500 ms cuando faltan V3 y V4. En las ESP32 dura unos 1400 ms y sube cuando hay fallos, por los tiempos de espera. Para probar en las placas un modelo entrenado con el simulador, conviene valorar si se quita esta columna.
-- **IMU.** En las ESP32 viaja a ceros hasta que haya sensores, así que en las placas el modelo no recibe la información de la IMU con la que se entrenó. Los resultados en las placas sirven también para justificar la necesidad de añadir IMU a los dispositivos.
-- **Distancias entre vecinos.** En el simulador salen por resta, así que el ruido de los enlaces es mayor que el de una medida directa.
+## Formato del CSV en crudo
+
+Una fila por ciclo. Columnas fijas para 5 vehículos, **por posición** en el tren: el coordinador (`c`)
+y cuatro vagones (`v1`…`v4`). Definido en `formato_crudo.py`.
+
+| Columnas | Contenido |
+|---|---|
+| `ciclo`, `tiempo_ms`, `duracion_ciclo_ms` | Número de ciclo, instante de fin (reloj del coordinador o del simulador) y duración |
+| `enlace_X_Y_visto`, `_distancia_m`, `_potencia_rx_dbm` | Por cada enlace entre vehículos consecutivos (`c_v1`, `v1_v2`, `v2_v3`, `v3_v4`) |
+| `salto2_X_Z_visto`, `_distancia_m` | Por cada par a dos saltos, es decir, cada vehículo con su nieto (`c_v2`, `v1_v3`, `v2_v4`) |
+| `X_acel_x_ms2`, `X_acel_y_ms2` | Por cada vehículo: aceleración longitudinal y lateral |
+
+- Lo no recibido es una celda vacía, con `visto = 0`.
+- Lo que el origen no puede dar se deja vacío, **también su `visto`**:
+  - `potencia_rx_dbm`: solo existe en `c_v1` (la mide el propio coordinador; el informe de los nodos no la trae).
+  - `salto2_*`: el simulador no da los pares a dos saltos.
+- En las placas, `c_v2` es la medida del coordinador con v2, y `v1_v3` y `v2_v4` son las medidas de cada
+  nodo con su nieto que llegan en el informe de modo modelo.
+- La IMU solo lleva `acel_x` y `acel_y`, que son los ejes que viajan en el informe. Mientras las placas
+  no tengan IMU, valen 0.
+
+## Columnas del modelo (16)
+
+Por cada enlace (`c_v1`, `v1_v2`, `v2_v3`, `v3_v4`), en este orden (`calculo_columnas.py`, y la misma
+versión en C en `model_features.cpp` del coordinador):
+
+| Columna | Cálculo |
+|---|---|
+| `enlace_X_Y_visto` | 1 si se recibió la medida del enlace en el ciclo |
+| `enlace_X_Y_ciclos_sin_ver` | Ciclos seguidos sin recibirla (0 si visto; tope en `tope_ciclos_sin_ver`) |
+| `enlace_X_Y_desviacion_m` | Distancia − distancia de referencia (0 si no visto) |
+| `enlace_X_Y_dif_acel_x_ms2` | `acel_x` del vehículo trasero − la del delantero (0 si no visto) |
+
+- **Distancia de referencia:** mediana de la distancia del enlace en la ventana de calibración
+  (`calibracion_n_ciclos` ciclos a partir de `calibracion_primer_ciclo`). Se calcula una vez, con la
+  hipótesis de que el tren está íntegro al arrancar.
+- **No entran al modelo**, pero se graban en el crudo para análisis futuros: la duración del ciclo,
+  la potencia RX, los pares a dos saltos y `acel_y`. El porqué de esta selección está en
+  `registro_cambios.md` (apartado 2).
+
+## Etiquetado y exportación
+
+Cada ciclo recibe un **uso** y una **etiqueta**, que se ven en el archivo de revisión.
+
+| Uso | Ciclos |
+|---|---|
+| `descartado_arranque` | Los primeros `ciclos_descartados_inicio` (en el simulador, 0–2: transitorio de arranque con aceleraciones de hasta −125 m/s²) |
+| `descartado_fin` | Desde `fin_s` (solo simulador) |
+| `sin_etiqueta` | Antes de la primera marca (solo placas) |
+| `entrenamiento` | El resto, incluidos los de calibración. **Solo estos van a Edge Impulse** |
+
+- **Etiqueta en el simulador:** OK hasta el evento. Desde el primer ciclo que termina después de `evento_s`, `etiqueta_tras_evento`.
+- **Etiqueta en las placas:** cada ciclo lleva la fase de la última marca anterior o igual a él. Admite
+  cualquier número de fases. Si una marca se pulsó tarde, se corrige su línea en el archivo de marcas y se reexporta.
+- Durante la calibración solo puede haber fase OK: si no, el ensayo no se exporta.
+- **Formato para Edge Impulse:**
+  - Primera columna, `tiempo_ms`: nominal y equiespaciado (ciclo × `periodo_nominal_ms`), porque Edge Impulse
+    supone muestras equiespaciadas. Con ventanas de una fila no afecta al modelo, y así todos los datos del
+    proyecto tienen la misma frecuencia.
+  - Después, las 16 columnas, en el orden de la tabla anterior.
+  - Nombre `<ETIQUETA>.<ensayo>.csv`: Edge Impulse toma la etiqueta de lo que va antes del primer punto.
+  - Si los ciclos de una etiqueta no son consecutivos (ciclos perdidos o fases repetidas), un archivo por
+    tramo: `OK.<ensayo>_p1.csv`, `_p2`… Los tramos quedan en el resumen.
+  - Antes de escribir, se borran los CSV de Edge Impulse anteriores del ensayo.
+
+## Adaptador del simulador: cómo se traduce cada ensayo
+
+- **Ciclo.** Una vuelta del round robin. Cada vagón tiene una ranura fija de 0,25 s y una vuelta dura 1 s. Los
+  mensajes se asignan a su ciclo por el número de ranura, así que no depende de redondeos de tiempo.
+- **Tiempo cero.** El inicio de la simulación, que es la referencia de los instantes de fallo del simulador.
+- **`tiempo_ms`** es el instante del último mensaje recibido en el ciclo. **`duracion_ciclo_ms`** va desde el inicio
+  de la vuelta hasta el final de la última ranura con respuesta.
+- **Enlace c–v1.** Distancia y potencia medidas por el coordinador a v1.
+- **Enlaces entre vagones.** El simulador solo da distancias al coordinador, así que la separación se obtiene por
+  resta: d(vk) − d(vk−1). Solo cuenta como visto si se recibieron los dos vagones.
+- **IMU.** La de cada vagón viene en su mensaje. La del coordinador es la muestra de su propia IMU en el instante
+  en que recibe a v1. Solo se pasan `acel_x` y `acel_y`.
+- **Último ciclo.** Se descarta si el registro termina a mitad de él.
+
+## Grabador: protecciones
+
+- Antes de empezar comprueba que el nombre del ensayo es válido y que `ensayos_placas.json` se puede leer.
+- Si el ensayo ya existe, pregunta si se sobrescribe (`1` = sí, se borra entero; `0` = no, y dice en qué línea
+  está la variable `ENSAYO`).
+- Con `REINICIAR_COORDINADOR = True` reinicia el coordinador al abrir el puerto, igual que el botón EN/RST, para que
+  la grabación empiece en el ciclo 0 con su cabecera y su calibración. Si la placa no se reinicia sola, a los 5 s
+  pide pulsar EN/RST.
+- Comprueba que la cabecera `RAW_HEADER` del coordinador coincide con `formato_crudo.py`. Si no, firmware y scripts
+  son de versiones distintas y se detiene.
+- Si el coordinador se reinicia a mitad de grabación (cabecera nueva o el ciclo retrocede), se detiene conservando
+  lo grabado.
+- Cuenta los ciclos perdidos y las líneas corruptas, y escribe los archivos línea a línea.
+- Si al terminar no puede apuntar el ensayo en el registro, la grabación no se pierde: muestra la entrada para
+  añadirla a mano.
+
+## Ensayos del simulador y decisiones de etiquetado
+
+| Ensayo | Evento | OK | LOST_INTEGRITY | Notas |
+|---|---|---|---|---|
+| desacople | Desacople V2–V3 a 150 s | ciclos 3–149 (147) | ciclos 150–454 (305) | Recortado desde 455 s: V3 y V4 vuelven a recibirse en los últimos segundos, un efecto del simulador sin sentido físico |
+| prefallo | Rotura V2–V3 a 130 s | ciclos 3–129 (127) | ciclos 130–399 (270) | La degradación de 100–130 s se etiqueta OK: es unas 30 veces menor que el error UWB y no es detectable |
+| frenado | Frenado a 300 s | ciclos 3–339 (337) | — | El frenado es operación normal: todo OK |
+
+## Diferencias conocidas entre el simulador y las placas
+
+- **IMU.** En las placas viaja a ceros hasta que haya sensores, así que el modelo no recibe la información de
+  aceleración con la que se entrenó. Los resultados en las placas sirven también para justificar la necesidad de
+  añadir IMU a los dispositivos.
+- **Distancias entre vecinos.** En el simulador salen por resta, así que el ruido de los enlaces es mayor que el de
+  una medida directa.
+- **Pares a dos saltos.** Solo existen en las placas.
+- **Duración del ciclo.** En el simulador la vuelta dura 1000 ms fijos (500 ms cuando faltan V3 y V4); en las placas,
+  unos 1400 ms, y más cuando hay fallos. Ya no es una entrada del modelo, pero se sigue grabando.

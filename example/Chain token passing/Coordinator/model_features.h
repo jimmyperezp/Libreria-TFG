@@ -1,14 +1,13 @@
 /*MODEL FEATURES*/
 
-// C version of extras/AI Integration/scripts/calculo_columnas.py.
-// Turns this cycle's raw row (the same data printed as RAW_DATA) into the 37 inputs of the model,
-// in exactly the same order as the training CSVs.
+// C version of extras/AI Integration/scripts_procesado/calculo_columnas.py.
+// Turns this cycle's raw row (the same data printed as RAW_DATA) into the 16 inputs of the model,
+// in exactly the same order as the training CSVs:
 //
-//   duracion_ciclo_ms
 //   For each link (c_v1, v1_v2, v2_v3, v3_v4):
 //       visto, ciclos_sin_ver, desviacion_m, dif_acel_x_ms2
-//   For each wagon (v1..v4), in acel_y, acel_z, giro_x, giro_y, giro_z:
-//       dev_media = value - mean of the OTHER received vehicles (coordinator included)
+//
+// The rest of the raw row (cycle duration, RX power, two-hop pairs, acc y) is recorded but is not a model input.
 //
 // Whatever wasn't received is 0 (its absence is already given by visto / ciclos_sin_ver).
 // Reference distances and unseen counters come from link_references (they are per pair of devices).
@@ -20,8 +19,9 @@
 #include "link_references.h"
 
 #define RAW_VEHICLES 5			// Fixed positions: coordinator + 4 nodes (c, v1, v2, v3, v4)
-#define RAW_LINKS (RAW_VEHICLES - 1)
-#define NUM_FEATURES 37
+#define RAW_LINKS (RAW_VEHICLES - 1)		// Links between consecutive positions: c_v1, v1_v2, v2_v3, v3_v4
+#define RAW_PAIRS (RAW_VEHICLES - 2)		// Two-hop pairs (grandson): c_v2, v1_v3, v2_v4
+#define NUM_FEATURES 16
 
 
 // Everything observed in one cycle, mapped to the fixed positions of the composition.
@@ -36,15 +36,17 @@ struct RawRow {
 
 	bool  link_seen[RAW_LINKS];				// Link i joins positions i and i+1
 	float link_distance[RAW_LINKS];			// [m]
-	float link_rx_power[RAW_LINKS];			// [dBm]
+	float link_rx_power[RAW_LINKS];			// [dBm] (NAN if the report doesn't carry it)
+
+	bool  pair_seen[RAW_PAIRS];				// Pair i joins positions i and i+2
+	float pair_distance[RAW_PAIRS];			// [m]
 
 	bool  imu_received[RAW_VEHICLES];
-	float acc[RAW_VEHICLES][3];				// [m/s^2]  x, y, z
-	float gyro[RAW_VEHICLES][3];			// [rad/s]  x, y, z
+	float acc[RAW_VEHICLES][2];				// [m/s^2]  x, y (the only axes that travel in the report)
 };
 
 
-// Computes the 37 features. 'references' must already be updated with this cycle (updateLinkReference).
+// Computes the 16 features. 'references' must already be updated with this cycle (updateLinkReference).
 void computeFeatures(const RawRow &row, LinkReferenceTable &references, float features[NUM_FEATURES]);
 
 // Name of feature i (same names as the training CSV columns)

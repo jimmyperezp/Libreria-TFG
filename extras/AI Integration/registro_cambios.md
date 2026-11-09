@@ -1,6 +1,7 @@
-# Registro de cambios: optimización de envíos e informe de modo modelo
+# Registro de cambios: optimización de envíos, informe de modo modelo y procesado de datos
 
-Registro de los cambios de la librería y del firmware, con su motivo, para documentarlos en la memoria.
+Registro de los cambios de la librería, del firmware y de los scripts de procesado, con su motivo, para documentarlos
+en la memoria.
 Rama: `clasificador-estados` (las longitudes de mensaje también están en `main`).
 
 ---
@@ -129,7 +130,8 @@ código real de `Node.ino` (4 nodos) y `Coordinator.ino`, cada uno en su propio 
    composición C1 > B1 > B2 > B3 > B4 (sin el filtro de `hop = 2`, falla).
 3. B2 no alcanza a su nieto: su bloque va solo con el hijo; informe de 47 B; composición correcta.
 
-**Pendiente:** formato en crudo y scripts de Python; las 16 columnas del modelo en el coordinador; reentrenar.
+**Pendiente:** reentrenar el modelo con las 16 columnas (el formato en crudo, los scripts y las 16 columnas en el
+coordinador están en el apartado 5).
 
 **Decisiones de diseño.**
 - El nieto es **el hijo del hijo**, sacado del informe que llega del hijo (no el segundo más cercano, que puede fallar
@@ -171,3 +173,84 @@ de nodo ya muestran ax y ay).
 **Verificación (PC).** Librería, nodo y coordinador compilan. Longitudes de todos los mensajes correctas (informe de
 modo modelo con 4 nodos: 50 B); tipo desconocido o 9/10 en el testigo → modo modelo; simulación de los tres ciclos de
 la cadena sin cambios en el resultado.
+
+
+## 5. Formato en crudo nuevo, 16 columnas y reorganización del procesado de datos
+
+### Formato en crudo (scripts y coordinador)
+
+La fila en crudo (`formato_crudo.py` y `RAW_DATA` del coordinador) se adapta al informe de modo modelo:
+- **Nuevo: pares a dos saltos** (`salto2_c_v2`, `salto2_v1_v3`, `salto2_v2_v4`), con `visto` y `distancia_m`. En las
+  placas, `c_v2` es la medida del coordinador con v2 y los otros dos, las medidas de cada nodo con su nieto. El
+  simulador no los da: quedan vacíos, también su `visto`. No son entrada del modelo; se graban para evaluar más
+  adelante si aportan (valor característico a dos saltos, ver mejoras futuras).
+- **IMU: solo `acel_x` y `acel_y`**, los ejes que viajan en el informe. Fuera `acel_z` y el giróscopo.
+- Se mantienen la duración del ciclo y la potencia RX (solo `c_v1`: el informe de los nodos no la trae).
+- 31 columnas, frente a 45.
+
+### Columnas del modelo: de 37 a 16
+
+`calculo_columnas.py` y su versión en C (`model_features.cpp`, `NUM_FEATURES = 16`): por cada enlace, `visto`,
+`ciclos_sin_ver`, `desviacion_m` y `dif_acel_x_ms2`, según el análisis del apartado 2. Fuera la duración del ciclo y
+las 20 `dev_media`. **Comprobación:** con los tres ensayos del simulador, las 16 columnas, el uso y la etiqueta de cada
+ciclo coinciden exactamente con los de los datos de la versión anterior (diferencia máxima 0).
+
+### Reorganización de carpetas
+
+| Antes | Ahora |
+|---|---|
+| `scripts/` | `scripts_procesado/` |
+| `datos_simulador/` (local) | `datasets_simulador/` (local, con un `LEEME.md` en Git) |
+| `datos/` (procesados del simulador, todos los ensayos mezclados por tipo de archivo) | `datasets_procesados/simulador/<ensayo>/` |
+| `datos placas/` (local) | `datasets_procesados/placas/<ensayo>/` (en Git) |
+| `ensayos_simulador.json`, `ensayos_placas.json` en la raíz | Cada uno en la carpeta de su origen |
+| `columnas_<ensayo>.csv` | `revision/revision_<ensayo>.csv` (mismo contenido; el nombre dice para qué sirve) |
+| `info_<ensayo>.json` + `resumen.json` global + `resumen_<ensayo>.json` | Un único `resumen_<ensayo>.json` por ensayo |
+
+Dentro de cada ensayo, siempre las mismas carpetas: `crudo/`, `revision/` y `edge_impulse/`, más su resumen. Motivo:
+`datos/` no decía que solo tenía datos del simulador; el exportador guardaba de dos formas distintas según el origen;
+y había tres archivos de resumen con información repetida.
+
+Las grabaciones de las placas pasan a Git porque las de vía real son irrepetibles. Los ensayos completos del
+simulador siguen fuera, porque pesan mucho y se pueden volver a pedir.
+
+### Grabador
+
+- **Rutas fijas:** graba siempre en `datasets_procesados/placas/<ENSAYO>/` (fuera `CARPETA_SALIDA` y los argumentos
+  de terminal). Solo se cambia `ENSAYO` (y `PUERTO`).
+- **Registro automático:** al terminar, apunta el ensayo en `ensayos_placas.json` (lo crea si no existe). Antes había
+  que añadir la entrada a mano después de cada grabación.
+- **Resumen:** crea `resumen_<ensayo>.json` con la fecha, una `descripcion` vacía para rellenar a mano y los datos de
+  la grabación (antes, en `info_<ensayo>.json`).
+- **Sobrescribir:** si el ensayo existe, pregunta (`1` = sí, se borra entero; `0` = no, y dice en qué línea está
+  `ENSAYO`, buscándola en el propio script para que no se desfase).
+- **Comprobaciones nuevas:** nombre válido (es nombre de carpeta) y `ensayos_placas.json` legible **antes** de empezar
+  la prueba. Si al final no puede apuntar el ensayo, muestra la entrada para añadirla a mano (la grabación no se pierde).
+- Las teclas de fase por defecto son `0` = OK y `1` = LOST_INTEGRITY.
+
+### Exportador
+
+- **`ORIGEN` y `ENSAYOS`** sustituyen a `REGISTRO`: `ORIGEN = 'PLACAS'` o `'SIMULADOR'`, y `ENSAYOS = [...]` o
+  `'TODOS'`. Antes se reexportaban siempre todos los ensayos del registro. `'TODOS'` sigue haciendo falta cuando cambia
+  el cálculo o un parámetro general.
+- Una sola forma de guardar, igual para los dos orígenes (fuera `carpeta_salida` y `salida_junto_a_la_grabacion`).
+- Conserva `fecha`, `descripcion` y `grabacion` del resumen y reescribe solo la parte `procesado`.
+- En las placas, apunta en `ensayos_placas.json` los parámetros usados y las rutas de los resultados.
+- **Entradas huérfanas:** si la carpeta de un ensayo se borró a mano, avisa y lo salta (no borra la entrada). Un error
+  en un ensayo ya no detiene la exportación de los demás.
+
+### Documentación
+
+`readme.md` reescrito con la estructura y los formatos; `guia_uso.md` nuevo, con los pasos de cada caso.
+
+**Verificación (PC).**
+- Simulador: los tres ensayos exportados con la estructura nueva (recuentos idénticos: 147/305, 127/270, 337).
+- Firmware: nodo y coordinador compilan; la simulación de la cadena imprime la cabecera y una fila `RAW_DATA` del
+  formato nuevo (`c_v2` y `v1_v3` vistos, `v2_v4` no, porque B2 no tiene nieto en ese ciclo).
+- Placas: con esa cabecera real del coordinador y 80 ciclos simulados (rotura en el ciclo 50 y un ciclo perdido), el
+  grabador valida la cabecera, apunta el ensayo y crea el resumen; el exportador conserva la descripción y escribe dos
+  tramos de LOST_INTEGRITY. Probados también: sobrescribir (`1`, `0` y respuesta inválida), entrada repetida (se
+  sustituye, no se duplica), entrada huérfana, JSON mal escrito, nombre con espacios y cabecera antigua.
+
+**Pendiente:** probar en las placas la grabación con el firmware nuevo; reentrenar el modelo con las 16 columnas y
+volver a activar `AI_DEPLOYMENT`.
