@@ -53,28 +53,32 @@ enum CompositionEvent {
 
 struct CompositionState {
 	Chain current;					// Stored composition
-	bool consolidated;
-	uint16_t startup_cycles;		// Cycles elapsed in the startup window
-
+	bool consolidated;				// Has the startup ended?
+	uint16_t startup_cycles;		// Number of cycles executed in startup
 	Chain candidate;				// Change waiting to be adopted (normal operation)
 	uint16_t candidate_cycles;		// Consecutive cycles the candidate has been observed
 };
 
 
-// Sets the state to "no composition yet".
-void initComposition(CompositionState &state);
 
+void initComposition(CompositionState &state);
+// Sets the state to "no composition yet".
+
+
+Chain buildObservedChain(uint8_t coordinator, int16_t coordinator_son, const Measurement* measures, int num_measures);
 // Rebuilds the chain observed in this cycle.
 //   coordinator      --> coordinator's short address header
 //   coordinator_son  --> node that accepted the coordinator's token in this cycle (-1: none)
 //   measures         --> this cycle's measures (only the active ones are used)
-Chain buildObservedChain(uint8_t coordinator, int16_t coordinator_son, const Measurement* measures, int num_measures);
+
 
 ChainComparison compareChains(const Chain &stored, const Chain &observed);
 
+
+CompositionEvent updateComposition(CompositionState &state, const Chain &observed, ChainComparison &comparison);
 // Updates the stored composition with this cycle's observed chain. Returns what happened.
 // 'comparison' returns the comparison of the observed chain against the composition BEFORE the update.
-CompositionEvent updateComposition(CompositionState &state, const Chain &observed, ChainComparison &comparison);
+
 
 bool chainsEqual(const Chain &a, const Chain &b);
 int  chainIndexOf(const Chain &chain, uint8_t id);	// Position of 'id' in the chain, or -1
