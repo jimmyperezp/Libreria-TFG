@@ -8,22 +8,6 @@ de cada script.
 
 ---
 
-## 0. Una sola vez: pasar las carpetas locales a la estructura nueva
-
-Las carpetas que no están en Git solo existen en tu PC, así que hay que moverlas a mano:
-
-1. Haz `git pull`.
-2. Mueve el contenido de tu antigua `datos_simulador/` a `datasets_simulador/` (una carpeta por ensayo:
-   `decoupling_w2_150s/`, `decoupling_prefail30s_t100s/`, `brake_300s/`). Después borra `datos_simulador/`.
-3. Borra `datos placas/`. Sus grabaciones (`prueba_03`…) tienen el formato en crudo antiguo y no sirven con los
-   scripts nuevos. Si quieres conservarlas, guárdalas fuera de `AI Integration/`.
-4. Carga en el coordinador y en los nodos el firmware de esta versión: el grabador solo acepta la cabecera
-   `RAW_HEADER` del formato nuevo.
-
-Los datos procesados del simulador ya vienen regenerados con el formato nuevo en `datasets_procesados/simulador/`.
-
----
-
 ## 1. Grabar un ensayo con las placas
 
 **Antes de la prueba**, en `grabador_serie.py`:
