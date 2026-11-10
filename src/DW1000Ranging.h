@@ -12,7 +12,6 @@
 	#define DEBUG false
 #endif
 
-
 /*  Definition of Message types:  */
 
 // 1: Messages used in the TWR protocol
@@ -57,8 +56,6 @@
 #define DEFAULT_REPLY_DELAY_TIME 8000 	// [uS]
 #define DEFAULT_TIMER_DELAY 80			// [mS]
 
-
-
 // Struct to handle the known measurements among the system's devices. Each device locally creates an array of this struct to save its measurements.
 struct Measurement {
     uint8_t short_addr_origin;  // Origin's short address header. Used to know the devices involved in the measurement
@@ -78,19 +75,18 @@ struct Measurement {
 
 /* DATA_REPORT_MODEL: report used to feed the AI model */
 
-// Message:   [MAC (9)][type (1)][N (1)] + N node blocks, in chain order (first the node closest to the coordinator).
-// Node block: [address (1)][control (1)][son: dest (1) + distance (2)][grandson: dest (1) + distance (2)][acc x (2)][acc y (2)]
-//   - control, bits 0-1: number of measures in the block (0, 1 or 2). Bits 2-7: reserved (0).
+// Message:   [MAC (9)][type (1)][N (1)] + N node blocks.
+// Each node block: [address (1)][control (1)][son: dest (1) + distance (2)][grandson: dest (1) + distance (2)][acc x (2)][acc y (2)]
+//   - Control, bits 0-1: number of measures in the block (0, 1 or 2). Rest of the bits are open for future uses (for example, I could use them to indicate if a measure was taken wrong, or things like that.)
 //   - The son measure is present if there are 1 or 2 measures; the grandson measure, only if there are 2.
 //   - Distance: cm in uint16 (saturated to 0 - 655.35 m). Acc: as in the IMU blocks (mm/s^2 in int16, saturated).
 //   Block size: 6 (no measures, the tail), 9 (only son) or 12 bytes (son and grandson).
-#define MODEL_REPORT_HEADER_LEN   (SHORT_MAC_LEN + 2)	// [MAC][type][N]
-#define MODEL_BLOCK_BASE_LEN      6						// [address][control][acc x (2)][acc y (2)]
+#define MODEL_REPORT_HEADER_LEN   (SHORT_MAC_LEN + 2)	//This report's header includes MAC+message type+number of measures.
+#define MODEL_BLOCK_BASE_LEN      6						// [address][control][acc x (2)][acc y (2)] (each block has this for sure. Now it could also include measures (3 bytes for each))
 #define MODEL_MEASURE_LEN         3						// [dest (1)][distance (2)]
 #define MODEL_CONTROL_MEASURES    0x03					// Bits 0-1 of the control byte
 
-// One node block of a DATA_REPORT_MODEL, with its values already decoded (physical units).
-// The library encodes / decodes it when sending / reading the report: the ".ino" never deals with the bytes.
+//Each of the blocks has the following structure & fields:
 struct NodeBlock {
 	uint8_t addr;				// Short address header of the node the block belongs to
 	uint8_t num_measures;		// 0 (tail), 1 (only son) or 2 (son and grandson)
