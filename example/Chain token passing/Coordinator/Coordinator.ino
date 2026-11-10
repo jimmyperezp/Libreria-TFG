@@ -90,10 +90,12 @@ unsigned long wait_for_return_start = 0;
 const unsigned long WAIT_FOR_RETURN_TIMEOUT = 3000;
 
 /*Composition analysis (see composition.h)*/
-CompositionState composition;
+CompositionState composition;           //CompositionState is a struct containing the seen chain, the status, etc (see composition.h)
 int16_t coordinator_son = -1;          // Node that accepted the coordinator's token in this cycle (-1: none)
 uint32_t cycle_number = 0;             // Cycles completed since startup ("ciclo" column)
 unsigned long last_cycle_end_time = 0; // To measure each cycle's real duration
+uint8_t chain_order[MAX_DEVICES];      // Nodes of this cycle in the order of the train, without the coordinator. This is extracted from the data report received (built in order)
+uint8_t chain_order_length = 0;
 
 /*Link references & model features (see link_references.h and model_features.h)*/
 LinkReferenceTable link_references;
@@ -109,15 +111,9 @@ const char* RAW_IMU_AXES[2] = {"acel_x_ms2", "acel_y_ms2"};   // The only axes t
 NodeBlock received_blocks[MAX_NODE_BLOCKS];   // Blocks of the last model data report (one per node, in chain order)
 uint8_t amount_received_blocks = 0;
 
-/*Chain order of this cycle (input of the composition analysis, see composition.h)*/
-uint8_t chain_order[MAX_DEVICES];      // Nodes of this cycle in the order of the train, without the coordinator
-uint8_t chain_order_length = 0;
-
 /*Used to print results*/
 unsigned long last_shown_data_timestamp = 0;    
 unsigned long last_KK_plot_timestamp = 0;       //Last moment the Kamada-Kawai (KK) plot was made.
-
-
 
 /*States used in the FSM*/
 enum State{
