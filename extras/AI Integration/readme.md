@@ -26,11 +26,11 @@ AI Integration/
 │   ├── formato_crudo.py            definición del CSV en crudo (común a simulador y placas)
 │   ├── grabador_serie.py           PASO 1 (placas): monitor serie del coordinador -> crudo + marcas
 │   ├── adaptador_simulador.py      PASO 1 (simulador): ensayo del simulador -> crudo
-│   ├── calculo_columnas.py         PASO 2: crudo -> las 16 columnas del modelo
+│   ├── calculo_columnas.py         PASO 2: crudo -> las 25 columnas del modelo
 │   └── exportar_edge_impulse.py    PASOS 1-3: ejecuta la cadena y escribe los CSV de Edge Impulse
 │
 ├── datasets_simulador/             ensayos completos tal como los da el simulador (NO se suben a Git)
-│   ├── LEEME.md
+│   ├── readme.md
 │   ├── decoupling_w2_150s/         config.json, coord/rx_coord.csv, coord/imu_crd.csv...
 │   └── ...
 │
@@ -71,7 +71,7 @@ tener letras sin tildes, números, `_` y `-` (sin espacios). Los scripts lo comp
 ```
                 PASO 1                          PASO 2                       PASO 3
 simulador ──adaptador_simulador──►┐
-                                  ├─► crudo ──calculo_columnas──► 16 columnas ──etiquetado──► revision + edge_impulse + resumen
+                                  ├─► crudo ──calculo_columnas──► 25 columnas ──etiquetado──► revision + edge_impulse + resumen
 placas ─────grabador_serie───────►┘
 ```
 
@@ -90,7 +90,7 @@ placas ─────grabador_serie───────►┘
 | `crudo/marcas_<ensayo>.csv` | grabador (placas) | Una fila por marca de fase: `desde_ciclo`, `tiempo_ms_coordinador`, `fase`, `hora_pc` |
 | `crudo/monitor_<ensayo>.txt` | grabador (placas) | Todo el monitor serie del coordinador, con la hora del PC en cada línea |
 | `crudo/composicion_<ensayo>.json` | adaptador (simulador) | Qué dispositivo ocupa cada posición y cómo se generó el crudo |
-| `revision/revision_<ensayo>.csv` | exportador | **Todos** los ciclos con las 16 columnas del modelo, más `uso` y `etiqueta`. Sirve para revisar el cálculo y el etiquetado, y para hacer figuras. No se sube a Edge Impulse |
+| `revision/revision_<ensayo>.csv` | exportador | **Todos** los ciclos con las 25 columnas del modelo, más `uso` y `etiqueta`. Sirve para revisar el cálculo y el etiquetado, y para hacer figuras. No se sube a Edge Impulse |
 | `edge_impulse/<ETIQUETA>.<ensayo>.csv` | exportador | **Los CSV de entrenamiento**: solo los ciclos de entrenamiento, un archivo por etiqueta |
 | `resumen_<ensayo>.json` | grabador + exportador | El archivo del ensayo que se abre a mano (ver abajo) |
 
@@ -104,7 +104,9 @@ placas ─────grabador_serie───────►┘
                  "motivo_fin": "tecla de salida", "filas_crudo": 412, "ciclos_perdidos": 2,
                  "lineas_corruptas": 0, "marcas": 2, "cabecera_validada": true, ... },
   "procesado": { "ciclos_totales": 412, "descartados": {...}, "archivos_edge_impulse": {...},
-                 "referencias_calibracion_m": {...}, "ciclos_calibracion": [0, 29], "avisos_calibracion": [] }
+                 "calibracion": { "c_v1": {"referencia_m": 21.47, "medidas": 30, "desde_ciclo": 0,
+                                           "fijada_en_ciclo": 29}, ... },
+                 "avisos_calibracion": [] }
 }
 ```
 
@@ -114,8 +116,9 @@ placas ─────grabador_serie───────►┘
 - `procesado`: lo escribe el exportador y lo reescribe en cada exportación. Contiene:
   - `ciclos_totales` y `descartados`: cuántos ciclos hay y cuántos no van a Edge Impulse, y por qué;
   - `archivos_edge_impulse`: por etiqueta, filas y ciclos (y los tramos, si hubo ciclos perdidos);
-  - `referencias_calibracion_m`: la distancia de referencia calculada para cada enlace;
-  - `avisos_calibracion`: por ejemplo, si faltaban ciclos en la ventana de calibración.
+  - `calibracion`: para cada enlace y par a dos saltos, su referencia, con cuántas medidas se calculó,
+    desde qué ciclo y en qué ciclo quedó fija (ver «Calibración» más abajo);
+  - `avisos_calibracion`: los casos de calibración que conviene revisar.
 
 ## Registros de ensayos
 
@@ -127,8 +130,8 @@ Lo escriben los scripts. **Solo se edita a mano `"general"`**, que se aplica a l
 {
   "general": {
     "ciclos_descartados_inicio": 0,
-    "calibracion_primer_ciclo": 0,
-    "calibracion_n_ciclos": 30,
+    "calibracion_n_medidas": 30,
+    "calibracion_min_medidas": 3,
     "tope_ciclos_sin_ver": 10,
     "periodo_nominal_ms": 1000
   },
@@ -151,7 +154,8 @@ Lo escriben los scripts. **Solo se edita a mano `"general"`**, que se aplica a l
   sobrescribe, su entrada se sustituye.
 - El **exportador** añade a la entrada los parámetros con los que se exportó y las rutas de los resultados.
 - Las rutas se cuentan desde la carpeta `placas/`.
-- `calibracion_n_ciclos` debe coincidir con `LINK_REF_SAMPLES` del coordinador (30).
+- `calibracion_n_medidas`, `calibracion_min_medidas` y `tope_ciclos_sin_ver` deben coincidir con `LINK_REF_SAMPLES` (30),
+  `LINK_REF_MIN_SAMPLES` (3) y `UNSEEN_CYCLES_CAP` (10) del coordinador (`link_references.h`).
 
 ### `datasets_procesados/simulador/ensayos_simulador.json`
 
@@ -159,7 +163,7 @@ Se escribe **a mano**: tiene lo que no se puede deducir de los datos del simulad
 
 ```json
 {
-  "general": { "ciclos_descartados_inicio": 3, "calibracion_primer_ciclo": 3, "calibracion_n_ciclos": 30,
+  "general": { "ciclos_descartados_inicio": 3, "calibracion_n_medidas": 30, "calibracion_min_medidas": 3,
                "tope_ciclos_sin_ver": 10, "periodo_nominal_ms": 1000 },
   "ensayos": [
     {
@@ -191,32 +195,65 @@ y cuatro vagones (`v1`…`v4`). Definido en `formato_crudo.py`.
 | `X_acel_x_ms2`, `X_acel_y_ms2` | Por cada vehículo: aceleración longitudinal y lateral |
 
 - Lo no recibido es una celda vacía, con `visto = 0`.
-- Lo que el origen no puede dar se deja vacío, **también su `visto`**:
-  - `potencia_rx_dbm`: solo existe en `c_v1` (la mide el propio coordinador; el informe de los nodos no la trae).
-  - `salto2_*`: el simulador no da los pares a dos saltos.
-- En las placas, `c_v2` es la medida del coordinador con v2, y `v1_v3` y `v2_v4` son las medidas de cada
-  nodo con su nieto que llegan en el informe de modo modelo.
+- `potencia_rx_dbm` solo existe en `c_v1` (la mide el propio coordinador; el informe de los nodos no la trae).
+  En los demás enlaces queda vacía.
+- **Pares a dos saltos:**
+  - en las placas, `c_v2` es la medida del coordinador con v2, y `v1_v3` y `v2_v4` son las medidas de cada
+    nodo con su nieto que llegan en el informe de modo modelo;
+  - en el simulador, `c_v2` es la distancia del coordinador a v2, y `v1_v3` y `v2_v4` salen por resta
+    (ver el adaptador, más abajo).
 - La IMU solo lleva `acel_x` y `acel_y`, que son los ejes que viajan en el informe. Mientras las placas
   no tengan IMU, valen 0.
 
-## Columnas del modelo (16)
+## Columnas del modelo (25)
 
-Por cada enlace (`c_v1`, `v1_v2`, `v2_v3`, `v3_v4`), en este orden (`calculo_columnas.py`, y la misma
-versión en C en `model_features.cpp` del coordinador):
+En este orden (`calculo_columnas.py`, y la misma versión en C en `model_features.cpp` del coordinador).
+
+**Por cada enlace** (`c_v1`, `v1_v2`, `v2_v3`, `v3_v4`), 4 columnas:
 
 | Columna | Cálculo |
 |---|---|
-| `enlace_X_Y_visto` | 1 si se recibió la medida del enlace en el ciclo |
+| `enlace_X_Y_visto` | 1 si se recibió la medida directa del enlace en el ciclo |
 | `enlace_X_Y_ciclos_sin_ver` | Ciclos seguidos sin recibirla (0 si visto; tope en `tope_ciclos_sin_ver`) |
-| `enlace_X_Y_desviacion_m` | Distancia − distancia de referencia (0 si no visto) |
+| `enlace_X_Y_desviacion_m` | Distancia − distancia de referencia del enlace (0 si no visto o sin referencia) |
 | `enlace_X_Y_dif_acel_x_ms2` | `acel_x` del vehículo trasero − la del delantero (0 si no visto) |
 
-- **Distancia de referencia:** mediana de la distancia del enlace en la ventana de calibración
-  (`calibracion_n_ciclos` ciclos a partir de `calibracion_primer_ciclo`). Se calcula una vez, con la
-  hipótesis de que el tren está íntegro al arrancar.
+**Después, por cada par a dos saltos** (nieto: `c_v2`, `v1_v3`, `v2_v4`), 3 columnas:
+
+| Columna | Cálculo |
+|---|---|
+| `salto2_X_Z_visto` | 1 si se recibió la medida del par en el ciclo |
+| `salto2_X_Z_ciclos_sin_ver` | Ciclos seguidos sin recibirla (tope en `tope_ciclos_sin_ver`) |
+| `salto2_X_Z_desviacion_m` | Distancia − distancia de referencia del par (0 si no visto o sin referencia) |
+
+- **Cada columna sale de una sola medida:** no se combinan enlaces y pares. Es el modelo el que aprende, por
+  ejemplo, que «V2–V3 no se ve, pero V1–V3 sí y en su sitio» significa tren íntegro (redundancia del nieto).
+  Para aprenderlo necesita ejemplos de enlaces perdidos con el tren íntegro (nodos apagados, fallos de radio).
 - **No entran al modelo**, pero se graban en el crudo para análisis futuros: la duración del ciclo,
-  la potencia RX, los pares a dos saltos y `acel_y`. El porqué de esta selección está en
-  `registro_cambios.md` (apartado 2).
+  la potencia RX y `acel_y`. El porqué de esta selección está en `registro_cambios.md` (apartados 2 y 6).
+
+### Calibración (distancia de referencia)
+
+La misma regla para enlaces y pares, y la misma que usa el coordinador (`link_references.cpp`):
+
+- Cada enlace o par se calibra con sus **primeras medidas, cuando lleguen**. Un nieto que solo se ve a partir de
+  una curva, o un nodo que entra en la cadena a mitad de ensayo, se calibra en ese momento.
+- Mientras calibra, la referencia es la mediana de las medidas que lleva (incluida la del ciclo). Con menos de
+  `calibracion_min_medidas` (3) no se usa y la desviación vale 0.
+- Con `calibracion_n_medidas` (30), la referencia queda **fija** hasta el final del ensayo.
+- Los ciclos anteriores a `ciclos_descartados_inicio` no se usan para calibrar (en el simulador, el transitorio de
+  arranque; en las placas es 0).
+- Hipótesis: cuando una pareja empieza a verse, el tren está íntegro.
+
+Ningún caso de calibración impide exportar el ensayo. Los que conviene revisar se anotan en `avisos_calibracion`
+del resumen y en la consola:
+
+| Aviso | Qué significa |
+|---|---|
+| `v1_v3: calibrado a partir del ciclo 85` | Empezó a verse más de 10 ciclos después del inicio. En un par puede ser normal; en un enlace suele ser un nodo que entró o se reinició a mitad de ensayo |
+| `v2_v4: solo 12 de 30 medidas de calibración; referencia provisional` | No llegó a 30 medidas: su referencia es provisional (menos fiable) en todo el ensayo |
+| `v3_v4: sin referencia en todo el ensayo (0 medidas de calibración)` | Menos de 3 medidas: su desviación vale 0 en todo el ensayo. En un enlace casi siempre indica un problema |
+| `v1_v3: 8 de sus 30 medidas de calibración son de fase LOST_INTEGRITY` | Se calibró, en parte, con el tren no íntegro: su referencia y sus desviaciones pueden estar mal |
 
 ## Etiquetado y exportación
 
@@ -227,17 +264,16 @@ Cada ciclo recibe un **uso** y una **etiqueta**, que se ven en el archivo de rev
 | `descartado_arranque` | Los primeros `ciclos_descartados_inicio` (en el simulador, 0–2: transitorio de arranque con aceleraciones de hasta −125 m/s²) |
 | `descartado_fin` | Desde `fin_s` (solo simulador) |
 | `sin_etiqueta` | Antes de la primera marca (solo placas) |
-| `entrenamiento` | El resto, incluidos los de calibración. **Solo estos van a Edge Impulse** |
+| `entrenamiento` | El resto. **Solo estos van a Edge Impulse** |
 
 - **Etiqueta en el simulador:** OK hasta el evento. Desde el primer ciclo que termina después de `evento_s`, `etiqueta_tras_evento`.
 - **Etiqueta en las placas:** cada ciclo lleva la fase de la última marca anterior o igual a él. Admite
   cualquier número de fases. Si una marca se pulsó tarde, se corrige su línea en el archivo de marcas y se reexporta.
-- Durante la calibración solo puede haber fase OK: si no, el ensayo no se exporta.
 - **Formato para Edge Impulse:**
   - Primera columna, `tiempo_ms`: nominal y equiespaciado (ciclo × `periodo_nominal_ms`), porque Edge Impulse
     supone muestras equiespaciadas. Con ventanas de una fila no afecta al modelo, y así todos los datos del
     proyecto tienen la misma frecuencia.
-  - Después, las 16 columnas, en el orden de la tabla anterior.
+  - Después, las 25 columnas, en el orden de las tablas anteriores.
   - Nombre `<ETIQUETA>.<ensayo>.csv`: Edge Impulse toma la etiqueta de lo que va antes del primer punto.
   - Si los ciclos de una etiqueta no son consecutivos (ciclos perdidos o fases repetidas), un archivo por
     tramo: `OK.<ensayo>_p1.csv`, `_p2`… Los tramos quedan en el resumen.
@@ -253,6 +289,8 @@ Cada ciclo recibe un **uso** y una **etiqueta**, que se ven en el archivo de rev
 - **Enlace c–v1.** Distancia y potencia medidas por el coordinador a v1.
 - **Enlaces entre vagones.** El simulador solo da distancias al coordinador, así que la separación se obtiene por
   resta: d(vk) − d(vk−1). Solo cuenta como visto si se recibieron los dos vagones.
+- **Pares a dos saltos.** `c_v2` es la distancia del coordinador a v2. `v1_v3` y `v2_v4` salen por resta, igual que
+  los enlaces: d(v3) − d(v1) y d(v4) − d(v2), y solo cuentan como vistos si se recibieron los dos vagones.
 - **IMU.** La de cada vagón viene en su mensaje. La del coordinador es la muestra de su propia IMU en el instante
   en que recibe a v1. Solo se pasan `acel_x` y `acel_y`.
 - **Último ciclo.** Se descarta si el registro termina a mitad de él.
@@ -288,6 +326,9 @@ Cada ciclo recibe un **uso** y una **etiqueta**, que se ven en el archivo de rev
   añadir IMU a los dispositivos.
 - **Distancias entre vecinos.** En el simulador salen por resta, así que el ruido de los enlaces es mayor que el de
   una medida directa.
-- **Pares a dos saltos.** Solo existen en las placas.
+- **Pares a dos saltos.** En el simulador salen de las mismas distancias al coordinador que los enlaces, así que no
+  aportan información independiente: el par V1–V3 se pierde a la vez que V2–V3. En las placas son medidas de radio
+  independientes, que es justo lo que aporta la redundancia. Para entrenarla hacen falta ensayos con nodos apagados
+  y fallos de radio con el tren íntegro (del gemelo digital o de las placas).
 - **Duración del ciclo.** En el simulador la vuelta dura 1000 ms fijos (500 ms cuando faltan V3 y V4); en las placas,
   unos 1400 ms, y más cuando hay fallos. Ya no es una entrada del modelo, pero se sigue grabando.

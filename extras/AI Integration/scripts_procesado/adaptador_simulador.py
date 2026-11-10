@@ -25,7 +25,9 @@ Traducción (ver README):
     Visto solo si se recibieron los dos vagones en el ciclo.
   - Potencia RX: la del mensaje recibido por el coordinador. Solo existe para
     c-v1; para los demás enlaces el simulador no la da y se deja vacía.
-  - Pares a dos saltos (salto2_*): vacíos, también su "visto". El simulador no los da.
+  - Pares a dos saltos (salto2_*): c_v2 es la distancia del coordinador a v2 (medida directa);
+    v1_v3 y v2_v4 se obtienen por resta, igual que los enlaces entre vagones: d(v3) - d(v1) y
+    d(v4) - d(v2). Solo cuentan como vistos si se recibieron los dos vagones.
   - IMU: solo acel_x y acel_y (lo que viaja en el informe de las placas).
     La de cada vagón es la que viaja en su mensaje. La del coordinador, la muestra
     de imu_crd tomada en el mismo instante en que se recibe el mensaje de v1
@@ -143,11 +145,19 @@ def adaptar(cfg, rx, imu):
             fila[f'{e}_distancia_m'] = d
             fila[f'{e}_potencia_rx_dbm'] = pot
 
-        # Pares a dos saltos: el simulador no los da
-        for a, b in PARES_SALTO2:
+        # Pares a dos saltos (nieto): mismo criterio que los enlaces, saltando un vehículo
+        for i, (a, b) in enumerate(PARES_SALTO2):
             s = nombre_salto2(a, b)
-            fila[f'{s}_visto'] = np.nan
-            fila[f'{s}_distancia_m'] = np.nan
+            pb = i + 1                   # posición del vagón trasero del par (v2 -> 1)
+            if a == 'c':
+                visto = pb in recibidos
+                d = dist(pb)
+            else:
+                pa = i - 1
+                visto = pa in recibidos and pb in recibidos
+                d = dist(pb) - dist(pa) if visto else np.nan
+            fila[f'{s}_visto'] = int(visto)
+            fila[f'{s}_distancia_m'] = d
 
         # IMU del coordinador: en el instante de recepción de v1 (o en su ranura)
         tick_c = int(g.loc[0, 'tick']) if 0 in recibidos else tick_inicio
@@ -168,7 +178,7 @@ def adaptar(cfg, rx, imu):
         'enlaces': [{'columna': nombre_enlace(a, b),
                      'id': f"{'crd' if a == 'c' else ids_reales[a]}-{ids_reales[b]}"} for a, b in ENLACES],
         'imu': 'simulada por el simulador (con ruido); solo acel_x y acel_y',
-        'salto2': 'vacío (el simulador no da los pares a dos saltos)',
+        'salto2': 'c_v2: distancia del coordinador a v2; v1_v3 y v2_v4: diferencia de las distancias al coordinador',
         'potencia_rx': 'solo enlace_c_v1; vacía en los demás (el simulador no la da)',
         'ciclos': int(len(crudo)),
         'periodo_nominal_ms': int(round(n_vagones * ranura_s * 1000)),

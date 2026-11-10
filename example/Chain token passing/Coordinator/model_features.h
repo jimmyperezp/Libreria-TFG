@@ -1,13 +1,16 @@
 /*MODEL FEATURES*/
 
 // C version of extras/AI Integration/scripts_procesado/calculo_columnas.py.
-// Turns this cycle's raw row (the same data printed as RAW_DATA) into the 16 inputs of the model,
+// Turns this cycle's raw row (the same data printed as RAW_DATA) into the 25 inputs of the model,
 // in exactly the same order as the training CSVs:
 //
 //   For each link (c_v1, v1_v2, v2_v3, v3_v4):
 //       visto, ciclos_sin_ver, desviacion_m, dif_acel_x_ms2
+//   Then, for each two-hop pair (grandson: c_v2, v1_v3, v2_v4):
+//       visto, ciclos_sin_ver, desviacion_m
 //
-// The rest of the raw row (cycle duration, RX power, two-hop pairs, acc y) is recorded but is not a model input.
+// Each feature comes from a single measure (links and pairs are never combined).
+// The rest of the raw row (cycle duration, RX power, acc y) is recorded but is not a model input.
 //
 // Whatever wasn't received is 0 (its absence is already given by visto / ciclos_sin_ver).
 // Reference distances and unseen counters come from link_references (they are per pair of devices).
@@ -21,7 +24,7 @@
 #define RAW_VEHICLES 5			// Fixed positions: coordinator + 4 nodes (c, v1, v2, v3, v4)
 #define RAW_LINKS (RAW_VEHICLES - 1)		// Links between consecutive positions: c_v1, v1_v2, v2_v3, v3_v4
 #define RAW_PAIRS (RAW_VEHICLES - 2)		// Two-hop pairs (grandson): c_v2, v1_v3, v2_v4
-#define NUM_FEATURES 16
+#define NUM_FEATURES 25
 
 
 // Everything observed in one cycle, mapped to the fixed positions of the composition.
@@ -46,7 +49,7 @@ struct RawRow {
 };
 
 
-// Computes the 16 features. 'references' must already be updated with this cycle (updateLinkReference).
+// Computes the 25 features. 'references' must already be updated with this cycle (updateLinkReference).
 void computeFeatures(const RawRow &row, LinkReferenceTable &references, float features[NUM_FEATURES]);
 
 // Name of feature i (same names as the training CSV columns)

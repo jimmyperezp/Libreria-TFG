@@ -252,5 +252,84 @@ simulador siguen fuera, porque pesan mucho y se pueden volver a pedir.
   tramos de LOST_INTEGRITY. Probados también: sobrescribir (`1`, `0` y respuesta inválida), entrada repetida (se
   sustituye, no se duplica), entrada huérfana, JSON mal escrito, nombre con espacios y cabecera antigua.
 
-**Pendiente:** probar en las placas la grabación con el firmware nuevo; reentrenar el modelo con las 16 columnas y
-volver a activar `AI_DEPLOYMENT`.
+**Pendiente:** probar en las placas la grabación con el firmware nuevo; reentrenar el modelo (ver apartado 6) y volver
+a activar `AI_DEPLOYMENT`.
+
+
+## 6. Redundancia del nieto en el modelo y calibración dinámica
+
+### Motivo
+
+Desde el apartado 3, las medidas con el nieto llegan al coordinador y se graban, pero ninguna decisión las usaba: si
+se perdía la medida directa V2–V3, el enlace quedaba sin ver aunque V1 siguiera viendo a V3 en su sitio. El modelo no
+podía distinguir un nodo apagado o un fallo de radio (tren íntegro) de una rotura.
+
+### Análisis previo (simulador con fallos inyectados)
+
+En el simulador los pares a dos saltos no aportan información independiente: salen de las mismas distancias al
+coordinador que los enlaces, y en las fases OK no se pierde ningún mensaje. Por eso se inyectaron, en las fases OK, los
+fallos que la redundancia debe distinguir: **fallo de radio** de un enlace y **nodo apagado** (5–40 ciclos), más un 3 %
+de medidas perdidas al azar. Red neuronal (20, 10), entrenando con una rotura + frenado y probando con la otra rotura,
+5 semillas. Variantes comparadas: modelo sin nieto, «dar por vivo» (el nieto solo como visto) y desviación del nieto.
+
+| | Sin nieto | Dar por vivo | Desviación del nieto |
+|---|---|---|---|
+| Falsas alarmas con nodo apagado (entrenando sin fallos) | 44,0 % | 24,1 % | 13,5 % |
+| Detección de la rotura (entrenando con fallos) | 50,2 % | 94,9 % | 95,9 % |
+| Detección con la medida directa perdida y el nieto viendo al vagón que se aleja | 1,4 % | 3,6 % | 78,7 % |
+
+- Sin nieto, el modelo no distingue «nodo apagado» de «rotura»: o da falsas alarmas, o deja de detectar la mitad de
+  las roturas.
+- «Dar por vivo» es peligroso: un vagón que se aleja a la deriva pero sigue al alcance del nieto se da por vivo y la
+  rotura pasa desapercibida. **Que alguien lo vea no significa que esté en su sitio**: hace falta la distancia.
+
+### Decisión: las medidas con el nieto como columnas propias (16 → 25)
+
+Por cada par a dos saltos (`c_v2`, `v1_v3`, `v2_v4`): `visto`, `ciclos_sin_ver` y `desviacion_m`, calculadas igual
+que en los enlaces y cada una a partir de su propia medida. Se descartaron:
+- **Repartir los pares entre los enlaces que cruzan** (una columna por enlace con la desviación del nieto): obliga a
+  combinar dos medidas en una columna con una regla (máximo, mínimo…) que puede fallar; con el máximo, la alarma de
+  una rotura se repartía también a los enlaces sanos vecinos.
+- **Que `ciclos_sin_ver` del enlace no suba si el nieto lo ve:** bajaba las falsas alarmas entrenando sin ejemplos de
+  fallos, pero pierde información (cuánto tiempo lleva perdida la medida directa) y depende de una tabla de qué par
+  cruza qué enlace. Se prefieren columnas «puras» y que el modelo aprenda la relación: los datos con fallos (gemelo
+  digital y placas) llegarán, y así el modelo no tendrá que cambiar. La decisión es reversible sin repetir pruebas,
+  porque el crudo guarda todas las medidas.
+
+### Calibración dinámica, igual que el coordinador
+
+Antes, Python calibraba con una ventana fija (los 30 primeros ciclos) y el coordinador con las primeras 30 medidas de
+cada pareja, cuando llegaran. Para los enlaces apenas se notaba, pero un nieto que solo se ve a partir de una curva no
+tendría referencia en Python y sí en la placa: el entrenamiento no vería lo mismo que el modelo en la placa.
+Ahora `calculo_columnas.py` usa la regla del coordinador para enlaces y pares: referencia provisional (mediana de las
+medidas que lleva) a partir de 3 medidas y fija a las 30. Los ciclos descartados al principio no calibran.
+Parámetros: `calibracion_primer_ciclo` y `calibracion_n_ciclos` se sustituyen por `calibracion_n_medidas` (30) y
+`calibracion_min_medidas` (3).
+
+**Avisos en lugar de saltar el ensayo.** Antes, un enlace sin ver en toda la ventana de calibración, o una fase no OK
+dentro de ella, hacían que el ensayo no se exportara. Ahora ningún caso de calibración lo impide; se anotan en el
+resumen y en la consola: calibración tardía (más de 10 ciclos después del inicio), incompleta (menos de 30 medidas),
+sin referencia (menos de 3) y calibrada con ciclos que no son OK. El resumen guarda, por enlace y par, la referencia,
+el número de medidas, desde qué ciclo y en qué ciclo quedó fija.
+
+### Cambios
+
+- `adaptador_simulador.py`: rellena los pares del simulador (`c_v2` directo; `v1_v3` y `v2_v4` por resta).
+- `calculo_columnas.py`: 25 columnas y calibración dinámica.
+- `exportar_edge_impulse.py`: avisos de calibración y nueva sección `calibracion` del resumen.
+- Registros de ensayos y grabador: nuevos parámetros generales.
+- Coordinador: `NUM_FEATURES = 25` y las columnas de los pares en `model_features`; `updateCompositionLinks()`
+  calibra también los pares; `link_references.cpp` no reutiliza la referencia de un par en uso; el informe legible
+  muestra los pares con su referencia.
+
+**Verificación (PC).**
+- Simulador reexportado: mismos recuentos; las 16 columnas de antes son idénticas a partir del ciclo 32 (antes solo
+  cambian por la referencia provisional); referencias de los pares en torno a 42 m.
+- **C frente a Python:** los tres crudos del simulador, y uno modificado (nieto que aparece en el ciclo 85, V2 apagado
+  30 ciclos, enlace calibrado al final), pasados por el código del coordinador y por `calculo_columnas.py`: mismos
+  nombres y orden, diferencia máxima 3·10⁻⁵ (redondeo de `float`).
+- Firmware: nodo y coordinador compilan; la simulación de la cadena da 25 entradas, con los pares calibrando.
+- Placas (grabación simulada): un par que empieza a verse durante una fase LOST da sus dos avisos y se exporta.
+
+**Pendiente:** ensayos con nodos apagados y fallos de radio con el tren íntegro (gemelo digital y placas), sin los que
+el modelo no puede aprender la redundancia; reentrenar con las 25 columnas y activar `AI_DEPLOYMENT`.

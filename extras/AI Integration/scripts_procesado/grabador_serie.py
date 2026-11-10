@@ -65,9 +65,9 @@ NOMBRE_VALIDO = re.compile(r'^[A-Za-z0-9_-]+$')
 # Parámetros generales con los que se crea ensayos_placas.json la primera vez (luego se editan allí)
 PARAMETROS_GENERALES_PLACAS = {
     'ciclos_descartados_inicio': 0,
-    'calibracion_primer_ciclo': 0,
-    'calibracion_n_ciclos': 30,     # debe coincidir con LINK_REF_SAMPLES del coordinador
-    'tope_ciclos_sin_ver': 10,
+    'calibracion_n_medidas': 30,    # debe coincidir con LINK_REF_SAMPLES del coordinador
+    'calibracion_min_medidas': 3,   # debe coincidir con LINK_REF_MIN_SAMPLES del coordinador
+    'tope_ciclos_sin_ver': 10,      # debe coincidir con UNSEEN_CYCLES_CAP del coordinador
     'periodo_nominal_ms': 1000,
 }
 

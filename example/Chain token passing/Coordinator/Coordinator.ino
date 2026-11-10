@@ -98,7 +98,7 @@ unsigned long last_cycle_end_time = 0; // To measure each cycle's real duration
 /*Link references & model features (see link_references.h and model_features.h)*/
 LinkReferenceTable link_references;
 RawRow cycle_row;                      // This cycle's observation in fixed positions (printed as RAW_DATA)
-float model_features[NUM_FEATURES];    // This cycle's 16 model inputs
+float model_features[NUM_FEATURES];    // This cycle's 25 model inputs
 
 /*Raw data row: fixed positions for RAW_VEHICLES (5) vehicles, as in the simulator's raw CSV*/
 const char* RAW_POSITION_NAMES[RAW_VEHICLES] = {"c", "v1", "v2", "v3", "v4"};
@@ -937,7 +937,7 @@ void showRXDistData(){
 
 void showAIPrediction(){
 
-    // Runs the model with this cycle's 16 features (model_features, computed in processCycle()).
+    // Runs the model with this cycle's 25 features (model_features, computed in processCycle()).
     // The standard scaler normalization trained in Edge Impulse is part of the exported model:
     // the features are passed exactly as they are computed, like in the training CSVs.
 
@@ -950,7 +950,7 @@ void showAIPrediction(){
         Serial.print(", deploy v"); Serial.print(EI_CLASSIFIER_PROJECT_DEPLOY_VERSION);
         Serial.print("). Inputs expected: "); Serial.print(EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE);
         Serial.print(" | computed: "); Serial.println(NUM_FEATURES);
-        if(!size_ok) Serial.println("ERROR: the model in src/ doesn't match the 16 features. Predictions disabled.");
+        if(!size_ok) Serial.println("ERROR: the model in src/ doesn't match the 25 features. Predictions disabled.");
     }
     if(!size_ok) return;
 
@@ -1017,7 +1017,7 @@ void processCycle(){
     // 2) References & unseen counters of every link of the composition (per pair of devices)
     updateCompositionLinks();
 
-    // 3) This cycle's row in fixed positions, and the 16 model inputs computed from it
+    // 3) This cycle's row in fixed positions, and the 25 model inputs computed from it
     buildRawRow(cycle_row, cycle_end_time, cycle_duration);
     computeFeatures(cycle_row, link_references, model_features);
 
@@ -1040,6 +1040,14 @@ void updateCompositionLinks(){
         bool seen = (idx != -1);
         float distance = seen ? measurements[idx].distance : 0.0f;
         updateLinkReference(link_references, comp.ids[i], comp.ids[i+1], seen, distance, comp);
+    }
+
+    // Two-hop pairs (a node with its grandson): same calibration as the links (first measures, when they arrive)
+    for(int i = 0; i + 2 < comp.length; i++){
+        int idx = activeMeasureBetween(comp.ids[i], comp.ids[i+2]);
+        bool seen = (idx != -1);
+        float distance = seen ? measurements[idx].distance : 0.0f;
+        updateLinkReference(link_references, comp.ids[i], comp.ids[i+2], seen, distance, comp);
     }
 }
 
@@ -1133,20 +1141,24 @@ void showComposition(const Chain &observed, ChainComparison comparison, Composit
     if(composition.consolidated) Serial.println("   (consolidated)");
     else{ Serial.print("   (startup "); Serial.print(composition.startup_cycles); Serial.print("/"); Serial.print(COMPOSITION_WINDOW_CYCLES); Serial.println(")"); }
 
-    for(int i = 0; i + 1 < comp.length; i++){
-        Serial.print("   "); Serial.print(comp.ids[i], HEX); Serial.print("-"); Serial.print(comp.ids[i+1], HEX);
-        int idx = activeMeasureBetween(comp.ids[i], comp.ids[i+1]);
-        if(idx != -1){ Serial.print("\tseen       "); Serial.print(measurements[idx].distance); Serial.print(" m"); }
-        else Serial.print("\tNOT SEEN   ");
+    // Links (step 1) and two-hop pairs (step 2, grandson): seen or not, and their reference
+    for(int step = 1; step <= 2; step++){
+        if(step == 2 && comp.length > 2) Serial.println("   Two-hop pairs (grandson):");
+        for(int i = 0; i + step < comp.length; i++){
+            Serial.print("   "); Serial.print(comp.ids[i], HEX); Serial.print("-"); Serial.print(comp.ids[i+step], HEX);
+            int idx = activeMeasureBetween(comp.ids[i], comp.ids[i+step]);
+            if(idx != -1){ Serial.print("\tseen       "); Serial.print(measurements[idx].distance); Serial.print(" m"); }
+            else Serial.print("\tNOT SEEN   ");
 
-        LinkReference* ref = findLinkReference(link_references, comp.ids[i], comp.ids[i+1]);
-        if(ref == nullptr || ref->num_samples == 0) Serial.println("\tref: no samples yet");
-        else{
-            Serial.print("\tref "); Serial.print(ref->reference); Serial.print(" m ");
-            if(ref->fixed) Serial.print("(fixed)");
-            else{ Serial.print("(calibrating "); Serial.print(ref->num_samples); Serial.print("/"); Serial.print(LINK_REF_SAMPLES); Serial.print(")"); }
-            if(ref->unseen_cycles > 0){ Serial.print("   unseen for "); Serial.print(ref->unseen_cycles); Serial.print(ref->unseen_cycles >= UNSEEN_CYCLES_CAP ? "+ cycles" : " cycles"); }
-            Serial.println();
+            LinkReference* ref = findLinkReference(link_references, comp.ids[i], comp.ids[i+step]);
+            if(ref == nullptr || ref->num_samples == 0) Serial.println("\tref: no samples yet");
+            else{
+                Serial.print("\tref "); Serial.print(ref->reference); Serial.print(" m ");
+                if(ref->fixed) Serial.print("(fixed)");
+                else{ Serial.print("(calibrating "); Serial.print(ref->num_samples); Serial.print("/"); Serial.print(LINK_REF_SAMPLES); Serial.print(")"); }
+                if(ref->unseen_cycles > 0){ Serial.print("   unseen for "); Serial.print(ref->unseen_cycles); Serial.print(ref->unseen_cycles >= UNSEEN_CYCLES_CAP ? "+ cycles" : " cycles"); }
+                Serial.println();
+            }
         }
     }
 

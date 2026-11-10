@@ -71,7 +71,7 @@ ENSAYOS = ['desconexion_v3_01']       # solo estos
 ```
 
 Pulsa Play. Para cada ensayo, el exportador:
-- calcula las 16 columnas a partir del crudo y etiqueta cada ciclo con las marcas;
+- calcula las 25 columnas a partir del crudo y etiqueta cada ciclo con las marcas;
 - escribe `revision/` y `edge_impulse/` en la carpeta del ensayo;
 - completa la parte `"procesado"` de su resumen (filas por etiqueta, referencias de calibración, avisos);
 - apunta en `ensayos_placas.json` los parámetros que ha usado y dónde están los resultados.
@@ -132,8 +132,8 @@ Para obtener solo el crudo de un ensayo del simulador, sin exportar, está `adap
 
 Hay que reexportar **todos** los ensayos cuando:
 - cambia el cálculo de las columnas (`calculo_columnas.py`);
-- cambias un parámetro de `"general"` en `ensayos_placas.json` o `ensayos_simulador.json` (por ejemplo, la ventana
-  de calibración).
+- cambias un parámetro de `"general"` en `ensayos_placas.json` o `ensayos_simulador.json` (por ejemplo, el número
+  de medidas de calibración).
 
 Pon `ENSAYOS = 'TODOS'` y pulsa Play, una vez con `ORIGEN = 'PLACAS'` y otra con `ORIGEN = 'SIMULADOR'`.
 
@@ -149,7 +149,7 @@ reaprovechar: el grabador ya no las aceptaría. Las del simulador sí se regener
 2. Selecciona los CSV de las carpetas `edge_impulse/` de los ensayos que quieras.
 3. Elige que la etiqueta se tome del nombre del archivo (*Infer from filename*): es lo que va antes del primer punto
    (`OK` o `LOST_INTEGRITY`).
-4. Las 16 columnas tienen el mismo nombre y orden en todos los archivos, sean del simulador o de las placas.
+4. Las 25 columnas tienen el mismo nombre y orden en todos los archivos, sean del simulador o de las placas.
 
 ---
 
@@ -162,6 +162,6 @@ reaprovechar: el grabador ya no las aceptaría. Las del simulador sí se regener
 | `ensayos_placas.json no es un JSON válido (línea X, columna Y)` | Se quedó mal al editarlo a mano (suele ser una coma de más o de menos). Corrige esa línea. El grabador lo comprueba antes de grabar |
 | `NO se ha podido apuntar el ensayo en ensayos_placas.json` | La grabación está guardada. Copia la entrada que muestra el grabador dentro de `"ensayos"` |
 | `AVISO: <ensayo> no se ha exportado: no existe su CSV en crudo` | La carpeta del ensayo se borró a mano. Borra también su entrada en `ensayos_placas.json` |
-| `hay una fase distinta de OK durante la calibración` | Se marcó una fase que no es OK en los primeros ciclos (30 por defecto). El tren debe estar íntegro al arrancar: corrige las marcas o repite el ensayo |
+| `aviso de calibración: ...` | No impide exportar. Indica una calibración que conviene revisar (tardía, incompleta, sin referencia o con ciclos que no son OK). Qué significa cada uno: `readme.md`, apartado «Calibración» |
 | `No están en ensayos_placas.json: [...]` | Un nombre de `ENSAYOS` está mal escrito. El mensaje lista los ensayos registrados |
 | `El nombre del ensayo ... no es válido` | Quita espacios, tildes y caracteres especiales de `ENSAYO` |

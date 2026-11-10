@@ -1,8 +1,8 @@
 {
   "general": {
     "ciclos_descartados_inicio": 3,
-    "calibracion_primer_ciclo": 3,
-    "calibracion_n_ciclos": 30,
+    "calibracion_n_medidas": 30,
+    "calibracion_min_medidas": 3,
     "tope_ciclos_sin_ver": 10,
     "periodo_nominal_ms": 1000
   },

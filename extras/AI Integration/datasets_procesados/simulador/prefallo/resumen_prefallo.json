@@ -21,16 +21,50 @@
         ]
       }
     },
-    "referencias_calibracion_m": {
-      "enlace_c_v1": 21.4973,
-      "enlace_v1_v2": 21.144,
-      "enlace_v2_v3": 21.5487,
-      "enlace_v3_v4": 21.18
+    "calibracion": {
+      "c_v1": {
+        "referencia_m": 21.4973,
+        "medidas": 30,
+        "desde_ciclo": 3,
+        "fijada_en_ciclo": 32
+      },
+      "v1_v2": {
+        "referencia_m": 21.144,
+        "medidas": 30,
+        "desde_ciclo": 3,
+        "fijada_en_ciclo": 32
+      },
+      "v2_v3": {
+        "referencia_m": 21.5487,
+        "medidas": 30,
+        "desde_ciclo": 3,
+        "fijada_en_ciclo": 32
+      },
+      "v3_v4": {
+        "referencia_m": 21.18,
+        "medidas": 30,
+        "desde_ciclo": 3,
+        "fijada_en_ciclo": 32
+      },
+      "c_v2": {
+        "referencia_m": 42.7837,
+        "medidas": 30,
+        "desde_ciclo": 3,
+        "fijada_en_ciclo": 32
+      },
+      "v1_v3": {
+        "referencia_m": 42.6334,
+        "medidas": 30,
+        "desde_ciclo": 3,
+        "fijada_en_ciclo": 32
+      },
+      "v2_v4": {
+        "referencia_m": 42.5026,
+        "medidas": 30,
+        "desde_ciclo": 3,
+        "fijada_en_ciclo": 32
+      }
     },
-    "ciclos_calibracion": [
-      3,
-      32
-    ],
     "avisos_calibracion": []
   }
 }

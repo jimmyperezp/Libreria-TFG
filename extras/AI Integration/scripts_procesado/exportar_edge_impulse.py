@@ -12,19 +12,20 @@ Para cada ensayo elegido:
        - simulador: ejecuta el adaptador sobre datasets_simulador/<carpeta_simulador> y deja
          el crudo en <ensayo>/crudo/;
        - placas: usa el crudo que dejó el grabador en <ensayo>/crudo/.
-  2. Calcula las 16 columnas del modelo (calculo_columnas.py).
+  2. Calcula las 25 columnas del modelo (calculo_columnas.py), con la calibración de cada enlace
+     y par a dos saltos igual que el coordinador (con sus primeras medidas, cuando lleguen).
   3. Asigna a cada ciclo su uso y su etiqueta:
        - descartado_arranque: los primeros ciclos ("ciclos_descartados_inicio")
        - descartado_fin:      a partir de "fin_s", si se indica (solo simulador)
        - sin_etiqueta:        ciclos anteriores a la primera marca (solo placas)
-       - entrenamiento:       el resto (los ciclos de calibración incluidos)
+       - entrenamiento:       el resto
      La etiqueta sale de:
        - simulador: "evento_s". OK hasta el evento; a partir del primer ciclo que termina
          después de "evento_s", la etiqueta "etiqueta_tras_evento".
        - placas: el archivo de marcas del grabador. Cada ciclo lleva la fase de la última
          marca cuyo desde_ciclo sea menor o igual que su ciclo (cualquier número de fases).
   4. Escribe, en datasets_procesados/<origen>/<ensayo>/:
-       revision/revision_<ensayo>.csv        todos los ciclos con las 16 columnas, su uso y su etiqueta
+       revision/revision_<ensayo>.csv        todos los ciclos con las 25 columnas, su uso y su etiqueta
        edge_impulse/<ETIQUETA>.<ensayo>.csv  un archivo por etiqueta, listo para subir a Edge Impulse
        resumen_<ensayo>.json                 añade la parte "procesado" (recuentos, calibración, avisos)
                                              sin tocar "fecha", "descripcion" ni "grabacion"
@@ -36,7 +37,14 @@ Para cada ensayo elegido:
 Formato de los archivos para Edge Impulse:
   - Primera columna, tiempo_ms: tiempo NOMINAL equiespaciado (ciclo x periodo_nominal_ms),
     porque Edge Impulse supone muestras equiespaciadas.
-  - Después, las 16 columnas de entrada, en el mismo orden en todos los archivos.
+  - Después, las 25 columnas de entrada, en el mismo orden en todos los archivos.
+
+Avisos de calibración (no impiden exportar; van al resumen y a la consola):
+  - calibración tardía: la pareja empezó a verse más tarde (normal en un nieto; en un enlace,
+    suele ser un nodo que entró o se reinició a mitad de ensayo)
+  - calibración incompleta: no llegó a 30 medidas; referencia provisional en todo el ensayo
+  - sin referencia: menos de 3 medidas; su desviación vale 0 en todo el ensayo
+  - calibrada con ciclos que no son OK: la referencia puede estar mal
   - Nombre "<ETIQUETA>.<ensayo>.csv": al subirlo, Edge Impulse toma la etiqueta de la
     parte del nombre anterior al primer punto.
 """
@@ -159,13 +167,19 @@ def exportar_ensayo(ens, g, origen):
         col, info = calculo_columnas.calcular(crudo, parametros)
     except (ValueError, KeyError) as e:
         raise AvisoEnsayo(f'no se pueden calcular sus columnas: {e}')
-    if info['ciclos_calibracion'][0] < g['ciclos_descartados_inicio']:
-        raise AvisoEnsayo('la calibración no puede empezar en ciclos descartados (revisa "general")')
     uso, etiqueta = etiquetar(col, ens, g, origen)
-    en_calibracion = col.ciclo <= info['ciclos_calibracion'][1]
-    if (etiqueta[en_calibracion].notna() & (etiqueta[en_calibracion] != 'OK')).any():
-        raise AvisoEnsayo(f'hay una fase distinta de OK durante la calibración (ciclos hasta '
-                          f'{info["ciclos_calibracion"][1]}): el tren debe estar íntegro al arrancar')
+
+    # Aviso si alguna referencia se ha calibrado con medidas de ciclos que no son OK
+    avisos = list(info['avisos_calibracion'])
+    fase = dict(zip(col.ciclo, etiqueta))
+    for medida, c in info['calibracion'].items():
+        no_ok = {}
+        for k in c['ciclos_muestras']:
+            if fase.get(k) is not None and fase[k] != 'OK':
+                no_ok[fase[k]] = no_ok.get(fase[k], 0) + 1
+        for etq, n in no_ok.items():
+            corto = medida.replace('enlace_', '').replace('salto2_', '')
+            avisos.append(f'{corto}: {n} de sus {c["medidas"]} medidas de calibración son de fase {etq}')
 
     # Revisión: todos los ciclos, con su uso y su etiqueta
     dir_revision, dir_ei = dir_ensayo / 'revision', dir_ensayo / 'edge_impulse'
@@ -206,9 +220,11 @@ def exportar_ensayo(ens, g, origen):
         'ciclos_totales': int(len(col)),
         'descartados': {k: int(v) for k, v in uso[uso != 'entrenamiento'].value_counts().items()},
         'archivos_edge_impulse': recuentos,
-        'referencias_calibracion_m': {k: round(v, 4) for k, v in info['referencias_m'].items()},
-        'ciclos_calibracion': info['ciclos_calibracion'],
-        'avisos_calibracion': info['avisos_calibracion'],
+        'calibracion': {k.replace('enlace_', '').replace('salto2_', ''): {
+            'referencia_m': None if c['referencia_m'] is None else round(c['referencia_m'], 4),
+            'medidas': c['medidas'], 'desde_ciclo': c['desde_ciclo'], 'fijada_en_ciclo': c['fijada_en_ciclo']}
+            for k, c in info['calibracion'].items()},
+        'avisos_calibracion': avisos,
     }
     escribir_json(ruta_resumen, resumen)
 
@@ -221,7 +237,7 @@ def exportar_ensayo(ens, g, origen):
 
     print(f'  {nombre}: ' + ', '.join(f"{k} {v['filas']} filas" + (f" en {len(v['tramos'])} tramos" if 'tramos' in v else '')
                                       for k, v in recuentos.items()))
-    for aviso in info['avisos_calibracion']:
+    for aviso in avisos:
         print(f'     aviso de calibración: {aviso}')
 
 

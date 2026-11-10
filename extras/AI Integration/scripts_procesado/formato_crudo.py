@@ -22,10 +22,12 @@ Columnas:
     X_acel_x_ms2, X_acel_y_ms2
 
 Convenio para lo que no se ha recibido: celda vacía y visto = 0.
-Lo que el origen no puede dar se deja vacío, también su "visto":
-  - potencia RX: en las placas solo existe para c_v1 (el informe de los nodos no la trae);
-    en el simulador, igual.
-  - pares a dos saltos: el simulador no los da.
+Lo que el origen no puede dar se deja vacío: la potencia RX solo existe para c_v1
+(el informe de los nodos no la trae; en el simulador, igual).
+
+Pares a dos saltos:
+  - placas: c_v2 es la medida del coordinador con v2; v1_v3 y v2_v4, las de cada nodo con su nieto.
+  - simulador: c_v2 es la distancia del coordinador a v2; v1_v3 y v2_v4 salen por resta.
 """
 
 VEHICULOS = ['c', 'v1', 'v2', 'v3', 'v4']          # c = coordinador (locomotora)

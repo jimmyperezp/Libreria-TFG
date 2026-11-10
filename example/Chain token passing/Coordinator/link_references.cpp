@@ -22,9 +22,12 @@ LinkReference* findLinkReference(LinkReferenceTable &table, uint8_t a, uint8_t b
 
 
 static bool pairInComposition(const Chain &composition, uint8_t a, uint8_t b){
-	for(int i = 0; i + 1 < composition.length; i++){
-		uint8_t x = composition.ids[i], y = composition.ids[i+1];
-		if((x == a && y == b) || (x == b && y == a)) return true;
+	// In use: consecutive devices (link) or devices two positions apart (two-hop pair)
+	for(int step = 1; step <= 2; step++){
+		for(int i = 0; i + step < composition.length; i++){
+			uint8_t x = composition.ids[i], y = composition.ids[i+step];
+			if((x == a && y == b) || (x == b && y == a)) return true;
+		}
 	}
 	return false;
 }

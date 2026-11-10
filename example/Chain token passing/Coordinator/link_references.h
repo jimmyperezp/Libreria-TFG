@@ -1,6 +1,7 @@
 /*LINK REFERENCES*/
 
-// Keeps, for every PAIR of devices that forms (or formed) a link of the composition:
+// Keeps, for every PAIR of devices that forms (or formed) a link of the composition, or a two-hop pair
+// (a node with its grandson, e.g. B1-B3):
 //   - its reference distance: median of its first LINK_REF_SAMPLES measures, computed on the fly
 //     (state "calibrating n/30"). When the samples are complete, the reference is fixed and never changes.
 //   - how many consecutive cycles it has gone unseen (capped at UNSEEN_CYCLES_CAP).
