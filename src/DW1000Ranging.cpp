@@ -1554,35 +1554,42 @@ bool DW1000RangingClass::transmitModelDataReport(NodeBlock* blocks, int num_bloc
 
 int DW1000RangingClass::readModelDataReport(byte* report, NodeBlock* out, int max_out){
 
-	// Reads it block by block: the control byte of each block says how many measures it carries, and so where it ends.
-	// Never reads past the end of the received message: if the report is malformed, returns -1.
-	// The max out parameter is set beforehand to determine the maximum of measures that could fit in the report. It's set locally at each device.
-	
-	// It returns the amount of valid blocks that have been read. This way, if the return is <0, then the report isn't valid.
+	/*This function will return the amount of valid blocks.
+	It also receives the nodeblock array, and saves it as a pointer. It will fill it in with the blocks info, 
+	so that the coordinator will have it already full and decodified after calling this function.
+
+	It works like this; it reads each block individually:
+		- The control byte of each block contains how many measures it carries, so I can expect where it ends. 
+		- Checks the received length to not read past the end of the received message.
+		- If a message isn't valid (too long, wrong format, etc), then it returns -1
+	*/
 	
 	if(report == nullptr || out == nullptr) return -1;
 
 	uint16_t end = (report == data) ? _rx_length : LEN_DATA;	// Real length of the received message
-	if(end < MODEL_REPORT_HEADER_LEN || report[SHORT_MAC_LEN] != DATA_REPORT_MODEL) return -1;
+	if(end < (SHORT_MAC_LEN + 2) || report[SHORT_MAC_LEN] != DATA_REPORT_MODEL) return -1; // The message must be valid: type and minimum length
 
-	int num_blocks = report[SHORT_MAC_LEN+1];
+	int num_blocks = report[SHORT_MAC_LEN+1]; //Extracts the number of blocks contained in the message. (num_measures comes right after the MAC address)
+	
 	if(num_blocks > max_out){
 		Serial.print("Error: model data report with "); Serial.print(num_blocks);
 		Serial.print(" blocks, only "); Serial.print(max_out); Serial.println(" fit. Report discarded.");
 		return -1;
 	}
 
-	uint16_t index = MODEL_REPORT_HEADER_LEN;
+	uint16_t index = SHORT_MAC_LEN + 2; //Index will go through the message, [MAC][type][Number of measures]
 	for(int i = 0; i < num_blocks; i++){
+		//Starts going through each block:
 
 		if(index + 2 > end) return -1;
-		NodeBlock &b = out[i];
-		b.addr = report[index++];
-		b.num_measures = report[index++] & MODEL_CONTROL_MEASURES;
-		if(b.num_measures > 2) return -1;
-		if(index + MODEL_MEASURE_LEN * b.num_measures + 4 > end) return -1;
 
-		b.son_addr = 0; b.son_dist = 0.0f; b.grandson_addr = 0; b.grandson_dist = 0.0f;
+		NodeBlock &b = out[i]; //Saves the current block with name "b" to simplify the code.
+		b.addr = report[index++];
+		b.num_measures = report[index++] & MODEL_CONTROL_MEASURES; //Checks the "devices' amount of measures": 0 = none, 1 = only with son, 2 = with son + grandson
+		if(b.num_measures > 2) return -1; //Maximum expected is 2 (son+grandson)
+		if(index +  MODEL_MEASURE_LEN * b.num_measures + 4 > end) return -1; //Each measure uses 3 bytes: [dest (1)][distance (2)]
+
+		b.son_addr = 0; b.son_dist = 0.0f; b.grandson_addr = 0; b.grandson_dist = 0.0f; //Sets everything to 0 in case the block doesn't "bring" them. 
 		uint16_t d;
 		if(b.num_measures >= 1){
 			b.son_addr = report[index++];
@@ -1601,6 +1608,8 @@ int DW1000RangingClass::readModelDataReport(byte* report, NodeBlock* out, int ma
 		b.acc_y = decodeAcc(ay);
 	}
 
+	//If code reaches here, then all the blocks were valid. It returns the amount of valid blocks
+	// And, in the way, the NodeBlocks array (pointed at by "out") will also contain the needed data already decodified.
 	return num_blocks;
 }
 
@@ -1648,9 +1657,9 @@ void DW1000RangingClass::transmitTokenHandoff(DW1000Device* device){
 	else memcpy(dest,device->getByteShortAddress(),2);
 	_globalMac.generateShortMACFrame(data, _currentShortAddress, dest);
 	data[SHORT_MAC_LEN] = TOKEN_HANDOFF;
-	data[SHORT_MAC_LEN+1] = _own_cycle_id; // Reserved for the MESH token passing. In the CHAIN token passing it is always 0 and it is not used.
-	data[SHORT_MAC_LEN+2] = _report_type;  // Type of data report the receiver (and the rest of the chain) must send
-	transmit(data, SHORT_MAC_LEN + 3); // Length: [MAC (9)][type (1)][cycle_id (1)][report type (1)]
+	data[SHORT_MAC_LEN+1] = _own_cycle_id; 	// Reserved for the MESH token passing. In the CHAIN token passing it is always 0 and it is not used.
+	data[SHORT_MAC_LEN+2] = _report_type;  	// Type of data report the receiver (and the rest of the chain) must send
+	transmit(data, SHORT_MAC_LEN + 3); 		// Length: [MAC (9)][type (1)][cycle_id (1)][report type (1)]
 }
 
 void DW1000RangingClass::transmitTokenHandoffAck(DW1000Device* device){
@@ -1684,9 +1693,6 @@ void DW1000RangingClass::transmitTokenHandoffNack(DW1000Device* device){
 }
 
 
-
-
-
 /*RANGE COMPUTATION*/
 
 void DW1000RangingClass::computeRangeAsymmetric(DW1000Device* myDistantDevice, DW1000Time* myTOF) {
@@ -1700,10 +1706,6 @@ void DW1000RangingClass::computeRangeAsymmetric(DW1000Device* myDistantDevice, D
 	myTOF->setTimestamp((round1*round2-reply1*reply2)/(round1+round2+reply1+reply2));
 	
 }
-
-
-
-
 
 /*RANGE & NOISE FILTERING*/
 

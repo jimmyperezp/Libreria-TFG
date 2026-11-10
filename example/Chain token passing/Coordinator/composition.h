@@ -2,9 +2,13 @@
 
 // Keeps track of the train's composition: which devices form the train and in which order.
 //
-// Every token passing cycle reveals the chain: the coordinator knows which node accepted its token
-// (its son), and every node reports ONLY its measure with its own son. Following those measures,
-// the coordinator rebuilds the order observed in the cycle (e.g. C1 > B2 > B3 > B4).
+// Every token passing cycle reveals the chain. The data report travels from the tail to the coordinator,
+// and each node puts its own block IN FRONT of the ones it received, so the report arrives in the order of
+// the train: [B1][B2][B3][B4]. When the report is read, the coordinator turns it into a list of addresses in
+// chain order (chain_order, in Coordinator.ino), and from it the observed chain is built (C1 > B1 > B2 > B3 > B4).
+//
+// RULE for any data report type: it must allow getting the nodes in the order of the chain. This module only
+// receives that list, so it doesn't depend on the report format.
 //
 // That observed chain is compared with the stored composition:
 //   - EQUAL       --> nothing to do.
@@ -19,7 +23,7 @@
 // Normal operation: NEW_DEVICES / REORDERED open a candidate. If the same candidate is observed during
 //          COMPOSITION_WINDOW_CYCLES consecutive cycles, it is adopted. Otherwise it is discarded.
 //
-// This module doesn't use the radio: it only receives the measures of the cycle. It can be tested on a PC.
+// This module doesn't use the radio: it only receives the order of the cycle. It can be tested on a PC.
 
 #pragma once
 
@@ -53,28 +57,34 @@ enum CompositionEvent {
 
 struct CompositionState {
 	Chain current;					// Stored composition
-	bool consolidated;
-	uint16_t startup_cycles;		// Cycles elapsed in the startup window
-
+	bool consolidated;				// Has the startup ended?
+	uint16_t startup_cycles;		// Number of cycles executed in startup
 	Chain candidate;				// Change waiting to be adopted (normal operation)
 	uint16_t candidate_cycles;		// Consecutive cycles the candidate has been observed
 };
 
 
-// Sets the state to "no composition yet".
-void initComposition(CompositionState &state);
 
-// Rebuilds the chain observed in this cycle.
-//   coordinator      --> coordinator's short address header
-//   coordinator_son  --> node that accepted the coordinator's token in this cycle (-1: none)
-//   measures         --> this cycle's measures (only the active ones are used)
-Chain buildObservedChain(uint8_t coordinator, int16_t coordinator_son, const Measurement* measures, int num_measures);
+void initComposition(CompositionState &state);
+// Sets the state to "no composition yet".
+
+
+Chain buildObservedChain(uint8_t coordinator, int16_t coordinator_son, const uint8_t* order, int order_length);
+/* Builds the chain observed in this cycle.
+   coordinator      --> coordinator's short address header
+   coordinator_son  --> node that accepted the coordinator's token in this cycle (-1: none).
+                        Only used if no report arrived (empty order).
+   order            --> nodes of this cycle in the order of the chain, without the coordinator
+                        (filled when the data report is read: chain_order in Coordinator.ino)
+*/
 
 ChainComparison compareChains(const Chain &stored, const Chain &observed);
 
+
+CompositionEvent updateComposition(CompositionState &state, const Chain &observed, ChainComparison &comparison);
 // Updates the stored composition with this cycle's observed chain. Returns what happened.
 // 'comparison' returns the comparison of the observed chain against the composition BEFORE the update.
-CompositionEvent updateComposition(CompositionState &state, const Chain &observed, ChainComparison &comparison);
+
 
 bool chainsEqual(const Chain &a, const Chain &b);
 int  chainIndexOf(const Chain &chain, uint8_t id);	// Position of 'id' in the chain, or -1

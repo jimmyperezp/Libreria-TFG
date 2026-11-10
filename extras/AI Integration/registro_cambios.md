@@ -333,3 +333,29 @@ el número de medidas, desde qué ciclo y en qué ciclo quedó fija.
 
 **Pendiente:** ensayos con nodos apagados y fallos de radio con el tren íntegro (gemelo digital y placas), sin los que
 el modelo no puede aprender la redundancia; reentrenar con las 25 columnas y activar `AI_DEPLOYMENT`.
+
+
+## 7. Composición a partir del orden del informe
+
+**Antes.** `buildObservedChain()` reconstruía la cadena siguiendo las medidas de hijo en hijo: tenía que saltarse
+las medidas del nieto (`hop = 2`, que harían un atajo B1 → B3), las del propio coordinador y no fiarse del sentido
+de cada medida.
+
+**Ahora.** El informe de modo modelo ya llega en el orden del tren, porque cada nodo pone su bloque delante de los
+que recibe: `[B1][B2][B3][B4]`. Al leer el informe, `modelDataReport()` pasa ese orden a una lista de direcciones
+(`chain_order`) y la composición la copia tal cual. Si el último bloque tiene hijo, se añade al final: ese nodo
+existe aunque su bloque no haya llegado (informe cortado a mitad), igual que con el método anterior.
+
+**Separación.** La composición (`composition.cpp`) solo recibe la lista ordenada y no depende del formato del
+informe. Regla para cualquier tipo de informe futuro: debe permitir obtener los nodos en el orden de la cadena, y
+su callback debe rellenar `chain_order`.
+
+**De paso.**
+- Si un informe llega mal formado, se vacían los bloques y el orden: `readModelDataReport()` puede haber escrito
+  parte de ellos antes de detectar el error.
+- El aviso «provisional» de la predicción del modelo tiene en cuenta también las referencias de los pares a dos
+  saltos, no solo las de los enlaces.
+
+**Verificación (PC).** Simulación de la cadena con la misma composición observada que antes en sus tres ciclos (B2
+caído, tren íntegro, B2 sin nieto). Casos límite de `buildObservedChain()`: informe completo, cortado (con el hijo
+del último bloque), sin informe con y sin hijo del coordinador, y dirección repetida. Nodo y coordinador compilan.

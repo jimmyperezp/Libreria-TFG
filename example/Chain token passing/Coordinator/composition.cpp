@@ -5,6 +5,7 @@
 
 
 void initComposition(CompositionState &state){
+	// Called on start. Sets everything to 0 and false.
 	state.current.length = 0;
 	state.consolidated = false;
 	state.startup_cycles = 0;
@@ -14,6 +15,7 @@ void initComposition(CompositionState &state){
 
 
 bool chainsEqual(const Chain &a, const Chain &b){
+	//Goes through both id arrays. If all of the positions are equal, returns true.
 	if(a.length != b.length) return false;
 	for(int i = 0; i < a.length; i++){
 		if(a.ids[i] != b.ids[i]) return false;
@@ -23,6 +25,8 @@ bool chainsEqual(const Chain &a, const Chain &b){
 
 
 int chainIndexOf(const Chain &chain, uint8_t id){
+	// Searches for the position inside the IDs array of a certain given ID.
+	// The chain received is set as constant so that it can't be modified.
 	for(int i = 0; i < chain.length; i++){
 		if(chain.ids[i] == id) return i;
 	}
@@ -30,63 +34,48 @@ int chainIndexOf(const Chain &chain, uint8_t id){
 }
 
 
-Chain buildObservedChain(uint8_t coordinator, int16_t coordinator_son, const Measurement* measures, int num_measures){
+Chain buildObservedChain(uint8_t coordinator, int16_t coordinator_son, const uint8_t* order, int order_length){
+
 
 	Chain chain;
 	chain.length = 0;
 	chain.ids[chain.length++] = coordinator;
 
-	if(coordinator_son < 0) return chain;	// Token wasn't accepted by anyone: only the coordinator is observed
+	// No report this cycle: the only node known is the one that accepted the coordinator's token (if any)
+	if(order_length <= 0){
+		if(coordinator_son >= 0) chain.ids[chain.length++] = (uint8_t)coordinator_son;
+		return chain;
+	}
 
-	int16_t next = coordinator_son;
-
-	while(next >= 0 && chain.length < MAX_CHAIN_LENGTH){
-
-		chain.ids[chain.length++] = (uint8_t)next;
-		uint8_t current = (uint8_t)next;
-		next = -1;
-
-		// Each node reports only its measure with its son, so the next device is the OTHER END of the active
-		// measure that involves 'current' and a device not yet in the chain.
-		// The direction of the measure is NOT used: the coordinator stores each pair once (logMeasure searches
-		// both directions), so a measure reported as B3->B2 may be stored as B2->B3 from a previous cycle.
-		// The coordinator's own measures are skipped: its son is known from the token handoff ACK.
-		// Measures of a node with its grandson (hop = 2) are skipped: they would be a shortcut (e.g. B1 -> B3) and
-		// the chain would skip a device. The chain is built only with the measures of each node with its son.
-		for(int i = 0; i < num_measures; i++){
-			if(!measures[i].active) continue;
-			if(measures[i].hop == 2) continue;
-			uint8_t a = measures[i].short_addr_origin;
-			uint8_t b = measures[i].short_addr_dest;
-			if(a == coordinator || b == coordinator) continue;
-
-			uint8_t other;
-			if(a == current) other = b;
-			else if(b == current) other = a;
-			else continue;
-
-			if(chainIndexOf(chain, other) != -1) continue;	// Already in the chain (e.g. the parent)
-			next = other;
-			break;
-		}
+	// The report already gives the nodes in the order of the chain: they are copied as they are.
+	// A repeated address (malformed report) is skipped so that the chain never contains a device twice.
+	for(int i = 0; i < order_length && chain.length < MAX_CHAIN_LENGTH; i++){
+		if(chainIndexOf(chain, order[i]) != -1) continue;
+		chain.ids[chain.length++] = order[i];
 	}
 	return chain;
 }
 
 
 ChainComparison compareChains(const Chain &stored, const Chain &observed){
+	
+	// This function is only called from inside "updateComposition".
+	// Stored is the saved composition: supposed to be valid. 
+	// Observed is the one seen this cycle: now I have to check it.
 
 	int missing = 0;
 	for(int i = 0; i < stored.length; i++){
 		if(chainIndexOf(observed, stored.ids[i]) == -1) missing++;
+		// I check if all of the stored devices are present in the observed chain. If not, then it's missing.
 	}
 
 	int extra = 0;
 	for(int i = 0; i < observed.length; i++){
 		if(chainIndexOf(stored, observed.ids[i]) == -1) extra++;
+		// The other way: I see if all of the seen this cycle existed in the stored. If not, then it's new.
 	}
 
-	if(missing > 0) return CHAIN_MISSING;		// Also when there are new devices at the same time (prudence)
+	if(missing > 0) return CHAIN_MISSING;		
 	if(extra > 0)   return CHAIN_NEW_DEVICES;
 	if(chainsEqual(stored, observed)) return CHAIN_EQUAL;
 	return CHAIN_REORDERED;
@@ -95,8 +84,16 @@ ChainComparison compareChains(const Chain &stored, const Chain &observed){
 
 CompositionEvent updateComposition(CompositionState &state, const Chain &observed, ChainComparison &comparison){
 
-	// First cycle: whatever is observed is the first composition
+	/*Receives: 
+		1: State: This includes the current chain, the flags to know if it's consolidated, etc.
+		2: observed: The chain seen this cyle
+		3: 	the buffer to where the comparison is going to be stored.
+
+	Returns: the event of this composition. See posible defined events in composition.h
+	*/
+
 	if(state.current.length == 0){
+		//The first cycle? (The length is only 0 on the first cycle)
 		state.current = observed;
 		comparison = CHAIN_NEW_DEVICES;
 		state.startup_cycles = 1;
@@ -119,7 +116,7 @@ CompositionEvent updateComposition(CompositionState &state, const Chain &observe
 		}
 
 		if(state.startup_cycles >= COMPOSITION_WINDOW_CYCLES){
-			state.consolidated = true;
+			state.consolidated = true; //The required number of cycles has been reached. The composition is consolidated.
 			event = COMP_EVENT_CONSOLIDATED;
 		}
 		return event;
@@ -133,12 +130,14 @@ CompositionEvent updateComposition(CompositionState &state, const Chain &observe
 			state.candidate_cycles++;
 		}
 		else{
-			state.candidate = observed;
+			state.candidate = observed; //I save the candidate so that in following reads I can compare
 			state.candidate_cycles = 1;
 			if(COMPOSITION_WINDOW_CYCLES > 1) return COMP_EVENT_CANDIDATE_STARTED;
 		}
 
 		if(state.candidate_cycles >= COMPOSITION_WINDOW_CYCLES){
+			// If the same candidate has produced the same change for COMPOSITION_WINDOW_CYCLES,
+			// then the composition is consolidated.
 			state.current = state.candidate;
 			state.candidate.length = 0;
 			state.candidate_cycles = 0;
@@ -147,7 +146,8 @@ CompositionEvent updateComposition(CompositionState &state, const Chain &observe
 		return COMP_EVENT_NONE;
 	}
 
-	// EQUAL or MISSING: if there was a candidate, it didn't persist
+	// If reaching here, the chain was equal or there's a device missing. 
+	// if there were previous change candidates, they didn't persist, so they're eliminated.
 	if(state.candidate_cycles > 0){
 		state.candidate.length = 0;
 		state.candidate_cycles = 0;

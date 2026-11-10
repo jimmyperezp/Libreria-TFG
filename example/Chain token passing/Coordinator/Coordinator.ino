@@ -109,6 +109,10 @@ const char* RAW_IMU_AXES[2] = {"acel_x_ms2", "acel_y_ms2"};   // The only axes t
 NodeBlock received_blocks[MAX_NODE_BLOCKS];   // Blocks of the last model data report (one per node, in chain order)
 uint8_t amount_received_blocks = 0;
 
+/*Chain order of this cycle (input of the composition analysis, see composition.h)*/
+uint8_t chain_order[MAX_DEVICES];      // Nodes of this cycle in the order of the train, without the coordinator
+uint8_t chain_order_length = 0;
+
 /*Used to print results*/
 unsigned long last_shown_data_timestamp = 0;    
 unsigned long last_KK_plot_timestamp = 0;       //Last moment the Kamada-Kawai (KK) plot was made.
@@ -756,11 +760,22 @@ void modelDataReport(byte* data){
 
     if(n < 0){
         Serial.println("MODEL DATA REPORT RECEIVED IS MALFORMED. Ignored");
+        amount_received_blocks = 0;     // readModelDataReport may have written part of the blocks: none is used
+        chain_order_length = 0;
         transmitUnicast(MSG_DATA_REPORT_ACK, reporting_device); // ACK anyway, so the node doesn't keep retrying a report that will never be accepted
         delay(10);
         return;
     }
     amount_received_blocks = n;
+
+    // Chain order for the composition: the blocks arrive in the order of the train (each node puts its block
+    // in front of the ones it received). If the last block has a son, that son exists too, even if its block
+    // didn't arrive (e.g. its report to that node failed): it is added at the end.
+    chain_order_length = 0;
+    for(int i = 0; i < n; i++) chain_order[chain_order_length++] = received_blocks[i].addr;
+    if(n > 0 && received_blocks[n-1].num_measures >= 1 && chain_order_length < MAX_DEVICES){
+        chain_order[chain_order_length++] = received_blocks[n-1].son_addr;
+    }
 
     for(int i = 0; i < n; i++){
 
@@ -978,12 +993,14 @@ void showAIPrediction(){
     }
     bool confident = result.classification[best].value >= EI_CLASSIFIER_THRESHOLD;
 
-    // While a reference of the model's links is still calibrating, the deviations aren't final yet
+    // While a reference of the model's links or two-hop pairs is still calibrating, the deviations aren't final yet
     bool calibrating = false;
-    for(int i = 0; i < RAW_LINKS; i++){
-        if(!cycle_row.position_used[i] || !cycle_row.position_used[i+1]){ calibrating = true; continue; }
-        LinkReference* ref = findLinkReference(link_references, cycle_row.ids[i], cycle_row.ids[i+1]);
-        if(ref == nullptr || !ref->fixed) calibrating = true;
+    for(int step = 1; step <= 2; step++){                       // step 1: links (i, i+1); step 2: pairs (i, i+2)
+        for(int i = 0; i + step < RAW_VEHICLES; i++){
+            if(!cycle_row.position_used[i] || !cycle_row.position_used[i+step]){ calibrating = true; continue; }
+            LinkReference* ref = findLinkReference(link_references, cycle_row.ids[i], cycle_row.ids[i+step]);
+            if(ref == nullptr || !ref->fixed) calibrating = true;
+        }
     }
 
     Serial.print("AI_PREDICTION: cycle "); Serial.print(cycle_row.cycle);
@@ -1010,9 +1027,14 @@ void processCycle(){
     last_cycle_end_time = cycle_end_time;
 
     // 1) Composition
-    Chain observed = buildObservedChain(own_short_addr, coordinator_son, measurements, amount_measurements);
-    ChainComparison comparison;
+    Chain observed = buildObservedChain(own_short_addr, coordinator_son, chain_order, chain_order_length);
+    /*The observed chain is made up of the order in which the report includes the measurements. 
+    This observed chain is built with the format and variable type defined in composition.h*/
+    
+    ChainComparison comparison; //This is a special type defined. It can store values such as (chain_equal, chain_missing, etc)
+    
     CompositionEvent event = updateComposition(composition, observed, comparison);
+    // Lastly, updateComposition checks if there has been any changes, devices missing, etc 
 
     // 2) References & unseen counters of every link of the composition (per pair of devices)
     updateCompositionLinks();
@@ -1260,6 +1282,7 @@ void resetMeasures(){
         measurements[i].active = false; //This way, only prints active measures next time showData() is called
     }
     amount_received_blocks = 0; // Node blocks belong to a single cycle as well
+    chain_order_length = 0;     // And so does the chain order taken from them
 }
 
 /*LOOP*/
