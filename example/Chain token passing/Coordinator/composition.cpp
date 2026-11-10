@@ -34,45 +34,23 @@ int chainIndexOf(const Chain &chain, uint8_t id){
 }
 
 
-Chain buildObservedChain(uint8_t coordinator, int16_t coordinator_son, const Measurement* measures, int num_measures){
+Chain buildObservedChain(uint8_t coordinator, int16_t coordinator_son, const uint8_t* order, int order_length){
 
 	Chain chain;
 	chain.length = 0;
 	chain.ids[chain.length++] = coordinator;
 
-	if(coordinator_son < 0) return chain;	// Token wasn't accepted by anyone: only the coordinator is observed
+	// No report this cycle: the only node known is the one that accepted the coordinator's token (if any)
+	if(order_length <= 0){
+		if(coordinator_son >= 0) chain.ids[chain.length++] = (uint8_t)coordinator_son;
+		return chain;
+	}
 
-	int16_t next = coordinator_son;
-
-	while(next >= 0 && chain.length < MAX_CHAIN_LENGTH){
-
-		chain.ids[chain.length++] = (uint8_t)next;
-		uint8_t current = (uint8_t)next;
-		next = -1;
-
-		// Each node reports only its measure with its son, so the next device is the OTHER END of the active
-		// measure that involves 'current' and a device not yet in the chain.
-		// The direction of the measure is NOT used: the coordinator stores each pair once (logMeasure searches
-		// both directions), so a measure reported as B3->B2 may be stored as B2->B3 from a previous cycle.
-		// The coordinator's own measures are skipped: its son is known from the token handoff ACK.
-		// Measures of a node with its grandson (hop = 2) are skipped: they would be a shortcut (e.g. B1 -> B3) and
-		// the chain would skip a device. The chain is built only with the measures of each node with its son.
-		for(int i = 0; i < num_measures; i++){
-			if(!measures[i].active) continue;
-			if(measures[i].hop == 2) continue;
-			uint8_t a = measures[i].short_addr_origin;
-			uint8_t b = measures[i].short_addr_dest;
-			if(a == coordinator || b == coordinator) continue;
-
-			uint8_t other;
-			if(a == current) other = b;
-			else if(b == current) other = a;
-			else continue;
-
-			if(chainIndexOf(chain, other) != -1) continue;	// Already in the chain (e.g. the parent)
-			next = other;
-			break;
-		}
+	// The report already gives the nodes in the order of the chain: they are copied as they are.
+	// A repeated address (malformed report) is skipped so that the chain never contains a device twice.
+	for(int i = 0; i < order_length && chain.length < MAX_CHAIN_LENGTH; i++){
+		if(chainIndexOf(chain, order[i]) != -1) continue;
+		chain.ids[chain.length++] = order[i];
 	}
 	return chain;
 }
