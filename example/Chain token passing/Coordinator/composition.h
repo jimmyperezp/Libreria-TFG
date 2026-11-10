@@ -70,13 +70,13 @@ void initComposition(CompositionState &state);
 
 
 Chain buildObservedChain(uint8_t coordinator, int16_t coordinator_son, const uint8_t* order, int order_length);
-// Builds the chain observed in this cycle.
-//   coordinator      --> coordinator's short address header
-//   coordinator_son  --> node that accepted the coordinator's token in this cycle (-1: none).
-//                        Only used if no report arrived (empty order).
-//   order            --> nodes of this cycle in the order of the chain, without the coordinator
-//                        (filled when the data report is read: chain_order in Coordinator.ino)
-
+/* Builds the chain observed in this cycle.
+   coordinator      --> coordinator's short address header
+   coordinator_son  --> node that accepted the coordinator's token in this cycle (-1: none).
+                        Only used if no report arrived (empty order).
+   order            --> nodes of this cycle in the order of the chain, without the coordinator
+                        (filled when the data report is read: chain_order in Coordinator.ino)
+*/
 
 ChainComparison compareChains(const Chain &stored, const Chain &observed);
 

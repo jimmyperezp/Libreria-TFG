@@ -36,6 +36,7 @@ int chainIndexOf(const Chain &chain, uint8_t id){
 
 Chain buildObservedChain(uint8_t coordinator, int16_t coordinator_son, const uint8_t* order, int order_length){
 
+
 	Chain chain;
 	chain.length = 0;
 	chain.ids[chain.length++] = coordinator;
@@ -57,18 +58,24 @@ Chain buildObservedChain(uint8_t coordinator, int16_t coordinator_son, const uin
 
 
 ChainComparison compareChains(const Chain &stored, const Chain &observed){
+	
+	// This function is only called from inside "updateComposition".
+	// Stored is the saved composition: supposed to be valid. 
+	// Observed is the one seen this cycle: now I have to check it.
 
 	int missing = 0;
 	for(int i = 0; i < stored.length; i++){
 		if(chainIndexOf(observed, stored.ids[i]) == -1) missing++;
+		// I check if all of the stored devices are present in the observed chain. If not, then it's missing.
 	}
 
 	int extra = 0;
 	for(int i = 0; i < observed.length; i++){
 		if(chainIndexOf(stored, observed.ids[i]) == -1) extra++;
+		// The other way: I see if all of the seen this cycle existed in the stored. If not, then it's new.
 	}
 
-	if(missing > 0) return CHAIN_MISSING;		// Also when there are new devices at the same time (prudence)
+	if(missing > 0) return CHAIN_MISSING;		
 	if(extra > 0)   return CHAIN_NEW_DEVICES;
 	if(chainsEqual(stored, observed)) return CHAIN_EQUAL;
 	return CHAIN_REORDERED;
@@ -77,8 +84,16 @@ ChainComparison compareChains(const Chain &stored, const Chain &observed){
 
 CompositionEvent updateComposition(CompositionState &state, const Chain &observed, ChainComparison &comparison){
 
-	// First cycle: whatever is observed is the first composition
+	/*Receives: 
+		1: State: This includes the current chain, the flags to know if it's consolidated, etc.
+		2: observed: The chain seen this cyle
+		3: 	the buffer to where the comparison is going to be stored.
+
+	Returns: the event of this composition. See posible defined events in composition.h
+	*/
+
 	if(state.current.length == 0){
+		//The first cycle? (The length is only 0 on the first cycle)
 		state.current = observed;
 		comparison = CHAIN_NEW_DEVICES;
 		state.startup_cycles = 1;
@@ -101,7 +116,7 @@ CompositionEvent updateComposition(CompositionState &state, const Chain &observe
 		}
 
 		if(state.startup_cycles >= COMPOSITION_WINDOW_CYCLES){
-			state.consolidated = true;
+			state.consolidated = true; //The required number of cycles has been reached. The composition is consolidated.
 			event = COMP_EVENT_CONSOLIDATED;
 		}
 		return event;
@@ -115,12 +130,14 @@ CompositionEvent updateComposition(CompositionState &state, const Chain &observe
 			state.candidate_cycles++;
 		}
 		else{
-			state.candidate = observed;
+			state.candidate = observed; //I save the candidate so that in following reads I can compare
 			state.candidate_cycles = 1;
 			if(COMPOSITION_WINDOW_CYCLES > 1) return COMP_EVENT_CANDIDATE_STARTED;
 		}
 
 		if(state.candidate_cycles >= COMPOSITION_WINDOW_CYCLES){
+			// If the same candidate has produced the same change for COMPOSITION_WINDOW_CYCLES,
+			// then the composition is consolidated.
 			state.current = state.candidate;
 			state.candidate.length = 0;
 			state.candidate_cycles = 0;
@@ -129,7 +146,8 @@ CompositionEvent updateComposition(CompositionState &state, const Chain &observe
 		return COMP_EVENT_NONE;
 	}
 
-	// EQUAL or MISSING: if there was a candidate, it didn't persist
+	// If reaching here, the chain was equal or there's a device missing. 
+	// if there were previous change candidates, they didn't persist, so they're eliminated.
 	if(state.candidate_cycles > 0){
 		state.candidate.length = 0;
 		state.candidate_cycles = 0;

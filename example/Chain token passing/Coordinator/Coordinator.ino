@@ -1028,8 +1028,13 @@ void processCycle(){
 
     // 1) Composition
     Chain observed = buildObservedChain(own_short_addr, coordinator_son, chain_order, chain_order_length);
-    ChainComparison comparison;
+    /*The observed chain is made up of the order in which the report includes the measurements. 
+    This observed chain is built with the format and variable type defined in composition.h*/
+    
+    ChainComparison comparison; //This is a special type defined. It can store values such as (chain_equal, chain_missing, etc)
+    
     CompositionEvent event = updateComposition(composition, observed, comparison);
+    // Lastly, updateComposition checks if there has been any changes, devices missing, etc 
 
     // 2) References & unseen counters of every link of the composition (per pair of devices)
     updateCompositionLinks();
