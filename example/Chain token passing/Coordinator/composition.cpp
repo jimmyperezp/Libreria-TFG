@@ -5,6 +5,7 @@
 
 
 void initComposition(CompositionState &state){
+	// Called on start. Sets everything to 0 and false.
 	state.current.length = 0;
 	state.consolidated = false;
 	state.startup_cycles = 0;
@@ -14,6 +15,7 @@ void initComposition(CompositionState &state){
 
 
 bool chainsEqual(const Chain &a, const Chain &b){
+	//Goes through both id arrays. If all of the positions are equal, returns true.
 	if(a.length != b.length) return false;
 	for(int i = 0; i < a.length; i++){
 		if(a.ids[i] != b.ids[i]) return false;
@@ -23,6 +25,8 @@ bool chainsEqual(const Chain &a, const Chain &b){
 
 
 int chainIndexOf(const Chain &chain, uint8_t id){
+	// Searches for the position inside the IDs array of a certain given ID.
+	// The chain received is set as constant so that it can't be modified.
 	for(int i = 0; i < chain.length; i++){
 		if(chain.ids[i] == id) return i;
 	}
