@@ -22,16 +22,13 @@ const uint8_t PIN_SS = 4;   // spi select pin
 #define KAMADA_KAWAI_PLOTTING false // Shows a JSON file to draw the nodes using Kamada-Kawai's algorithm
 #define RX_DISTANCE_PLOTTING false  // Shows a CSV output to graph the relationship between RX power & distance
 #define COMPOSITION_OUTPUT true     // Shows, every cycle, the train composition, the state of each link and the observed chain
-#define RAW_DATA_OUTPUT true        // Prints every cycle a CSV row ("RAW_DATA:") with the same columns as the simulator's raw CSV
-#define FEATURES_OUTPUT false       // DEBUG: prints every cycle the 16 model inputs ("FEATURES:"). Not needed to record datasets
+#define RAW_DATA_OUTPUT true        // Prints every cycle a CSV row ("RAW_DATA:"). The python script will read it & build the CSVs
+#define FEATURES_OUTPUT false       // Shows the values that will "enter" the TinyML model. Not very useful
 #define AI_DEPLOYMENT false         // Runs the TinyML model every cycle (src/tinyML_inferencing.h) and shows the predicted train status
-                                    // (OFF until the model is retrained with the new inputs: the current one expects 37 features, now there are 16)
-
-// Type of data report the nodes must send. It travels inside the token (TOKEN_HANDOFF) to every node of the chain.
-//   DATA_REPORT_MODEL       --> one block per node: measure with its son and grandson + acc x/y (used to feed the model)
-// For now it is the only type (new types of report will be added here).
+                                    
 #define REPORT_TYPE DATA_REPORT_MODEL
-
+//Type of data report expected. Possible modes are: 
+// DATA_REPORT_MODEL (values needed by the TinyML model)
 
 #define DEVICE_ADDR "C1:00:5B:D5:A9:9A:E2:9C" 
 uint8_t own_short_addr = 0; 
@@ -41,14 +38,12 @@ uint16_t Adelay = 16580;
 Measurement measurements[MAX_MEASURES];
 uint8_t amount_measurements = 0;
 
-
 ExistingDevice Existing_devices[MAX_DEVICES];
 uint8_t amount_devices = 0;
 
 uint8_t nodes_indexes[MAX_DEVICES];
 uint8_t amount_nodes = 0;
 uint8_t amount_active_nodes = 0;
-
 
 /*Time management*/
 unsigned long current_time = 0;
@@ -143,8 +138,9 @@ enum UnicastMessageType{
 /*Function prototypes*/
 //transmitUnicast presents errors as one of the parameters is set as null
 void transmitUnicast(uint8_t message_type, DW1000Device* explicit_target = nullptr);
-void logMeasure(uint8_t own_sa, uint8_t dest_sa, float dist, float rx_pwr, uint8_t hop = 0);
-bool acceptIncomingReport(DW1000Device* reporting_device);
+bool acceptIncomingReport(DW1000Device* reporting_device); //Returns true if the report is expected & comes in the right format.
+void logMeasure(uint8_t own_sa, uint8_t dest_sa, float dist, float rx_pwr, uint8_t hop = 0); 
+//Hop indicates if the measure is from the son(1) or grandson (2)
 
 
 /*CODE*/
@@ -454,8 +450,8 @@ void newRange(){
 
 void logMeasure(uint8_t own_sa,uint8_t dest_sa, float dist, float rx_pwr, uint8_t hop){
 
-    // hop: 1 = measure of a node with its son, 2 = with its grandson, 0 = own measure (see Measurement)
-    // rx_pwr: NAN when the report doesn't carry it (DATA_REPORT_MODEL)
+    // hop: 1 = measure of a node with its son, 2 = with its grandson, 0 = own measure
+    // rx_pwr: Some data reports don't include it. If it isn't found, then the value received is NAN
 
     // Firstly, checks if that communication has been logged before
     int index = searchMeasure(own_sa,dest_sa);
@@ -472,8 +468,8 @@ void logMeasure(uint8_t own_sa,uint8_t dest_sa, float dist, float rx_pwr, uint8_
 
     }
     else if (amount_measurements < MAX_MEASURES){
-
         // If not found, i need to make a new entry to the struct.
+        
         measurements[amount_measurements].short_addr_origin = own_sa;
         measurements[amount_measurements].short_addr_dest = dest_sa;
         measurements[amount_measurements].distance = dist;
@@ -672,9 +668,10 @@ void TokenHandoffFailed(){
 
 bool acceptIncomingReport(DW1000Device* reporting_device){
 
-    // Common checks for every type of data report. Returns true if the report must be read.
-    // If it must not be read (unexpected sender, repeated report, report no longer awaited), returns false
-    // (sending the ACK when the sender is the expected one, so it doesn't keep retrying).
+    // Checks the following things: 
+    // 1) The report comes from the device that it should (from whom I passed the token to). If it's valid, it sends the ACK.
+    // 2) Checks if it should be read now (repeated report or report no longer needed (the cycle has been aborted))
+    // 3) The format received is the expected. 
 
     uint8_t reporting_node_short_addr = reporting_device->getShortAddressHeader();
 
@@ -714,6 +711,7 @@ bool acceptIncomingReport(DW1000Device* reporting_device){
             return_received = true;
             _wait_for_return = false; // To restart the timer next time state is WAIT_FOR_RETURN.
             if(DEBUG_COORDINATOR) Serial.print("\nSending ACK and processing data... ");
+            //TODO: Check, aquí no estoy mandando el ACK. Seguro que esto está bien?
         }
 
         else if(return_received == true){ //The device is valid + I was waiting for the report
@@ -721,7 +719,7 @@ bool acceptIncomingReport(DW1000Device* reporting_device){
             if(DEBUG_COORDINATOR) Serial.println(" but already received before. Only need to send ACK");
             transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
             delay(10);
-            
+            //TODO: probar sin los delays
             return false;
 
         }
@@ -730,7 +728,7 @@ bool acceptIncomingReport(DW1000Device* reporting_device){
             if(DEBUG_COORDINATOR) Serial.print(" but I wasn't waiting for it anymore. Sending ack of reception but ignoring data\n");
             transmitUnicast(MSG_DATA_REPORT_ACK,reporting_device);
             delay(10);
-            
+            //TODO: probar sin los delays
             return false;
         }
 
@@ -741,15 +739,20 @@ bool acceptIncomingReport(DW1000Device* reporting_device){
 
 void modelDataReport(byte* data){
 
-    // DATA_REPORT_MODEL: one block per node, in chain order. Each block becomes:
-    //  - its measure with its son (hop = 1) and with its grandson (hop = 2). No RX power in this report.
-    //  - its acc x and y (kept in received_blocks, used to build the raw data row)
+    /*
+        Executed when receiving a data report in model type.
+        This report is build up of 1 block per device. In each block, they send:
+        - A "status bit". This value indicates if the block comes with 1 measure (only with the son), or 2 (son + grandson)
+        - The measures (1 or 2)
+        - The values from that device's IMU: Ax and Ay     
+    */
 
     DW1000Device* reporting_device = DW1000Ranging.getDistantDevice();
     if(!acceptIncomingReport(reporting_device)) return;
 
     // The report is read BEFORE sending the ACK ("data" is the shared buffer, and building the ACK overwrites it).
     int n = DW1000Ranging.readModelDataReport(data, received_blocks, MAX_NODE_BLOCKS);
+    // "n" is the number of blocks found in the message. This way, the coordinator reads the right values.
 
     if(n < 0){
         Serial.println("MODEL DATA REPORT RECEIVED IS MALFORMED. Ignored");
@@ -766,7 +769,7 @@ void modelDataReport(byte* data){
         if(b.num_measures == 2) logMeasure(b.addr, b.grandson_addr, b.grandson_dist, NAN, 2);
     }
 
-    // The report has been read: now the ACK can be sent (it overwrites the buffer)
+    // The report has been read: now the ACK can be sent.
     transmitUnicast(MSG_DATA_REPORT_ACK, reporting_device);
     delay(10);
 
@@ -1440,7 +1443,7 @@ void loop(){
         num_retries = 0; // To clear any ongoing transmission retries.
         resetMeasures(); // To clear this cycle's measures & avoid showing obsolete measures in the monitor.
         
-        coordinator_son = -1;
+        coordinator_son = -1; //Reset to be updated on next token handoff.
         if(DEBUG_COORDINATOR) Serial.print("\nEnd of cycle. Restarting process... ");
         _discovery = false;
         state = DISCOVERY;
