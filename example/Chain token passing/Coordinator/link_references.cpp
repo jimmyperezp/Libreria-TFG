@@ -5,6 +5,7 @@
 
 
 void initLinkReferences(LinkReferenceTable &table){
+	//Sets the "in_use" variable of all references to false. (the table is "empty")
 	for(int i = 0; i < MAX_LINK_REFS; i++){
 		table.refs[i].in_use = false;
 	}
@@ -12,6 +13,7 @@ void initLinkReferences(LinkReferenceTable &table){
 
 
 LinkReference* findLinkReference(LinkReferenceTable &table, uint8_t a, uint8_t b){
+	//Goes through all the reference table to see if any of the entries is formed by a+b or b+a
 	for(int i = 0; i < MAX_LINK_REFS; i++){
 		LinkReference &r = table.refs[i];
 		if(!r.in_use) continue;
@@ -41,7 +43,7 @@ static LinkReference* createLinkReference(LinkReferenceTable &table, uint8_t a, 
 	for(int i = 0; i < MAX_LINK_REFS && slot == nullptr; i++){
 		if(!table.refs[i].in_use) slot = &table.refs[i];
 	}
-	// 2) If full, reuse a pair that is no longer part of the composition
+	// 2) If full, reuse a pair that is no longer part of the composition. 
 	for(int i = 0; i < MAX_LINK_REFS && slot == nullptr; i++){
 		if(!pairInComposition(composition, table.refs[i].a, table.refs[i].b)) slot = &table.refs[i];
 	}
@@ -50,7 +52,7 @@ static LinkReference* createLinkReference(LinkReferenceTable &table, uint8_t a, 
 	slot->in_use = true;
 	slot->a = a;
 	slot->b = b;
-	slot->num_samples = 0;
+	slot->num_samples = 0; //On creation, the number of samples is 0.
 	slot->reference = 0.0f;
 	slot->fixed = false;
 	slot->unseen_cycles = 0;
@@ -59,7 +61,7 @@ static LinkReference* createLinkReference(LinkReferenceTable &table, uint8_t a, 
 
 
 float medianOf(const float* values, int n){
-
+	//Calculates the median (instead of the average to avoid possible wrong measures)
 	if(n <= 0) return 0.0f;
 
 	float sorted[LINK_REF_SAMPLES];
@@ -81,8 +83,9 @@ float medianOf(const float* values, int n){
 void updateLinkReference(LinkReferenceTable &table, uint8_t a, uint8_t b, bool seen, float distance, const Chain &composition){
 
 	LinkReference* ref = findLinkReference(table, a, b);
+	//First, check if the reference exists. If not, it creates it.
 	if(ref == nullptr) ref = createLinkReference(table, a, b, composition);
-	if(ref == nullptr) return;
+	if(ref == nullptr) return; //If it can't be created, then the process is ended.
 
 	if(!seen){
 		if(ref->unseen_cycles < UNSEEN_CYCLES_CAP) ref->unseen_cycles++;
@@ -100,5 +103,6 @@ void updateLinkReference(LinkReferenceTable &table, uint8_t a, uint8_t b, bool s
 
 
 bool linkReferenceReady(const LinkReference &ref){
+	//A reference is ready if it's fixed or has at least the minimum number of samples.
 	return ref.fixed || ref.num_samples >= LINK_REF_MIN_SAMPLES;
 }
