@@ -444,14 +444,21 @@ descubrimiento, no el número de ciclo.
 
 ```
 =========================== CYCLE 125 | 1412 ms ===========================
- COMPOSITION    guardada y observada, comparación y evento
- LINKS          cada enlace y par con el nieto: visto, distancia y referencia
- DATA REPORT    medidas del ciclo, bloques de nodo, IMU recibida, medidas inactivas
+ COMPOSITION        guardada y observada, comparación y evento
+ NODE BLOCKS        qué medidas envió cada nodo (hijo, nieto)
+ LINKS              cada enlace y par con el nieto: distancia (o NOT SEEN) y referencia
+ IMU DATA           acc x, y recibida de cada nodo
+ INACTIVE MEASURES  medidas de ciclos anteriores que no se han repetido (solo si hay)
 ============================================================================
 RAW_DATA:125,...
 ```
 
 - Un solo número de ciclo (el real) y una sola duración.
-- `COMPOSITION_OUTPUT` controla las secciones COMPOSITION y LINKS; `READABLE_OUTPUT`, la sección DATA REPORT.
+- **Cada medida aparece una sola vez**, en LINKS. Ya no hay una lista aparte de medidas (era la misma información
+  que LINKS). Las medidas propias del coordinador que no son ni enlace ni par con el nieto (p. ej. C1–B3) ya no se
+  muestran.
+- `COMPOSITION_OUTPUT` controla COMPOSITION y LINKS; `READABLE_OUTPUT`, NODE BLOCKS, IMU DATA e INACTIVE MEASURES.
 - La línea `RAW_DATA` sale justo debajo del bloque; el grabador la encuentra igual (filtra por el prefijo).
-- Se eliminan `showComposition()`, `showData()` y la variable `last_shown_data_timestamp`.
+- Se eliminan `showComposition()`, `showData()` y la variable `last_shown_data_timestamp`. Cada sección es una
+  función: `showCompositionSection()`, `showNodeBlocksSection()`, `showLinksSection()`, `showImuSection()` y
+  `showInactiveSection()`.
