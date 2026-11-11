@@ -34,7 +34,7 @@ AI Integration/
 │   ├── decoupling_w2_150s/         config.json, coord/rx_coord.csv, coord/imu_crd.csv...
 │   └── ...
 │
-└── datasets_procesados/            todo lo que generan los scripts (SÍ se sube a Git)
+└── datasets_procesados/            todo lo que generan los scripts (NO se sube a Git: solo en local)
     ├── simulador/
     │   ├── ensayos_simulador.json  registro de ensayos del simulador (se escribe a mano)
     │   └── <ensayo>/               p. ej. desacople/
@@ -61,6 +61,10 @@ AI Integration/
             │   └── LOST_INTEGRITY.<ensayo>.csv
             └── resumen_<ensayo>.json
 ```
+
+Ni `datasets_simulador/` ni `datasets_procesados/` se suben a Git (`.gitignore`): los datos viven solo en el PC
+donde se graban y procesan. Las grabaciones de vía real son irrepetibles, así que conviene guardar una copia de
+`datasets_procesados/placas/` fuera del repositorio.
 
 Las rutas son fijas: los scripts las conocen y no hay que escribirlas en ningún sitio.
 El nombre de cada ensayo es también el de su carpeta y el de sus archivos, así que solo puede
