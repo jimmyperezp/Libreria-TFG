@@ -31,9 +31,9 @@ const uint8_t PIN_SS = 4;   // spi select pin
 // DATA_REPORT_MODEL (values needed by the TinyML model)
 
 #define USE_TINYML_MODEL (REPORT_TYPE == DATA_REPORT_MODEL)
-// The raw data row (RAW_DATA), the model inputs and the AI prediction exist only with the model data report:
-// they are built from its format. With any other report type they are not generated and the model isn't used
-// (the composition and the link references keep working, they feed the readable output too).
+// The link references, the raw data row (RAW_DATA), the model inputs and the AI prediction exist only with the
+// model data report: they are built from its format. With any other report type they are not generated and the
+// model isn't used (the composition keeps working). AI_DEPLOYMENT also has to be true for the model to run.
 
 
 #define DEVICE_ADDR "C1:00:5B:D5:A9:9A:E2:9C" 
@@ -173,8 +173,8 @@ void setup(){
 
     initComposition(composition);
     initLinkReferences(link_references);
-    if(MODEL_DATA_AVAILABLE && RAW_DATA_OUTPUT) printRawHeader();
-    if(MODEL_DATA_AVAILABLE && FEATURES_OUTPUT) printFeaturesHeader();
+    if(USE_TINYML_MODEL && RAW_DATA_OUTPUT) printRawHeader();
+    if(USE_TINYML_MODEL && FEATURES_OUTPUT) printFeaturesHeader();
     last_cycle_end_time = millis();
 
     state = DISCOVERY;
@@ -1050,20 +1050,23 @@ void processCycle(){
     CompositionEvent event = updateComposition(composition, observed, comparison);
     // Lastly, updateComposition checks if there has been any changes, devices missing, etc 
 
-    // 2) References & unseen counters of every link of the composition (per pair of devices)
-    updateCompositionLinks();
-
-    // 3) This cycle's row in fixed positions, and the 25 model inputs computed from it.
-    //    Only with the model data report: the row is built from its format (see MODEL_DATA_AVAILABLE).
-    if(MODEL_DATA_AVAILABLE){
+    // 2) and 3) Only with the model data report (see USE_TINYML_MODEL):
+    //    references & unseen counters of every link and two-hop pair (per pair of devices), this cycle's row
+    //    in fixed positions, and the 25 model inputs computed from them.
+    //    The references MUST be updated before computeFeatures(), so the inputs include this cycle (as in Python).
+    if(USE_TINYML_MODEL){
+        updateCompositionLinks();
         buildRawRow(cycle_row, cycle_end_time, cycle_duration);
         computeFeatures(cycle_row, link_references, model_features);
     }
 
     // 4) Outputs
     if(COMPOSITION_OUTPUT) showComposition(observed, comparison, event, cycle_duration);
-    if(MODEL_DATA_AVAILABLE && RAW_DATA_OUTPUT) printRawRow(cycle_row);
-    if(MODEL_DATA_AVAILABLE && FEATURES_OUTPUT) printFeatures(cycle_row.cycle);
+    if(USE_TINYML_MODEL && RAW_DATA_OUTPUT) printRawRow(cycle_row);
+    if(USE_TINYML_MODEL && FEATURES_OUTPUT) printFeatures(cycle_row.cycle);
+
+    // 5) TinyML model: runs with this cycle's inputs and prints the predicted train status
+    if(USE_TINYML_MODEL && AI_DEPLOYMENT) showAIPrediction();
 
     cycle_number++;
 }
@@ -1187,6 +1190,8 @@ void showComposition(const Chain &observed, ChainComparison comparison, Composit
             int idx = activeMeasureBetween(comp.ids[i], comp.ids[i+step]);
             if(idx != -1){ Serial.print("\tseen       "); Serial.print(measurements[idx].distance); Serial.print(" m"); }
             else Serial.print("\tNOT SEEN   ");
+
+            if(!USE_TINYML_MODEL){ Serial.println(); continue; }   // References only exist with the model data report
 
             LinkReference* ref = findLinkReference(link_references, comp.ids[i], comp.ids[i+step]);
             if(ref == nullptr || ref->num_samples == 0) Serial.println("\tref: no samples yet");
@@ -1481,9 +1486,8 @@ void loop(){
 
     else if(state == END_CYCLE){
 
-        processCycle();            // Composition analysis + raw data row
+        processCycle();            // Composition analysis + raw data row + model inputs and prediction
 
-        if(MODEL_DATA_AVAILABLE && AI_DEPLOYMENT) showAIPrediction();   // The model needs the model data report
         if(READABLE_OUTPUT)        showData();
         if(RX_DISTANCE_PLOTTING)   showRXDistData();
         if(KAMADA_KAWAI_PLOTTING)  showJSONData();

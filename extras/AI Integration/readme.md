@@ -200,7 +200,7 @@ y cuatro vagones (`v1`…`v4`). Definido en `formato_crudo.py`.
 
 - **Contenido:** lo que trae el informe de modo modelo (las distancias de cada nodo con su hijo y su nieto, y
   ax/ay), más la duración del ciclo, que mide el coordinador. La fila en crudo solo se genera con ese informe
-  (`MODEL_DATA_AVAILABLE` en el coordinador). No hay potencia RX: no viaja en el informe y no se usa.
+  (`USE_TINYML_MODEL` en el coordinador). No hay potencia RX: no viaja en el informe y no se usa.
 - Lo no recibido es una celda vacía, con `visto = 0`.
 - **Pares a dos saltos:**
   - en las placas, `c_v2` es la medida del coordinador con v2, y `v1_v3` y `v2_v4` son las medidas de cada

@@ -373,12 +373,18 @@ ax/ay de cada posición (lo que trae el informe), más la duración del ciclo (l
 potencia RX: no viaja en el informe y no se usa. Se mantienen `acel_y` y la duración del ciclo, que el modelo no
 usa, por si entran en el futuro.
 
-**Barrera por tipo de informe.** `MODEL_DATA_AVAILABLE` (`REPORT_TYPE == DATA_REPORT_MODEL`, en `Coordinator.ino`).
+**Barrera por tipo de informe.** `USE_TINYML_MODEL` (`REPORT_TYPE == DATA_REPORT_MODEL`, en `Coordinator.ino`).
 Solo con el informe de modo modelo se imprime `RAW_HEADER` en `setup()`, se construyen la fila en crudo y las
 entradas del modelo en `processCycle()`, se imprimen `RAW_DATA` y las entradas, y se ejecuta el modelo
 (`showAIPrediction()`). Con otro tipo de informe no se genera nada de esto y el modelo no se usa. La composición y
 las referencias siguen funcionando siempre, porque alimentan también el informe legible. El grabador avisa a los 5 s
 si no le llega la cabecera.
+
+**Ampliación.** La constante pasa a llamarse `USE_TINYML_MODEL`. Las referencias de los enlaces y pares
+(`updateCompositionLinks()`) entran también en la barrera: fuera del modelo solo servían para mostrar la referencia y
+los ciclos sin ver en el informe legible, que con otro tipo de informe deja de mostrarlos (`showComposition()`). La
+ejecución del modelo (`showAIPrediction()`) pasa de `END_CYCLE` a `processCycle()`, justo después de calcular sus
+entradas, y sigue necesitando además `AI_DEPLOYMENT`.
 
 **Cambios.** `formato_crudo.py` y `adaptador_simulador.py` (sin potencia), `RawRow` sin `link_rx_power`,
 `printRawHeader()` / `printRawRow()`, la barrera en `Coordinator.ino`, y el readme.
