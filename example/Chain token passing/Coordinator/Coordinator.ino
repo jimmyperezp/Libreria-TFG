@@ -30,10 +30,11 @@ const uint8_t PIN_SS = 4;   // spi select pin
 //Type of data report expected. Possible modes are: 
 // DATA_REPORT_MODEL (values needed by the TinyML model)
 
+#define USE_TINYML_MODEL (REPORT_TYPE == DATA_REPORT_MODEL)
 // The raw data row (RAW_DATA), the model inputs and the AI prediction exist only with the model data report:
 // they are built from its format. With any other report type they are not generated and the model isn't used
 // (the composition and the link references keep working, they feed the readable output too).
-#define MODEL_DATA_AVAILABLE (REPORT_TYPE == DATA_REPORT_MODEL)
+
 
 #define DEVICE_ADDR "C1:00:5B:D5:A9:9A:E2:9C" 
 uint8_t own_short_addr = 0; 
@@ -103,9 +104,9 @@ uint8_t chain_order[MAX_DEVICES];      // Nodes of this cycle in the order of th
 uint8_t chain_order_length = 0;
 
 /*Link references & model features (see link_references.h and model_features.h)*/
-LinkReferenceTable link_references;
-RawRow cycle_row;                      // This cycle's observation in fixed positions (printed as RAW_DATA)
-float model_features[NUM_FEATURES];    // This cycle's 25 model inputs
+LinkReferenceTable link_references;     // Creates a full array (12 positions) of link references. It will be filled dinamically.
+RawRow cycle_row;                       // This cycle's observation in fixed positions (printed as RAW_DATA)
+float model_features[NUM_FEATURES];     // This cycle's 25 model inputs
 
 /*Raw data row: fixed positions for RAW_VEHICLES (5) vehicles, as in the simulator's raw CSV*/
 const char* RAW_POSITION_NAMES[RAW_VEHICLES] = {"c", "v1", "v2", "v3", "v4"};
@@ -1027,6 +1028,18 @@ void processCycle(){
     unsigned long cycle_duration = cycle_end_time - last_cycle_end_time;
     last_cycle_end_time = cycle_end_time;
 
+    /*processCycle does the following tasks: 
+    
+        -  Builds the composition seen in this cycle, and checks if someone's missing, if there's 
+           someone new, etc (see composition.h)
+
+        if the coordinator is using the tinyML model, then it does the following "aditional" things:
+
+            - Uses the measured distances to calculate and update the references (See references.h)
+            - Builds the raw row so that the serial monitor reader can extract the right info to build the raw CSVs
+            - Runs the AI model if the define AI_DEPLOYMENT is set as 'True'
+    */
+   
     // 1) Composition
     Chain observed = buildObservedChain(own_short_addr, coordinator_son, chain_order, chain_order_length);
     /*The observed chain is made up of the order in which the report includes the measurements. 
