@@ -47,7 +47,6 @@
   ],
   "imu": "simulada por el simulador (con ruido); solo acel_x y acel_y",
   "salto2": "c_v2: distancia del coordinador a v2; v1_v3 y v2_v4: diferencia de las distancias al coordinador",
-  "potencia_rx": "solo enlace_c_v1; vacía en los demás (el simulador no la da)",
   "ciclos": 458,
   "periodo_nominal_ms": 1000,
   "tiempo_cero": "inicio de la simulación",

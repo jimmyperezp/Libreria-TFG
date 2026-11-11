@@ -30,6 +30,11 @@ const uint8_t PIN_SS = 4;   // spi select pin
 //Type of data report expected. Possible modes are: 
 // DATA_REPORT_MODEL (values needed by the TinyML model)
 
+// The raw data row (RAW_DATA), the model inputs and the AI prediction exist only with the model data report:
+// they are built from its format. With any other report type they are not generated and the model isn't used
+// (the composition and the link references keep working, they feed the readable output too).
+#define MODEL_DATA_AVAILABLE (REPORT_TYPE == DATA_REPORT_MODEL)
+
 #define DEVICE_ADDR "C1:00:5B:D5:A9:9A:E2:9C" 
 uint8_t own_short_addr = 0; 
 uint16_t Adelay = 16580;
@@ -167,8 +172,8 @@ void setup(){
 
     initComposition(composition);
     initLinkReferences(link_references);
-    if(RAW_DATA_OUTPUT) printRawHeader();
-    if(FEATURES_OUTPUT) printFeaturesHeader();
+    if(MODEL_DATA_AVAILABLE && RAW_DATA_OUTPUT) printRawHeader();
+    if(MODEL_DATA_AVAILABLE && FEATURES_OUTPUT) printFeaturesHeader();
     last_cycle_end_time = millis();
 
     state = DISCOVERY;
@@ -1035,14 +1040,17 @@ void processCycle(){
     // 2) References & unseen counters of every link of the composition (per pair of devices)
     updateCompositionLinks();
 
-    // 3) This cycle's row in fixed positions, and the 25 model inputs computed from it
-    buildRawRow(cycle_row, cycle_end_time, cycle_duration);
-    computeFeatures(cycle_row, link_references, model_features);
+    // 3) This cycle's row in fixed positions, and the 25 model inputs computed from it.
+    //    Only with the model data report: the row is built from its format (see MODEL_DATA_AVAILABLE).
+    if(MODEL_DATA_AVAILABLE){
+        buildRawRow(cycle_row, cycle_end_time, cycle_duration);
+        computeFeatures(cycle_row, link_references, model_features);
+    }
 
     // 4) Outputs
     if(COMPOSITION_OUTPUT) showComposition(observed, comparison, event, cycle_duration);
-    if(RAW_DATA_OUTPUT)    printRawRow(cycle_row);
-    if(FEATURES_OUTPUT)    printFeatures(cycle_row.cycle);
+    if(MODEL_DATA_AVAILABLE && RAW_DATA_OUTPUT) printRawRow(cycle_row);
+    if(MODEL_DATA_AVAILABLE && FEATURES_OUTPUT) printFeatures(cycle_row.cycle);
 
     cycle_number++;
 }
@@ -1091,7 +1099,6 @@ void buildRawRow(RawRow &row, unsigned long cycle_end_time, unsigned long cycle_
 
         row.link_seen[i] = (idx != -1);
         row.link_distance[i] = row.link_seen[i] ? measurements[idx].distance : 0.0f;
-        row.link_rx_power[i] = row.link_seen[i] ? measurements[idx].rxPower  : 0.0f;
     }
 
     // Two-hop pairs (positions i and i+2): the grandson measures of the nodes, or the coordinator's own measure with v2
@@ -1209,9 +1216,9 @@ void printRawHeader(){
     // Same column names (and order) as the raw CSV (extras/AI Integration/scripts_procesado/formato_crudo.py).
     // If they change, the recorder (grabador_serie.py) refuses to record: firmware and scripts must match.
     Serial.print("RAW_HEADER:ciclo,tiempo_ms,duracion_ciclo_ms");
-    const char* links_cols[3] = {"visto", "distancia_m", "potencia_rx_dbm"};
+    const char* links_cols[2] = {"visto", "distancia_m"};
     for(int i = 0; i < RAW_LINKS; i++){
-        for(int k = 0; k < 3; k++){
+        for(int k = 0; k < 2; k++){
             Serial.print(",enlace_"); Serial.print(RAW_POSITION_NAMES[i]); Serial.print("_");
             Serial.print(RAW_POSITION_NAMES[i+1]); Serial.print("_"); Serial.print(links_cols[k]);
         }
@@ -1242,11 +1249,8 @@ void printRawRow(const RawRow &row){
     Serial.print(row.duration_ms);
 
     for(int i = 0; i < RAW_LINKS; i++){
-        if(row.link_seen[i]){
-            Serial.print(",1,"); Serial.print(row.link_distance[i], 3);
-            Serial.print(",");   if(!isnan(row.link_rx_power[i])) Serial.print(row.link_rx_power[i], 2); // Empty if the report doesn't carry it
-        }
-        else Serial.print(",0,,");
+        if(row.link_seen[i]){ Serial.print(",1,"); Serial.print(row.link_distance[i], 3); }
+        else Serial.print(",0,");
     }
 
     for(int i = 0; i < RAW_PAIRS; i++){
@@ -1466,7 +1470,7 @@ void loop(){
 
         processCycle();            // Composition analysis + raw data row
 
-        if(AI_DEPLOYMENT)          showAIPrediction();
+        if(MODEL_DATA_AVAILABLE && AI_DEPLOYMENT) showAIPrediction();   // The model needs the model data report
         if(READABLE_OUTPUT)        showData();
         if(RX_DISTANCE_PLOTTING)   showRXDistData();
         if(KAMADA_KAWAI_PLOTTING)  showJSONData();

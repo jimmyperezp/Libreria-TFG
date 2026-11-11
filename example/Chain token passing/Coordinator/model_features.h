@@ -48,7 +48,6 @@ struct RawRow {
 
 	bool  link_seen[RAW_LINKS];				// Link i joins positions i and i+1
 	float link_distance[RAW_LINKS];			// [m]
-	float link_rx_power[RAW_LINKS];			// [dBm] (NAN if the report doesn't carry it)
 
 	bool  pair_seen[RAW_PAIRS];				// Pair i joins positions i and i+2
 	float pair_distance[RAW_PAIRS];			// [m]

@@ -190,13 +190,14 @@ y cuatro vagones (`v1`…`v4`). Definido en `formato_crudo.py`.
 | Columnas | Contenido |
 |---|---|
 | `ciclo`, `tiempo_ms`, `duracion_ciclo_ms` | Número de ciclo, instante de fin (reloj del coordinador o del simulador) y duración |
-| `enlace_X_Y_visto`, `_distancia_m`, `_potencia_rx_dbm` | Por cada enlace entre vehículos consecutivos (`c_v1`, `v1_v2`, `v2_v3`, `v3_v4`) |
+| `enlace_X_Y_visto`, `_distancia_m` | Por cada enlace entre vehículos consecutivos (`c_v1`, `v1_v2`, `v2_v3`, `v3_v4`) |
 | `salto2_X_Z_visto`, `_distancia_m` | Por cada par a dos saltos, es decir, cada vehículo con su nieto (`c_v2`, `v1_v3`, `v2_v4`) |
 | `X_acel_x_ms2`, `X_acel_y_ms2` | Por cada vehículo: aceleración longitudinal y lateral |
 
+- **Contenido:** lo que trae el informe de modo modelo (las distancias de cada nodo con su hijo y su nieto, y
+  ax/ay), más la duración del ciclo, que mide el coordinador. La fila en crudo solo se genera con ese informe
+  (`MODEL_DATA_AVAILABLE` en el coordinador). No hay potencia RX: no viaja en el informe y no se usa.
 - Lo no recibido es una celda vacía, con `visto = 0`.
-- `potencia_rx_dbm` solo existe en `c_v1` (la mide el propio coordinador; el informe de los nodos no la trae).
-  En los demás enlaces queda vacía.
 - **Pares a dos saltos:**
   - en las placas, `c_v2` es la medida del coordinador con v2, y `v1_v3` y `v2_v4` son las medidas de cada
     nodo con su nieto que llegan en el informe de modo modelo;
@@ -229,8 +230,8 @@ En este orden (`calculo_columnas.py`, y la misma versión en C en `model_feature
 - **Cada columna sale de una sola medida:** no se combinan enlaces y pares. Es el modelo el que aprende, por
   ejemplo, que «V2–V3 no se ve, pero V1–V3 sí y en su sitio» significa tren íntegro (redundancia del nieto).
   Para aprenderlo necesita ejemplos de enlaces perdidos con el tren íntegro (nodos apagados, fallos de radio).
-- **No entran al modelo**, pero se graban en el crudo para análisis futuros: la duración del ciclo,
-  la potencia RX y `acel_y`. El porqué de esta selección está en `registro_cambios.md` (apartados 2 y 6).
+- **No entran al modelo**, pero se graban en el crudo por si entran en el futuro: la duración del ciclo
+  y `acel_y`. El porqué de esta selección está en `registro_cambios.md` (apartados 2 y 6).
 
 ### Calibración (distancia de referencia)
 
@@ -286,7 +287,7 @@ Cada ciclo recibe un **uso** y una **etiqueta**, que se ven en el archivo de rev
 - **Tiempo cero.** El inicio de la simulación, que es la referencia de los instantes de fallo del simulador.
 - **`tiempo_ms`** es el instante del último mensaje recibido en el ciclo. **`duracion_ciclo_ms`** va desde el inicio
   de la vuelta hasta el final de la última ranura con respuesta.
-- **Enlace c–v1.** Distancia y potencia medidas por el coordinador a v1.
+- **Enlace c–v1.** Distancia medida por el coordinador a v1.
 - **Enlaces entre vagones.** El simulador solo da distancias al coordinador, así que la separación se obtiene por
   resta: d(vk) − d(vk−1). Solo cuenta como visto si se recibieron los dos vagones.
 - **Pares a dos saltos.** `c_v2` es la distancia del coordinador a v2. `v1_v3` y `v2_v4` salen por resta, igual que

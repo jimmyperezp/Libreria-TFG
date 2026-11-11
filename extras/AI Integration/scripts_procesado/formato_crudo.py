@@ -15,15 +15,17 @@ dispositivo se guardan aparte (composición).
 Columnas:
   ciclo, tiempo_ms, duracion_ciclo_ms
   Por cada enlace (vehículos consecutivos: c_v1, v1_v2, v2_v3, v3_v4):
-    enlace_X_Y_visto, enlace_X_Y_distancia_m, enlace_X_Y_potencia_rx_dbm
+    enlace_X_Y_visto, enlace_X_Y_distancia_m
   Por cada par a dos saltos (nieto: c_v2, v1_v3, v2_v4):
     salto2_X_Z_visto, salto2_X_Z_distancia_m
   Por cada vehículo (c, v1..v4):
     X_acel_x_ms2, X_acel_y_ms2
 
+Contenido: lo que trae el informe de modo modelo (distancias con el hijo y el nieto, ax y ay de cada
+nodo), más la duración del ciclo, que mide el coordinador. No hay potencia RX.
+Se graba más de lo que usa el modelo (duración del ciclo, acel_y) por si entra en el futuro.
+
 Convenio para lo que no se ha recibido: celda vacía y visto = 0.
-Lo que el origen no puede dar se deja vacío: la potencia RX solo existe para c_v1
-(el informe de los nodos no la trae; en el simulador, igual).
 
 Pares a dos saltos:
   - placas: c_v2 es la medida del coordinador con v2; v1_v3 y v2_v4, las de cada nodo con su nieto.
@@ -50,7 +52,7 @@ def columnas_crudo():
     cols = ['ciclo', 'tiempo_ms', 'duracion_ciclo_ms']
     for a, b in ENLACES:
         e = nombre_enlace(a, b)
-        cols += [f'{e}_visto', f'{e}_distancia_m', f'{e}_potencia_rx_dbm']
+        cols += [f'{e}_visto', f'{e}_distancia_m']
     for a, b in PARES_SALTO2:
         s = nombre_salto2(a, b)
         cols += [f'{s}_visto', f'{s}_distancia_m']

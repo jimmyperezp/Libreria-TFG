@@ -23,8 +23,6 @@ Traducción (ver README):
   - Enlace v(k-1)-vk: el simulador solo da distancias al coordinador, así que
     la separación entre vecinos se obtiene restando: d(vk) - d(vk-1).
     Visto solo si se recibieron los dos vagones en el ciclo.
-  - Potencia RX: la del mensaje recibido por el coordinador. Solo existe para
-    c-v1; para los demás enlaces el simulador no la da y se deja vacía.
   - Pares a dos saltos (salto2_*): c_v2 es la distancia del coordinador a v2 (medida directa);
     v1_v3 y v2_v4 se obtienen por resta, igual que los enlaces entre vagones: d(v3) - d(v1) y
     d(v4) - d(v2). Solo cuentan como vistos si se recibieron los dos vagones.
@@ -135,15 +133,12 @@ def adaptar(cfg, rx, imu):
             if a == 'c':
                 visto = pb in recibidos
                 d = dist(pb)
-                pot = g.loc[pb, 'power'] if visto else np.nan
             else:
                 pa = i - 1
                 visto = pa in recibidos and pb in recibidos
                 d = dist(pb) - dist(pa) if visto else np.nan
-                pot = np.nan             # el simulador no da potencia entre vecinos
             fila[f'{e}_visto'] = int(visto)
             fila[f'{e}_distancia_m'] = d
-            fila[f'{e}_potencia_rx_dbm'] = pot
 
         # Pares a dos saltos (nieto): mismo criterio que los enlaces, saltando un vehículo
         for i, (a, b) in enumerate(PARES_SALTO2):
@@ -179,7 +174,6 @@ def adaptar(cfg, rx, imu):
                      'id': f"{'crd' if a == 'c' else ids_reales[a]}-{ids_reales[b]}"} for a, b in ENLACES],
         'imu': 'simulada por el simulador (con ruido); solo acel_x y acel_y',
         'salto2': 'c_v2: distancia del coordinador a v2; v1_v3 y v2_v4: diferencia de las distancias al coordinador',
-        'potencia_rx': 'solo enlace_c_v1; vacía en los demás (el simulador no la da)',
         'ciclos': int(len(crudo)),
         'periodo_nominal_ms': int(round(n_vagones * ranura_s * 1000)),
         'tiempo_cero': 'inicio de la simulación',

@@ -359,3 +359,34 @@ su callback debe rellenar `chain_order`.
 **Verificación (PC).** Simulación de la cadena con la misma composición observada que antes en sus tres ciclos (B2
 caído, tren íntegro, B2 sin nieto). Casos límite de `buildObservedChain()`: informe completo, cortado (con el hijo
 del último bloque), sin informe con y sin hijo del coordinador, y dirección repetida. Nodo y coordinador compilan.
+
+
+## 8. Fila en crudo con el formato del informe de modo modelo
+
+**Motivo.** El criterio de la fila en crudo no era uniforme: guardaba la potencia RX de los 4 enlaces, aunque solo
+existía para c_v1 (las otras 3 columnas iban siempre vacías, en las placas y en el simulador), mientras que la IMU se
+había recortado a ax y ay. La fila en crudo existe para generar los datos del modelo, así que pasa a llevar lo que
+trae el informe de modo modelo.
+
+**Contenido de la fila en crudo (27 columnas, antes 31):** distancias y `visto` de enlaces y pares a dos saltos, y
+ax/ay de cada posición (lo que trae el informe), más la duración del ciclo (la mide el coordinador). Fuera la
+potencia RX: no viaja en el informe y no se usa. Se mantienen `acel_y` y la duración del ciclo, que el modelo no
+usa, por si entran en el futuro.
+
+**Barrera por tipo de informe.** `MODEL_DATA_AVAILABLE` (`REPORT_TYPE == DATA_REPORT_MODEL`, en `Coordinator.ino`).
+Solo con el informe de modo modelo se imprime `RAW_HEADER` en `setup()`, se construyen la fila en crudo y las
+entradas del modelo en `processCycle()`, se imprimen `RAW_DATA` y las entradas, y se ejecuta el modelo
+(`showAIPrediction()`). Con otro tipo de informe no se genera nada de esto y el modelo no se usa. La composición y
+las referencias siguen funcionando siempre, porque alimentan también el informe legible. El grabador avisa a los 5 s
+si no le llega la cabecera.
+
+**Cambios.** `formato_crudo.py` y `adaptador_simulador.py` (sin potencia), `RawRow` sin `link_rx_power`,
+`printRawHeader()` / `printRawRow()`, la barrera en `Coordinator.ino`, y el readme.
+
+**Grabaciones anteriores.** Las grabadas con el formato anterior (con potencia) se siguen pudiendo exportar: el
+cálculo de columnas lee cada columna por su nombre y las de potencia se ignoran (comprobado: mismas 25 columnas con
+un crudo antiguo y con uno nuevo). Lo que ya no aceptaría el grabador es grabar con un firmware anterior.
+
+**Verificación (PC).** Simulador reexportado (mismos recuentos). C frente a Python con los tres crudos: mismos
+nombres y orden, diferencia máxima 3·10⁻⁵. Simulación de la cadena correcta, con la cabecera y la fila nuevas.
+El coordinador compila con `REPORT_TYPE` distinto del de modo modelo. Grabador y exportador con la cabecera nueva.

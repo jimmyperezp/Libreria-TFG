@@ -21,7 +21,7 @@ Cada columna sale de una sola medida: no se combinan enlaces y pares. Es el mode
 por ejemplo, que "V2-V3 no se ve, pero V1-V3 sí y en su sitio" significa tren íntegro.
 
 Del CSV en crudo NO entran al modelo (se graban para análisis futuros): la duración del
-ciclo, la potencia RX y la aceleración lateral (acel_y).
+ciclo y la aceleración lateral (acel_y).
 
 Distancia de referencia de cada enlace y de cada par: la misma regla que el coordinador.
   - Se calibra con las PRIMERAS medidas que se reciben de esa pareja, cuando lleguen (un nieto
