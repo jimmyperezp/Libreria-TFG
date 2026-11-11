@@ -98,7 +98,7 @@ const unsigned long WAIT_FOR_RETURN_TIMEOUT = 3000;
 /*Composition analysis (see composition.h)*/
 CompositionState composition;           //CompositionState is a struct containing the seen chain, the status, etc (see composition.h)
 int16_t coordinator_son = -1;          // Node that accepted the coordinator's token in this cycle (-1: none)
-uint32_t cycle_number = 0;             // Cycles completed since startup ("ciclo" column)
+uint32_t cycle_number = 0;             // Cycles completed since startup ("cycle" column)
 unsigned long last_cycle_end_time = 0; // To measure each cycle's real duration
 uint8_t chain_order[MAX_DEVICES];      // Nodes of this cycle in the order of the train, without the coordinator. This is extracted from the data report received (built in order)
 uint8_t chain_order_length = 0;
@@ -109,8 +109,8 @@ RawRow cycle_row;                       // This cycle's observation in fixed pos
 float model_features[NUM_FEATURES];     // This cycle's 25 model inputs
 
 /*Raw data row: fixed positions for RAW_VEHICLES (5) vehicles, as in the simulator's raw CSV*/
-const char* RAW_POSITION_NAMES[RAW_VEHICLES] = {"c", "v1", "v2", "v3", "v4"};
-const char* RAW_IMU_AXES[2] = {"acel_x_ms2", "acel_y_ms2"};   // The only axes that travel in the model data report
+const char* RAW_POSITION_NAMES[RAW_VEHICLES] = {"c", "w1", "w2", "w3", "w4"};   // c = coordinator, w = wagon
+const char* RAW_IMU_AXES[2] = {"acc_x_ms2", "acc_y_ms2"};   // The only axes that travel in the model data report
 
 /*DATA_REPORT_MODEL*/
 #define MAX_NODE_BLOCKS MAX_DEVICES
@@ -1095,7 +1095,7 @@ void updateCompositionLinks(){
 
 void buildRawRow(RawRow &row, unsigned long cycle_end_time, unsigned long cycle_duration){
 
-    // Maps this cycle's measures and IMU blocks to the fixed positions (c, v1..v4) of the composition.
+    // Maps this cycle's measures and IMU blocks to the fixed positions (c, w1..w4) of the composition.
 
     const Chain &comp = composition.current;
 
@@ -1117,7 +1117,7 @@ void buildRawRow(RawRow &row, unsigned long cycle_end_time, unsigned long cycle_
         row.link_distance[i] = row.link_seen[i] ? measurements[idx].distance : 0.0f;
     }
 
-    // Two-hop pairs (positions i and i+2): the grandson measures of the nodes, or the coordinator's own measure with v2
+    // Two-hop pairs (positions i and i+2): the grandson measures of the nodes, or the coordinator's own measure with w2
     for(int i = 0; i < RAW_PAIRS; i++){
         int idx = -1;
         if(row.position_used[i] && row.position_used[i+2]) idx = activeMeasureBetween(row.ids[i], row.ids[i+2]);
@@ -1233,18 +1233,18 @@ void showComposition(const Chain &observed, ChainComparison comparison, Composit
 void printRawHeader(){
     // Same column names (and order) as the raw CSV (extras/AI Integration/scripts_procesado/formato_crudo.py).
     // If they change, the recorder (grabador_serie.py) refuses to record: firmware and scripts must match.
-    Serial.print("RAW_HEADER:ciclo,tiempo_ms,duracion_ciclo_ms");
-    const char* links_cols[2] = {"visto", "distancia_m"};
+    Serial.print("RAW_HEADER:cycle,time_ms,cycle_duration_ms");
+    const char* links_cols[2] = {"seen", "distance_m"};
     for(int i = 0; i < RAW_LINKS; i++){
         for(int k = 0; k < 2; k++){
-            Serial.print(",enlace_"); Serial.print(RAW_POSITION_NAMES[i]); Serial.print("_");
+            Serial.print(",link_"); Serial.print(RAW_POSITION_NAMES[i]); Serial.print("_");
             Serial.print(RAW_POSITION_NAMES[i+1]); Serial.print("_"); Serial.print(links_cols[k]);
         }
     }
-    const char* pairs_cols[2] = {"visto", "distancia_m"};
+    const char* pairs_cols[2] = {"seen", "distance_m"};
     for(int i = 0; i < RAW_PAIRS; i++){
         for(int k = 0; k < 2; k++){
-            Serial.print(",salto2_"); Serial.print(RAW_POSITION_NAMES[i]); Serial.print("_");
+            Serial.print(",hop2_"); Serial.print(RAW_POSITION_NAMES[i]); Serial.print("_");
             Serial.print(RAW_POSITION_NAMES[i+2]); Serial.print("_"); Serial.print(pairs_cols[k]);
         }
     }
@@ -1259,7 +1259,7 @@ void printRawHeader(){
 void printRawRow(const RawRow &row){
 
     // One CSV row per cycle, from the same RawRow used to compute the features.
-    // Whatever wasn't received is left EMPTY (and "visto" = 0), as in the simulator's raw CSV.
+    // Whatever wasn't received is left EMPTY (and "seen" = 0), as in the simulator's raw CSV.
 
     Serial.print("RAW_DATA:");
     Serial.print(row.cycle); Serial.print(",");
@@ -1283,7 +1283,7 @@ void printRawRow(const RawRow &row){
 }
 
 void printFeaturesHeader(){
-    Serial.print("FEATURES_HEADER:ciclo");
+    Serial.print("FEATURES_HEADER:cycle");
     for(int i = 0; i < NUM_FEATURES; i++){ Serial.print(","); Serial.print(featureName(i)); }
     Serial.println();
 }

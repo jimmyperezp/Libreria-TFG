@@ -14,16 +14,16 @@ Para cada ensayo elegido:
        - placas: usa el crudo que dejó el grabador en <ensayo>/crudo/.
   2. Calcula las 25 columnas del modelo (calculo_columnas.py), con la calibración de cada enlace
      y par a dos saltos igual que el coordinador (con sus primeras medidas, cuando lleguen).
-  3. Asigna a cada ciclo su uso y su etiqueta:
-       - descartado_arranque: los primeros ciclos ("ciclos_descartados_inicio")
-       - descartado_fin:      a partir de "fin_s", si se indica (solo simulador)
-       - sin_etiqueta:        ciclos anteriores a la primera marca (solo placas)
-       - entrenamiento:       el resto
+  3. Asigna a cada ciclo su uso (columna "use") y su etiqueta (columna "label"):
+       - discarded_startup:   los primeros ciclos ("ciclos_descartados_inicio")
+       - discarded_end:       a partir de "fin_s", si se indica (solo simulador)
+       - unlabeled:           ciclos anteriores a la primera marca (solo placas)
+       - training:            el resto
      La etiqueta sale de:
        - simulador: "evento_s". OK hasta el evento; a partir del primer ciclo que termina
          después de "evento_s", la etiqueta "etiqueta_tras_evento".
        - placas: el archivo de marcas del grabador. Cada ciclo lleva la fase de la última
-         marca cuyo desde_ciclo sea menor o igual que su ciclo (cualquier número de fases).
+         marca cuyo from_cycle sea menor o igual que su ciclo (cualquier número de fases).
   4. Escribe, en datasets_procesados/<origen>/<ensayo>/:
        revision/revision_<ensayo>.csv        todos los ciclos con las 25 columnas, su uso y su etiqueta
        edge_impulse/<ETIQUETA>.<ensayo>.csv  un archivo por etiqueta, listo para subir a Edge Impulse
@@ -35,7 +35,7 @@ Para cada ensayo elegido:
      se escribe un archivo por tramo: <ETIQUETA>.<ensayo>_p1.csv, _p2...
 
 Formato de los archivos para Edge Impulse:
-  - Primera columna, tiempo_ms: tiempo NOMINAL equiespaciado (ciclo x periodo_nominal_ms),
+  - Primera columna, time_ms: tiempo NOMINAL equiespaciado (ciclo x periodo_nominal_ms),
     porque Edge Impulse supone muestras equiespaciadas.
   - Después, las 25 columnas de entrada, en el mismo orden en todos los archivos.
 
@@ -59,6 +59,7 @@ import pandas as pd
 
 import adaptador_simulador
 import calculo_columnas
+from formato_crudo import COL_CICLO, COL_TIEMPO, MARCA_DESDE_CICLO, MARCA_FASE
 
 
 # ============================== CONFIGURACIÓN ==============================
@@ -76,6 +77,14 @@ ORIGENES = {
     'SIMULADOR': {'carpeta': RAIZ / 'datasets_procesados' / 'simulador', 'registro': 'ensayos_simulador.json'},
 }
 NOMBRE_VALIDO = re.compile(r'^[A-Za-z0-9_-]+$')
+
+# Columnas de uso y etiqueta del archivo de revisión, y valores del uso
+COL_USO = 'use'
+COL_ETIQUETA = 'label'
+USO_ENTRENAMIENTO = 'training'
+USO_SIN_ETIQUETA = 'unlabeled'
+USO_DESCARTADO_ARRANQUE = 'discarded_startup'
+USO_DESCARTADO_FIN = 'discarded_end'
 
 
 class AvisoEnsayo(Exception):
@@ -129,15 +138,15 @@ def etiquetas_por_marcas(col, ruta_marcas):
     """Fase de cada ciclo según el archivo de marcas del grabador (None antes de la primera marca)."""
     if not ruta_marcas.exists():
         raise AvisoEnsayo(f'no existe su archivo de marcas ({ruta_marcas})')
-    marcas = pd.read_csv(ruta_marcas).sort_values('desde_ciclo').reset_index(drop=True)
+    marcas = pd.read_csv(ruta_marcas).sort_values(MARCA_DESDE_CICLO).reset_index(drop=True)
     if marcas.empty:
         raise AvisoEnsayo(f'su archivo de marcas está vacío ({ruta_marcas})')
-    i = np.searchsorted(marcas.desde_ciclo.values, col.ciclo.values, side='right') - 1
-    return pd.Series([marcas.fase.iloc[k] if k >= 0 else None for k in i], index=col.index, dtype=object)
+    i = np.searchsorted(marcas[MARCA_DESDE_CICLO].values, col[COL_CICLO].values, side='right') - 1
+    return pd.Series([marcas[MARCA_FASE].iloc[k] if k >= 0 else None for k in i], index=col.index, dtype=object)
 
 
 def etiquetar(col, ens, g, origen):
-    t_s = col.tiempo_ms / 1000.0
+    t_s = col[COL_TIEMPO] / 1000.0
     if origen == 'PLACAS':
         etiqueta = etiquetas_por_marcas(col, ORIGENES['PLACAS']['carpeta'] / ens['marcas'])
     else:
@@ -145,11 +154,11 @@ def etiquetar(col, ens, g, origen):
         if ens.get('evento_s') is not None:
             etiqueta[t_s >= ens['evento_s']] = ens['etiqueta_tras_evento']
 
-    uso = pd.Series('entrenamiento', index=col.index)
-    uso[etiqueta.isna()] = 'sin_etiqueta'
-    uso[col.ciclo < g['ciclos_descartados_inicio']] = 'descartado_arranque'
+    uso = pd.Series(USO_ENTRENAMIENTO, index=col.index)
+    uso[etiqueta.isna()] = USO_SIN_ETIQUETA
+    uso[col[COL_CICLO] < g['ciclos_descartados_inicio']] = USO_DESCARTADO_ARRANQUE
     if ens.get('fin_s') is not None:
-        uso[t_s >= ens['fin_s']] = 'descartado_fin'
+        uso[t_s >= ens['fin_s']] = USO_DESCARTADO_FIN
     return uso, etiqueta
 
 
@@ -171,14 +180,14 @@ def exportar_ensayo(ens, g, origen):
 
     # Aviso si alguna referencia se ha calibrado con medidas de ciclos que no son OK
     avisos = list(info['avisos_calibracion'])
-    fase = dict(zip(col.ciclo, etiqueta))
+    fase = dict(zip(col[COL_CICLO], etiqueta))
     for medida, c in info['calibracion'].items():
         no_ok = {}
         for k in c['ciclos_muestras']:
             if fase.get(k) is not None and fase[k] != 'OK':
                 no_ok[fase[k]] = no_ok.get(fase[k], 0) + 1
         for etq, n in no_ok.items():
-            corto = medida.replace('enlace_', '').replace('salto2_', '')
+            corto = medida.replace('link_', '').replace('hop2_', '')
             avisos.append(f'{corto}: {n} de sus {c["medidas"]} medidas de calibración son de fase {etq}')
 
     # Revisión: todos los ciclos, con su uso y su etiqueta
@@ -186,8 +195,8 @@ def exportar_ensayo(ens, g, origen):
     dir_revision.mkdir(parents=True, exist_ok=True)
     dir_ei.mkdir(parents=True, exist_ok=True)
     revision = col.copy()
-    revision.insert(2, 'uso', uso)
-    revision.insert(3, 'etiqueta', etiqueta)
+    revision.insert(2, COL_USO, uso)
+    revision.insert(3, COL_ETIQUETA, etiqueta)
     revision.to_csv(dir_revision / f'revision_{nombre}.csv', index=False, float_format='%.6f')
 
     # Edge Impulse: un archivo por etiqueta (y por tramo de ciclos consecutivos)
@@ -195,18 +204,18 @@ def exportar_ensayo(ens, g, origen):
         viejo.unlink()
     entradas = calculo_columnas.columnas_modelo()
     recuentos = {}
-    validos = revision[revision.uso == 'entrenamiento']
-    for etq, grupo in validos.groupby('etiqueta', sort=False):
-        tramo = (grupo.ciclo.diff() != 1).cumsum()
+    validos = revision[revision[COL_USO] == USO_ENTRENAMIENTO]
+    for etq, grupo in validos.groupby(COL_ETIQUETA, sort=False):
+        tramo = (grupo[COL_CICLO].diff() != 1).cumsum()
         partes = [p for _, p in grupo.groupby(tramo)]
         for k, parte in enumerate(partes, start=1):
             sufijo = '' if len(partes) == 1 else f'_p{k}'
             ei = parte[entradas].copy()
-            ei.insert(0, 'tiempo_ms', parte.ciclo * g['periodo_nominal_ms'])
+            ei.insert(0, COL_TIEMPO, parte[COL_CICLO] * g['periodo_nominal_ms'])
             ei.to_csv(dir_ei / f'{etq}.{nombre}{sufijo}.csv', index=False, float_format='%.6f')
-        recuentos[etq] = {'filas': int(len(grupo)), 'ciclos': [int(grupo.ciclo.min()), int(grupo.ciclo.max())]}
+        recuentos[etq] = {'filas': int(len(grupo)), 'ciclos': [int(grupo[COL_CICLO].min()), int(grupo[COL_CICLO].max())]}
         if len(partes) > 1:
-            recuentos[etq]['tramos'] = [[int(p.ciclo.min()), int(p.ciclo.max())] for p in partes]
+            recuentos[etq]['tramos'] = [[int(p[COL_CICLO].min()), int(p[COL_CICLO].max())] for p in partes]
 
     # Resumen: se conservan fecha, descripción y datos de la grabación; se reescribe "procesado"
     ruta_resumen = dir_ensayo / f'resumen_{nombre}.json'
@@ -218,9 +227,9 @@ def exportar_ensayo(ens, g, origen):
                    **{k: v for k, v in resumen.items() if k not in ('fecha', 'descripcion', 'procesado')}}
     resumen['procesado'] = {
         'ciclos_totales': int(len(col)),
-        'descartados': {k: int(v) for k, v in uso[uso != 'entrenamiento'].value_counts().items()},
+        'descartados': {k: int(v) for k, v in uso[uso != USO_ENTRENAMIENTO].value_counts().items()},
         'archivos_edge_impulse': recuentos,
-        'calibracion': {k.replace('enlace_', '').replace('salto2_', ''): {
+        'calibracion': {k.replace('link_', '').replace('hop2_', ''): {
             'referencia_m': None if c['referencia_m'] is None else round(c['referencia_m'], 4),
             'medidas': c['medidas'], 'desde_ciclo': c['desde_ciclo'], 'fijada_en_ciclo': c['fijada_en_ciclo']}
             for k, c in info['calibracion'].items()},

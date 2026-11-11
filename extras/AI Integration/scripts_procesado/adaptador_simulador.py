@@ -19,16 +19,16 @@ Archivos del simulador que usa:
 Traducción (ver README):
   - Ciclo: una vuelta del round robin. Cada vagón tiene una ranura fija de
     1/comm_rate_hz (0,25 s) y la vuelta completa dura num_wagons ranuras (1 s).
-  - Enlace c-v1: distancia UWB que mide el coordinador a v1.
-  - Enlace v(k-1)-vk: el simulador solo da distancias al coordinador, así que
-    la separación entre vecinos se obtiene restando: d(vk) - d(vk-1).
+  - Enlace c-w1: distancia UWB que mide el coordinador a w1.
+  - Enlace w(k-1)-wk: el simulador solo da distancias al coordinador, así que
+    la separación entre vecinos se obtiene restando: d(wk) - d(wk-1).
     Visto solo si se recibieron los dos vagones en el ciclo.
-  - Pares a dos saltos (salto2_*): c_v2 es la distancia del coordinador a v2 (medida directa);
-    v1_v3 y v2_v4 se obtienen por resta, igual que los enlaces entre vagones: d(v3) - d(v1) y
-    d(v4) - d(v2). Solo cuentan como vistos si se recibieron los dos vagones.
-  - IMU: solo acel_x y acel_y (lo que viaja en el informe de las placas).
+  - Pares a dos saltos (hop2_*): c_w2 es la distancia del coordinador a w2 (medida directa);
+    w1_w3 y w2_w4 se obtienen por resta, igual que los enlaces entre vagones: d(w3) - d(w1) y
+    d(w4) - d(w2). Solo cuentan como vistos si se recibieron los dos vagones.
+  - IMU: solo acc_x y acc_y (lo que viaja en el informe de las placas).
     La de cada vagón es la que viaja en su mensaje. La del coordinador, la muestra
-    de imu_crd tomada en el mismo instante en que se recibe el mensaje de v1
+    de imu_crd tomada en el mismo instante en que se recibe el mensaje de w1
     (o en su ranura, si no llegó).
 """
 
@@ -38,7 +38,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from formato_crudo import VAGONES, ENLACES, PARES_SALTO2, EJES_IMU, nombre_enlace, nombre_salto2, columnas_crudo
+from formato_crudo import (VAGONES, ENLACES, PARES_SALTO2, EJES_IMU, nombre_enlace, nombre_salto2, columnas_crudo,
+                           COL_CICLO, COL_TIEMPO, COL_DURACION, SUF_VISTO, SUF_DISTANCIA)
 
 
 # ============================== CONFIGURACIÓN ==============================
@@ -74,7 +75,7 @@ def adaptar(cfg, rx, imu):
     ticks_ranura = int(round(ranura_s / dt_imu))                   # 50 ticks
 
     rx = rx[rx.msg_type == 'data'].copy()
-    # Identificador del simulador "cK" -> posición v(K+1)
+    # Identificador del simulador "cK" -> posición w(K+1)
     rx['pos'] = rx.source_id.str[1:].astype(int)
     ids_reales = {VAGONES[k]: f'c{k}' for k in range(n_vagones)}
 
@@ -113,23 +114,23 @@ def adaptar(cfg, rx, imu):
         recibidos = set() if g is None else set(g.index)
         tick_inicio = tick_base + k * n_vagones * ticks_ranura
         t_inicio = t_de_tick[tick_inicio] - t0
-        fila = {'ciclo': k}
+        fila = {COL_CICLO: k}
 
         # Tiempo y duración del ciclo
         if recibidos:
             t_ultimo = g.t.max()
         else:
             t_ultimo = t_inicio + (n_vagones - 1) * ranura_s
-        fila['tiempo_ms'] = int(round(t_ultimo * 1000))
+        fila[COL_TIEMPO] = int(round(t_ultimo * 1000))
         # Desde el inicio de la vuelta hasta el final de la última ranura con respuesta
-        fila['duracion_ciclo_ms'] = int(round((t_ultimo - t_inicio + ranura_s) * 1000))
+        fila[COL_DURACION] = int(round((t_ultimo - t_inicio + ranura_s) * 1000))
 
         # Enlaces
         def dist(p):
             return g.loc[p, 'uwb'] if p in recibidos else np.nan
         for i, (a, b) in enumerate(ENLACES):
             e = nombre_enlace(a, b)
-            pb = i                       # posición del vagón trasero del enlace (v1 -> 0)
+            pb = i                       # posición del vagón trasero del enlace (w1 -> 0)
             if a == 'c':
                 visto = pb in recibidos
                 d = dist(pb)
@@ -137,13 +138,13 @@ def adaptar(cfg, rx, imu):
                 pa = i - 1
                 visto = pa in recibidos and pb in recibidos
                 d = dist(pb) - dist(pa) if visto else np.nan
-            fila[f'{e}_visto'] = int(visto)
-            fila[f'{e}_distancia_m'] = d
+            fila[f'{e}_{SUF_VISTO}'] = int(visto)
+            fila[f'{e}_{SUF_DISTANCIA}'] = d
 
         # Pares a dos saltos (nieto): mismo criterio que los enlaces, saltando un vehículo
         for i, (a, b) in enumerate(PARES_SALTO2):
             s = nombre_salto2(a, b)
-            pb = i + 1                   # posición del vagón trasero del par (v2 -> 1)
+            pb = i + 1                   # posición del vagón trasero del par (w2 -> 1)
             if a == 'c':
                 visto = pb in recibidos
                 d = dist(pb)
@@ -151,10 +152,10 @@ def adaptar(cfg, rx, imu):
                 pa = i - 1
                 visto = pa in recibidos and pb in recibidos
                 d = dist(pb) - dist(pa) if visto else np.nan
-            fila[f'{s}_visto'] = int(visto)
-            fila[f'{s}_distancia_m'] = d
+            fila[f'{s}_{SUF_VISTO}'] = int(visto)
+            fila[f'{s}_{SUF_DISTANCIA}'] = d
 
-        # IMU del coordinador: en el instante de recepción de v1 (o en su ranura)
+        # IMU del coordinador: en el instante de recepción de w1 (o en su ranura)
         tick_c = int(g.loc[0, 'tick']) if 0 in recibidos else tick_inicio
         for eje, col in zip(EJES_IMU, COLS_IMU_COORD):
             fila[f'c_{eje}'] = imu_por_tick.at[tick_c, col]
@@ -172,8 +173,8 @@ def adaptar(cfg, rx, imu):
                      [{'posicion': v, 'id': ids_reales[v], 'papel': 'vagón'} for v in VAGONES],
         'enlaces': [{'columna': nombre_enlace(a, b),
                      'id': f"{'crd' if a == 'c' else ids_reales[a]}-{ids_reales[b]}"} for a, b in ENLACES],
-        'imu': 'simulada por el simulador (con ruido); solo acel_x y acel_y',
-        'salto2': 'c_v2: distancia del coordinador a v2; v1_v3 y v2_v4: diferencia de las distancias al coordinador',
+        'imu': 'simulada por el simulador (con ruido); solo acc_x y acc_y',
+        'salto2': 'c_w2: distancia del coordinador a w2; w1_w3 y w2_w4: diferencia de las distancias al coordinador',
         'ciclos': int(len(crudo)),
         'periodo_nominal_ms': int(round(n_vagones * ranura_s * 1000)),
         'tiempo_cero': 'inicio de la simulación',

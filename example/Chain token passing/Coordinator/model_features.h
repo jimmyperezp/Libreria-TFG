@@ -8,14 +8,14 @@ It turns the cycle's raw data (which can be seen in the monitor using the RAW_DA
 
 This format is: 
 
-	1: For each LINK (c_v1,c_v2,c_v3,etc) (not pairs, links)
-		- [Visto][ciclos_sin_ver][desviacion_m][dif_acel_x]
+	1: For each LINK (c_w1,c_w2,c_w3,etc) (not pairs, links)
+		- [seen][unseen_cycles][deviation_m][acc_x_diff]
 
 	2: For each two-hop PAIR: 
-		- [Visto][Ciclos_sin_ver][desviacion_m]
+		- [seen][unseen_cycles][deviation_m]
 
 
-	Whatever wasn't received is set to 0. The reference distances (desviacion_m) and unseen counters (ciclos_sin_ver) come from the 
+	Whatever wasn't received is set to 0. The reference distances (deviation_m) and unseen counters (unseen_cycles) come from the 
 	link_references code.
 */
 
@@ -23,9 +23,9 @@ This format is:
 
 #include "link_references.h"
 
-#define RAW_VEHICLES 5						// Fixed positions: coordinator + 4 nodes (c, v1, v2, v3, v4)
-#define RAW_LINKS (RAW_VEHICLES - 1)		// Links between consecutive positions: c_v1, v1_v2, v2_v3, v3_v4
-#define RAW_PAIRS (RAW_VEHICLES - 2)		// Two-hop pairs (grandson): c_v2, v1_v3, v2_v4
+#define RAW_VEHICLES 5						// Fixed positions: coordinator + 4 nodes (c, w1, w2, w3, w4)
+#define RAW_LINKS (RAW_VEHICLES - 1)		// Links between consecutive positions: c_w1, w1_w2, w2_w3, w3_w4
+#define RAW_PAIRS (RAW_VEHICLES - 2)		// Two-hop pairs (grandson): c_w2, w1_w3, w2_w4
 #define NUM_FEATURES 25						// The total number of "columns" that the model will need.
 
 

@@ -7,21 +7,21 @@ El coordinador hace el mismo cálculo en C (model_features.cpp y link_references
 con las mismas columnas, en el mismo orden y con la misma calibración.
 
 Columnas de entrada al modelo (25):
-  Por cada enlace (c_v1, v1_v2, v2_v3, v3_v4), 4 columnas:
-    enlace_X_Y_visto                 1 si se recibió la medida directa del enlace en este ciclo
-    enlace_X_Y_ciclos_sin_ver        ciclos seguidos sin recibirla (0 si visto; tope 10)
-    enlace_X_Y_desviacion_m          distancia - distancia de referencia (0 si no visto o sin referencia)
-    enlace_X_Y_dif_acel_x_ms2        acel_x(trasero) - acel_x(delantero) (0 si no visto)
-  Después, por cada par a dos saltos (nieto: c_v2, v1_v3, v2_v4), 3 columnas:
-    salto2_X_Z_visto                 1 si se recibió la medida del par en este ciclo
-    salto2_X_Z_ciclos_sin_ver        ciclos seguidos sin recibirla (tope 10)
-    salto2_X_Z_desviacion_m          distancia - distancia de referencia del par (0 si no visto o sin referencia)
+  Por cada enlace (c_w1, w1_w2, w2_w3, w3_w4), 4 columnas:
+    link_X_Y_seen                    1 si se recibió la medida directa del enlace en este ciclo
+    link_X_Y_unseen_cycles           ciclos seguidos sin recibirla (0 si visto; tope 10)
+    link_X_Y_deviation_m             distancia - distancia de referencia (0 si no visto o sin referencia)
+    link_X_Y_acc_x_diff_ms2          acc_x(trasero) - acc_x(delantero) (0 si no visto)
+  Después, por cada par a dos saltos (nieto: c_w2, w1_w3, w2_w4), 3 columnas:
+    hop2_X_Z_seen                    1 si se recibió la medida del par en este ciclo
+    hop2_X_Z_unseen_cycles           ciclos seguidos sin recibirla (tope 10)
+    hop2_X_Z_deviation_m             distancia - distancia de referencia del par (0 si no visto o sin referencia)
 
 Cada columna sale de una sola medida: no se combinan enlaces y pares. Es el modelo el que aprende,
-por ejemplo, que "V2-V3 no se ve, pero V1-V3 sí y en su sitio" significa tren íntegro.
+por ejemplo, que "W2-W3 no se ve, pero W1-W3 sí y en su sitio" significa tren íntegro.
 
 Del CSV en crudo NO entran al modelo (se graban para análisis futuros): la duración del
-ciclo y la aceleración lateral (acel_y).
+ciclo y la aceleración lateral (acc_y).
 
 Distancia de referencia de cada enlace y de cada par: la misma regla que el coordinador.
   - Se calibra con las PRIMERAS medidas que se reciben de esa pareja, cuando lleguen (un nieto
@@ -37,7 +37,13 @@ Hipótesis: cuando una pareja empieza a verse, el tren está íntegro. Si no es 
 import numpy as np
 import pandas as pd
 
-from formato_crudo import ENLACES, PARES_SALTO2, nombre_enlace, nombre_salto2
+from formato_crudo import (ENLACES, PARES_SALTO2, nombre_enlace, nombre_salto2,
+                           COL_CICLO, COL_TIEMPO, SUF_VISTO, SUF_DISTANCIA, EJE_ACEL_X)
+
+# Nombres de las columnas del modelo (en inglés, iguales que FEATURE_NAMES en model_features.cpp)
+SUF_SIN_VER = 'unseen_cycles'
+SUF_DESVIACION = 'deviation_m'
+SUF_DIF_ACEL_X = 'acc_x_diff_ms2'
 
 PARAMETROS_POR_DEFECTO = {
     'ciclos_descartados_inicio': 0,
@@ -54,10 +60,10 @@ def columnas_modelo():
     cols = []
     for a, b in ENLACES:
         e = nombre_enlace(a, b)
-        cols += [f'{e}_visto', f'{e}_ciclos_sin_ver', f'{e}_desviacion_m', f'{e}_dif_acel_x_ms2']
+        cols += [f'{e}_{SUF_VISTO}', f'{e}_{SUF_SIN_VER}', f'{e}_{SUF_DESVIACION}', f'{e}_{SUF_DIF_ACEL_X}']
     for a, b in PARES_SALTO2:
         s = nombre_salto2(a, b)
-        cols += [f'{s}_visto', f'{s}_ciclos_sin_ver', f'{s}_desviacion_m']
+        cols += [f'{s}_{SUF_VISTO}', f'{s}_{SUF_SIN_VER}', f'{s}_{SUF_DESVIACION}']
     return cols
 
 
@@ -68,7 +74,7 @@ def medidas_calibradas():
 
 def calcular_medida(ciclo, visto, distancia, p):
     """Para una medida (enlace o par), ciclo a ciclo y como el coordinador:
-    devuelve (ciclos_sin_ver, desviacion_m, info de su calibración)."""
+    devuelve (unseen_cycles, deviation_m, info de su calibración)."""
     n_cal, n_min, tope = p['calibracion_n_medidas'], p['calibracion_min_medidas'], p['tope_ciclos_sin_ver']
     muestras, ciclos_muestras = [], []
     referencia, fija, sin_ver = None, False, 0
@@ -103,7 +109,7 @@ def avisos(calibracion, p):
     """Avisos de calibración que se pueden dar sin conocer las etiquetas (tardía, incompleta, sin referencia)."""
     out = []
     for nombre, c in calibracion.items():
-        corto = nombre.replace('enlace_', '').replace('salto2_', '')
+        corto = nombre.replace('link_', '').replace('hop2_', '')
         if c['referencia_m'] is None:
             out.append(f'{corto}: sin referencia en todo el ensayo ({c["medidas"]} medidas de calibración)')
             continue
@@ -116,25 +122,26 @@ def avisos(calibracion, p):
 
 
 def calcular(crudo, parametros=None):
-    """Devuelve (DataFrame con ciclo, tiempo_ms y las 25 columnas, info de calibración)."""
+    """Devuelve (DataFrame con cycle, time_ms y las 25 columnas, info de calibración)."""
     p = dict(PARAMETROS_POR_DEFECTO, **(parametros or {}))
-    crudo = crudo.sort_values('ciclo').reset_index(drop=True)
-    out = pd.DataFrame({'ciclo': crudo.ciclo, 'tiempo_ms': crudo.tiempo_ms})
+    crudo = crudo.sort_values(COL_CICLO).reset_index(drop=True)
+    out = pd.DataFrame({COL_CICLO: crudo[COL_CICLO], COL_TIEMPO: crudo[COL_TIEMPO]})
     calibracion = {}
 
     for nombre in medidas_calibradas():
-        visto = (crudo[f'{nombre}_visto'] == 1).values
-        sin_ver, desv, calibracion[nombre] = calcular_medida(crudo.ciclo.values, visto,
-                                                             crudo[f'{nombre}_distancia_m'].values, p)
-        out[f'{nombre}_visto'] = visto.astype(int)
-        out[f'{nombre}_ciclos_sin_ver'] = sin_ver
-        out[f'{nombre}_desviacion_m'] = desv
+        visto = (crudo[f'{nombre}_{SUF_VISTO}'] == 1).values
+        sin_ver, desv, calibracion[nombre] = calcular_medida(crudo[COL_CICLO].values, visto,
+                                                             crudo[f'{nombre}_{SUF_DISTANCIA}'].values, p)
+        out[f'{nombre}_{SUF_VISTO}'] = visto.astype(int)
+        out[f'{nombre}_{SUF_SIN_VER}'] = sin_ver
+        out[f'{nombre}_{SUF_DESVIACION}'] = desv
 
     # Diferencia de aceleración longitudinal: solo en los enlaces
     for a, b in ENLACES:
         e = nombre_enlace(a, b)
-        ok = (out[f'{e}_visto'] == 1) & crudo[f'{a}_acel_x_ms2'].notna() & crudo[f'{b}_acel_x_ms2'].notna()
-        out[f'{e}_dif_acel_x_ms2'] = np.where(ok, crudo[f'{b}_acel_x_ms2'] - crudo[f'{a}_acel_x_ms2'], 0.0)
+        ax_a, ax_b = crudo[f'{a}_{EJE_ACEL_X}'], crudo[f'{b}_{EJE_ACEL_X}']
+        ok = (out[f'{e}_{SUF_VISTO}'] == 1) & ax_a.notna() & ax_b.notna()
+        out[f'{e}_{SUF_DIF_ACEL_X}'] = np.where(ok, ax_b - ax_a, 0.0)
 
     info = {'calibracion': calibracion, 'avisos_calibracion': avisos(calibracion, p), 'parametros': p}
-    return out[['ciclo', 'tiempo_ms'] + columnas_modelo()], info
+    return out[[COL_CICLO, COL_TIEMPO] + columnas_modelo()], info

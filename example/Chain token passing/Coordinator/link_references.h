@@ -1,7 +1,7 @@
 /*LINK REFERENCES
 
 For every pair of devices, this saves a reference value for the distance between them. 
-The TinyML model will use that reference distancec to calculate how off the link is (desviacion_m = distance measured - reference).
+The TinyML model will use that reference distancec to calculate how off the link is (deviation_m = distance measured - reference).
 This way, the model doesn't learn "21m is OK", but "variations of around 3cm are normal".
 
 The Pairs include every link of the composition (consecutive devices, e.g. B2-B3) and every two-hop pair (a node with its
@@ -16,7 +16,7 @@ In order to save these reference measurements,
 	- The references are stored by pair (for example, between B2 and B3). This way, if the composition changes, the pairs 
 	  that still exist keep their reference value, and only the new ones need to calibrate.
 
-The link_references (.h and .cpp) also keep, for every pair, how many consecutive cycles it has gone unseen (ciclos_sin_ver, capped at
+The link_references (.h and .cpp) also keep, for every pair, how many consecutive cycles it has gone unseen (unseen_cycles, capped at
 UNSEEN_CYCLES_CAP), which is another input of the model.
 */
 
@@ -26,7 +26,7 @@ UNSEEN_CYCLES_CAP), which is another input of the model.
 
 #define LINK_REF_SAMPLES 30			// Number of measures used to calibrate each reference.
 #define LINK_REF_MIN_SAMPLES 3		// The minimum of references needed to calibrate a measure. Below 3, then it isn't used (deviation = 0).
-#define UNSEEN_CYCLES_CAP 10		// The (ciclos_sin_ver) has a limit so that the model doesn't give it too much weight.
+#define UNSEEN_CYCLES_CAP 10		// The (unseen_cycles) has a limit so that the model doesn't give it too much weight.
 #define MAX_LINK_REFS 12			// Pairs stored. When full, pairs not in the composition are reused
 
 

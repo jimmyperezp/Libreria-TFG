@@ -396,3 +396,37 @@ un crudo antiguo y con uno nuevo). Lo que ya no aceptaría el grabador es grabar
 **Verificación (PC).** Simulador reexportado (mismos recuentos). C frente a Python con los tres crudos: mismos
 nombres y orden, diferencia máxima 3·10⁻⁵. Simulación de la cadena correcta, con la cabecera y la fila nuevas.
 El coordinador compila con `REPORT_TYPE` distinto del de modo modelo. Grabador y exportador con la cabecera nueva.
+
+
+## 9. Nombres de columnas en inglés
+
+Para que el código y los datos que comparte con el firmware usen nombres estándar, las columnas pasan al inglés. Los
+nombres de carpetas y archivos, los registros de ensayos (JSON), los resúmenes, las variables de configuración, los
+comentarios y la documentación no cambian.
+
+| Antes | Ahora |
+|---|---|
+| posiciones `c, v1…v4` | `c, w1…w4` (*wagon*) |
+| `ciclo`, `tiempo_ms`, `duracion_ciclo_ms` | `cycle`, `time_ms`, `cycle_duration_ms` |
+| `enlace_X_Y_…` / `salto2_X_Z_…` | `link_X_Y_…` / `hop2_X_Z_…` |
+| `_visto`, `_distancia_m` | `_seen`, `_distance_m` |
+| `X_acel_x_ms2`, `X_acel_y_ms2` | `X_acc_x_ms2`, `X_acc_y_ms2` |
+| `_ciclos_sin_ver`, `_desviacion_m`, `_dif_acel_x_ms2` | `_unseen_cycles`, `_deviation_m`, `_acc_x_diff_ms2` |
+| revisión: `uso`, `etiqueta` | `use`, `label` |
+| usos: `entrenamiento`, `descartado_arranque`, `descartado_fin`, `sin_etiqueta` | `training`, `discarded_startup`, `discarded_end`, `unlabeled` |
+| marcas: `desde_ciclo`, `tiempo_ms_coordinador`, `fase`, `hora_pc` | `from_cycle`, `coordinator_time_ms`, `phase`, `pc_time` |
+
+Ejemplo: `enlace_v2_v3_ciclos_sin_ver` → `link_w2_w3_unseen_cycles`.
+
+**Dónde.** Firmware: `printRawHeader()`, `RAW_POSITION_NAMES`, `RAW_IMU_AXES`, `FEATURE_NAMES` y `printFeaturesHeader()`.
+Scripts: los nombres están definidos una sola vez en `formato_crudo.py` (crudo y marcas), `calculo_columnas.py`
+(entradas del modelo) y `exportar_edge_impulse.py` (uso y etiqueta), y el resto los importa.
+
+**Consecuencias.** Las grabaciones hechas con los nombres anteriores ya no se pueden exportar sin renombrar sus
+columnas. Hay que cargar el firmware nuevo en el coordinador (el grabador comprueba la cabecera) y regenerar los
+datos procesados del simulador.
+
+**Verificación (PC).** Los tres ensayos del simulador reexportados dan exactamente los mismos valores, uso y etiqueta
+que antes, con los nombres nuevos. La cabecera `RAW_HEADER` del coordinador coincide con `formato_crudo.py`. C frente a
+Python: mismos nombres y orden en las 25 entradas, diferencia máxima 3·10⁻⁵. Grabación simulada: marcas con las
+columnas nuevas, exportación con el aviso de calibración esperado.

@@ -91,10 +91,10 @@ placas ─────grabador_serie───────►┘
 | Archivo | Lo escribe | Contenido |
 |---|---|---|
 | `crudo/crudo_<ensayo>.csv` | grabador / adaptador | Una fila por ciclo con lo observado (formato abajo) |
-| `crudo/marcas_<ensayo>.csv` | grabador (placas) | Una fila por marca de fase: `desde_ciclo`, `tiempo_ms_coordinador`, `fase`, `hora_pc` |
+| `crudo/marcas_<ensayo>.csv` | grabador (placas) | Una fila por marca de fase: `from_cycle`, `coordinator_time_ms`, `phase`, `pc_time` |
 | `crudo/monitor_<ensayo>.txt` | grabador (placas) | Todo el monitor serie del coordinador, con la hora del PC en cada línea |
 | `crudo/composicion_<ensayo>.json` | adaptador (simulador) | Qué dispositivo ocupa cada posición y cómo se generó el crudo |
-| `revision/revision_<ensayo>.csv` | exportador | **Todos** los ciclos con las 25 columnas del modelo, más `uso` y `etiqueta`. Sirve para revisar el cálculo y el etiquetado, y para hacer figuras. No se sube a Edge Impulse |
+| `revision/revision_<ensayo>.csv` | exportador | **Todos** los ciclos con las 25 columnas del modelo, más `use` y `label`. Sirve para revisar el cálculo y el etiquetado, y para hacer figuras. No se sube a Edge Impulse |
 | `edge_impulse/<ETIQUETA>.<ensayo>.csv` | exportador | **Los CSV de entrenamiento**: solo los ciclos de entrenamiento, un archivo por etiqueta |
 | `resumen_<ensayo>.json` | grabador + exportador | El archivo del ensayo que se abre a mano (ver abajo) |
 
@@ -108,7 +108,7 @@ placas ─────grabador_serie───────►┘
                  "motivo_fin": "tecla de salida", "filas_crudo": 412, "ciclos_perdidos": 2,
                  "lineas_corruptas": 0, "marcas": 2, "cabecera_validada": true, ... },
   "procesado": { "ciclos_totales": 412, "descartados": {...}, "archivos_edge_impulse": {...},
-                 "calibracion": { "c_v1": {"referencia_m": 21.47, "medidas": 30, "desde_ciclo": 0,
+                 "calibracion": { "c_w1": {"referencia_m": 21.47, "medidas": 30, "desde_ciclo": 0,
                                            "fijada_en_ciclo": 29}, ... },
                  "avisos_calibracion": [] }
 }
@@ -189,53 +189,53 @@ Se escribe **a mano**: tiene lo que no se puede deducir de los datos del simulad
 ## Formato del CSV en crudo
 
 Una fila por ciclo. Columnas fijas para 5 vehículos, **por posición** en el tren: el coordinador (`c`)
-y cuatro vagones (`v1`…`v4`). Definido en `formato_crudo.py`.
+y cuatro vagones (`w1`…`w4`, de *wagon*). Definido en `formato_crudo.py`.
 
 | Columnas | Contenido |
 |---|---|
-| `ciclo`, `tiempo_ms`, `duracion_ciclo_ms` | Número de ciclo, instante de fin (reloj del coordinador o del simulador) y duración |
-| `enlace_X_Y_visto`, `_distancia_m` | Por cada enlace entre vehículos consecutivos (`c_v1`, `v1_v2`, `v2_v3`, `v3_v4`) |
-| `salto2_X_Z_visto`, `_distancia_m` | Por cada par a dos saltos, es decir, cada vehículo con su nieto (`c_v2`, `v1_v3`, `v2_v4`) |
-| `X_acel_x_ms2`, `X_acel_y_ms2` | Por cada vehículo: aceleración longitudinal y lateral |
+| `cycle`, `time_ms`, `cycle_duration_ms` | Número de ciclo, instante de fin (reloj del coordinador o del simulador) y duración |
+| `link_X_Y_seen`, `_distance_m` | Por cada enlace entre vehículos consecutivos (`c_w1`, `w1_w2`, `w2_w3`, `w3_w4`) |
+| `hop2_X_Z_seen`, `_distance_m` | Por cada par a dos saltos, es decir, cada vehículo con su nieto (`c_w2`, `w1_w3`, `w2_w4`) |
+| `X_acc_x_ms2`, `X_acc_y_ms2` | Por cada vehículo: aceleración longitudinal y lateral |
 
 - **Contenido:** lo que trae el informe de modo modelo (las distancias de cada nodo con su hijo y su nieto, y
   ax/ay), más la duración del ciclo, que mide el coordinador. La fila en crudo solo se genera con ese informe
   (`USE_TINYML_MODEL` en el coordinador). No hay potencia RX: no viaja en el informe y no se usa.
-- Lo no recibido es una celda vacía, con `visto = 0`.
+- Lo no recibido es una celda vacía, con `seen = 0`.
 - **Pares a dos saltos:**
-  - en las placas, `c_v2` es la medida del coordinador con v2, y `v1_v3` y `v2_v4` son las medidas de cada
+  - en las placas, `c_w2` es la medida del coordinador con w2, y `w1_w3` y `w2_w4` son las medidas de cada
     nodo con su nieto que llegan en el informe de modo modelo;
-  - en el simulador, `c_v2` es la distancia del coordinador a v2, y `v1_v3` y `v2_v4` salen por resta
+  - en el simulador, `c_w2` es la distancia del coordinador a w2, y `w1_w3` y `w2_w4` salen por resta
     (ver el adaptador, más abajo).
-- La IMU solo lleva `acel_x` y `acel_y`, que son los ejes que viajan en el informe. Mientras las placas
+- La IMU solo lleva `acc_x` y `acc_y`, que son los ejes que viajan en el informe. Mientras las placas
   no tengan IMU, valen 0.
 
 ## Columnas del modelo (25)
 
 En este orden (`calculo_columnas.py`, y la misma versión en C en `model_features.cpp` del coordinador).
 
-**Por cada enlace** (`c_v1`, `v1_v2`, `v2_v3`, `v3_v4`), 4 columnas:
+**Por cada enlace** (`c_w1`, `w1_w2`, `w2_w3`, `w3_w4`), 4 columnas:
 
 | Columna | Cálculo |
 |---|---|
-| `enlace_X_Y_visto` | 1 si se recibió la medida directa del enlace en el ciclo |
-| `enlace_X_Y_ciclos_sin_ver` | Ciclos seguidos sin recibirla (0 si visto; tope en `tope_ciclos_sin_ver`) |
-| `enlace_X_Y_desviacion_m` | Distancia − distancia de referencia del enlace (0 si no visto o sin referencia) |
-| `enlace_X_Y_dif_acel_x_ms2` | `acel_x` del vehículo trasero − la del delantero (0 si no visto) |
+| `link_X_Y_seen` | 1 si se recibió la medida directa del enlace en el ciclo |
+| `link_X_Y_unseen_cycles` | Ciclos seguidos sin recibirla (0 si visto; tope en `tope_ciclos_sin_ver`) |
+| `link_X_Y_deviation_m` | Distancia − distancia de referencia del enlace (0 si no visto o sin referencia) |
+| `link_X_Y_acc_x_diff_ms2` | `acc_x` del vehículo trasero − la del delantero (0 si no visto) |
 
-**Después, por cada par a dos saltos** (nieto: `c_v2`, `v1_v3`, `v2_v4`), 3 columnas:
+**Después, por cada par a dos saltos** (nieto: `c_w2`, `w1_w3`, `w2_w4`), 3 columnas:
 
 | Columna | Cálculo |
 |---|---|
-| `salto2_X_Z_visto` | 1 si se recibió la medida del par en el ciclo |
-| `salto2_X_Z_ciclos_sin_ver` | Ciclos seguidos sin recibirla (tope en `tope_ciclos_sin_ver`) |
-| `salto2_X_Z_desviacion_m` | Distancia − distancia de referencia del par (0 si no visto o sin referencia) |
+| `hop2_X_Z_seen` | 1 si se recibió la medida del par en el ciclo |
+| `hop2_X_Z_unseen_cycles` | Ciclos seguidos sin recibirla (tope en `tope_ciclos_sin_ver`) |
+| `hop2_X_Z_deviation_m` | Distancia − distancia de referencia del par (0 si no visto o sin referencia) |
 
 - **Cada columna sale de una sola medida:** no se combinan enlaces y pares. Es el modelo el que aprende, por
   ejemplo, que «V2–V3 no se ve, pero V1–V3 sí y en su sitio» significa tren íntegro (redundancia del nieto).
   Para aprenderlo necesita ejemplos de enlaces perdidos con el tren íntegro (nodos apagados, fallos de radio).
 - **No entran al modelo**, pero se graban en el crudo por si entran en el futuro: la duración del ciclo
-  y `acel_y`. El porqué de esta selección está en `registro_cambios.md` (apartados 2 y 6).
+  y `acc_y`. El porqué de esta selección está en `registro_cambios.md` (apartados 2 y 6).
 
 ### Calibración (distancia de referencia)
 
@@ -255,10 +255,10 @@ del resumen y en la consola:
 
 | Aviso | Qué significa |
 |---|---|
-| `v1_v3: calibrado a partir del ciclo 85` | Empezó a verse más de 10 ciclos después del inicio. En un par puede ser normal; en un enlace suele ser un nodo que entró o se reinició a mitad de ensayo |
-| `v2_v4: solo 12 de 30 medidas de calibración; referencia provisional` | No llegó a 30 medidas: su referencia es provisional (menos fiable) en todo el ensayo |
-| `v3_v4: sin referencia en todo el ensayo (0 medidas de calibración)` | Menos de 3 medidas: su desviación vale 0 en todo el ensayo. En un enlace casi siempre indica un problema |
-| `v1_v3: 8 de sus 30 medidas de calibración son de fase LOST_INTEGRITY` | Se calibró, en parte, con el tren no íntegro: su referencia y sus desviaciones pueden estar mal |
+| `w1_w3: calibrado a partir del ciclo 85` | Empezó a verse más de 10 ciclos después del inicio. En un par puede ser normal; en un enlace suele ser un nodo que entró o se reinició a mitad de ensayo |
+| `w2_w4: solo 12 de 30 medidas de calibración; referencia provisional` | No llegó a 30 medidas: su referencia es provisional (menos fiable) en todo el ensayo |
+| `w3_w4: sin referencia en todo el ensayo (0 medidas de calibración)` | Menos de 3 medidas: su desviación vale 0 en todo el ensayo. En un enlace casi siempre indica un problema |
+| `w1_w3: 8 de sus 30 medidas de calibración son de fase LOST_INTEGRITY` | Se calibró, en parte, con el tren no íntegro: su referencia y sus desviaciones pueden estar mal |
 
 ## Etiquetado y exportación
 
@@ -266,16 +266,16 @@ Cada ciclo recibe un **uso** y una **etiqueta**, que se ven en el archivo de rev
 
 | Uso | Ciclos |
 |---|---|
-| `descartado_arranque` | Los primeros `ciclos_descartados_inicio` (en el simulador, 0–2: transitorio de arranque con aceleraciones de hasta −125 m/s²) |
-| `descartado_fin` | Desde `fin_s` (solo simulador) |
-| `sin_etiqueta` | Antes de la primera marca (solo placas) |
-| `entrenamiento` | El resto. **Solo estos van a Edge Impulse** |
+| `discarded_startup` | Los primeros `ciclos_descartados_inicio` (en el simulador, 0–2: transitorio de arranque con aceleraciones de hasta −125 m/s²) |
+| `discarded_end` | Desde `fin_s` (solo simulador) |
+| `unlabeled` | Antes de la primera marca (solo placas) |
+| `training` | El resto. **Solo estos van a Edge Impulse** |
 
 - **Etiqueta en el simulador:** OK hasta el evento. Desde el primer ciclo que termina después de `evento_s`, `etiqueta_tras_evento`.
 - **Etiqueta en las placas:** cada ciclo lleva la fase de la última marca anterior o igual a él. Admite
   cualquier número de fases. Si una marca se pulsó tarde, se corrige su línea en el archivo de marcas y se reexporta.
 - **Formato para Edge Impulse:**
-  - Primera columna, `tiempo_ms`: nominal y equiespaciado (ciclo × `periodo_nominal_ms`), porque Edge Impulse
+  - Primera columna, `time_ms`: nominal y equiespaciado (`cycle` × `periodo_nominal_ms`), porque Edge Impulse
     supone muestras equiespaciadas. Con ventanas de una fila no afecta al modelo, y así todos los datos del
     proyecto tienen la misma frecuencia.
   - Después, las 25 columnas, en el orden de las tablas anteriores.
@@ -289,15 +289,15 @@ Cada ciclo recibe un **uso** y una **etiqueta**, que se ven en el archivo de rev
 - **Ciclo.** Una vuelta del round robin. Cada vagón tiene una ranura fija de 0,25 s y una vuelta dura 1 s. Los
   mensajes se asignan a su ciclo por el número de ranura, así que no depende de redondeos de tiempo.
 - **Tiempo cero.** El inicio de la simulación, que es la referencia de los instantes de fallo del simulador.
-- **`tiempo_ms`** es el instante del último mensaje recibido en el ciclo. **`duracion_ciclo_ms`** va desde el inicio
+- **`time_ms`** es el instante del último mensaje recibido en el ciclo. **`cycle_duration_ms`** va desde el inicio
   de la vuelta hasta el final de la última ranura con respuesta.
-- **Enlace c–v1.** Distancia medida por el coordinador a v1.
+- **Enlace c–w1.** Distancia medida por el coordinador a w1.
 - **Enlaces entre vagones.** El simulador solo da distancias al coordinador, así que la separación se obtiene por
-  resta: d(vk) − d(vk−1). Solo cuenta como visto si se recibieron los dos vagones.
-- **Pares a dos saltos.** `c_v2` es la distancia del coordinador a v2. `v1_v3` y `v2_v4` salen por resta, igual que
-  los enlaces: d(v3) − d(v1) y d(v4) − d(v2), y solo cuentan como vistos si se recibieron los dos vagones.
+  resta: d(wk) − d(wk−1). Solo cuenta como visto si se recibieron los dos vagones.
+- **Pares a dos saltos.** `c_w2` es la distancia del coordinador a w2. `w1_w3` y `w2_w4` salen por resta, igual que
+  los enlaces: d(w3) − d(w1) y d(w4) − d(w2), y solo cuentan como vistos si se recibieron los dos vagones.
 - **IMU.** La de cada vagón viene en su mensaje. La del coordinador es la muestra de su propia IMU en el instante
-  en que recibe a v1. Solo se pasan `acel_x` y `acel_y`.
+  en que recibe a w1. Solo se pasan `acc_x` y `acc_y`.
 - **Último ciclo.** Se descarta si el registro termina a mitad de él.
 
 ## Grabador: protecciones

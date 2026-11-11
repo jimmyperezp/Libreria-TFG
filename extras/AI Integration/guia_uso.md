@@ -65,7 +65,7 @@ Los CSV para subir están en `datasets_procesados/placas/<ensayo>/edge_impulse/`
 
 **Normalmente se exporta solo el ensayo nuevo.** `'TODOS'` sirve cuando hay que rehacer todo (apartado 5).
 
-**Corregir una marca:** si pulsaste una tecla tarde, edita su `desde_ciclo` en
+**Corregir una marca:** si pulsaste una tecla tarde, edita su `from_cycle` en
 `crudo/marcas_<ensayo>.csv` y vuelve a exportar ese ensayo.
 
 ---

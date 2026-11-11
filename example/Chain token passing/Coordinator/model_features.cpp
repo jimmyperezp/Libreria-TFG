@@ -3,13 +3,13 @@
 #include "model_features.h"
 
 static const char* FEATURE_NAMES[NUM_FEATURES] = {
-	"enlace_c_v1_visto",  "enlace_c_v1_ciclos_sin_ver",  "enlace_c_v1_desviacion_m",  "enlace_c_v1_dif_acel_x_ms2",
-	"enlace_v1_v2_visto", "enlace_v1_v2_ciclos_sin_ver", "enlace_v1_v2_desviacion_m", "enlace_v1_v2_dif_acel_x_ms2",
-	"enlace_v2_v3_visto", "enlace_v2_v3_ciclos_sin_ver", "enlace_v2_v3_desviacion_m", "enlace_v2_v3_dif_acel_x_ms2",
-	"enlace_v3_v4_visto", "enlace_v3_v4_ciclos_sin_ver", "enlace_v3_v4_desviacion_m", "enlace_v3_v4_dif_acel_x_ms2",
-	"salto2_c_v2_visto",  "salto2_c_v2_ciclos_sin_ver",  "salto2_c_v2_desviacion_m",
-	"salto2_v1_v3_visto", "salto2_v1_v3_ciclos_sin_ver", "salto2_v1_v3_desviacion_m",
-	"salto2_v2_v4_visto", "salto2_v2_v4_ciclos_sin_ver", "salto2_v2_v4_desviacion_m"
+	"link_c_w1_seen",  "link_c_w1_unseen_cycles",  "link_c_w1_deviation_m",  "link_c_w1_acc_x_diff_ms2",
+	"link_w1_w2_seen", "link_w1_w2_unseen_cycles", "link_w1_w2_deviation_m", "link_w1_w2_acc_x_diff_ms2",
+	"link_w2_w3_seen", "link_w2_w3_unseen_cycles", "link_w2_w3_deviation_m", "link_w2_w3_acc_x_diff_ms2",
+	"link_w3_w4_seen", "link_w3_w4_unseen_cycles", "link_w3_w4_deviation_m", "link_w3_w4_acc_x_diff_ms2",
+	"hop2_c_w2_seen",  "hop2_c_w2_unseen_cycles",  "hop2_c_w2_deviation_m",
+	"hop2_w1_w3_seen", "hop2_w1_w3_unseen_cycles", "hop2_w1_w3_deviation_m",
+	"hop2_w2_w4_seen", "hop2_w2_w4_unseen_cycles", "hop2_w2_w4_deviation_m"
 };
 
 const char* featureName(int i){
@@ -29,17 +29,17 @@ void computeFeatures(const RawRow &row, LinkReferenceTable &references, float fe
 		LinkReference* ref = positions_exist ? findLinkReference(references, row.ids[i], row.ids[i+1]) : nullptr;
 		bool seen = positions_exist && row.link_seen[i];
 
-		// visto
+		// seen
 		features[f++] = seen ? 1.0f : 0.0f;
 
-		// ciclos_sin_ver (a position without device counts as never seen: the cap)
+		// unseen_cycles (a position without device counts as never seen: the cap)
 		features[f++] = (ref != nullptr) ? (float)ref->unseen_cycles : (float)UNSEEN_CYCLES_CAP;
 
-		// desviacion_m (0 if not seen, or if the reference isn't usable yet)
+		// deviation_m (0 if not seen, or if the reference isn't usable yet)
 		if(seen && ref != nullptr && linkReferenceReady(*ref)) features[f++] = row.link_distance[i] - ref->reference;
 		else features[f++] = 0.0f;
 
-		// dif_acel_x_ms2 = rear - front (0 if the link isn't seen or one IMU is missing)
+		// acc_x_diff_ms2 = rear - front (0 if the link isn't seen or one IMU is missing)
 		if(seen && row.imu_received[i] && row.imu_received[i+1]) features[f++] = row.acc[i+1][0] - row.acc[i][0];
 		else features[f++] = 0.0f;
 	}

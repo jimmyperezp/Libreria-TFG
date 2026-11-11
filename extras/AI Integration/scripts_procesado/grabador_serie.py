@@ -16,7 +16,7 @@ Si ya existe un ensayo con ese nombre, pregunta si se sobrescribe (se borra ente
 
 Marcas de fase: durante la grabación, pulsa una de las teclas definidas en TECLAS
 (por defecto: 0 = OK, 1 = LOST_INTEGRITY). La marca se guarda con el RELOJ DEL COORDINADOR:
-la fase nueva empieza en el ciclo siguiente al último recibido (columna desde_ciclo).
+la fase nueva empieza en el ciclo siguiente al último recibido (columna from_cycle).
 Al empezar se pone automáticamente una marca con la fase inicial (FASE_INICIAL).
 
 Para terminar: la tecla de salida (por defecto q) o Ctrl+C. Los archivos se escriben línea a
@@ -35,7 +35,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from formato_crudo import columnas_crudo
+from formato_crudo import columnas_crudo, COLUMNAS_MARCAS
 
 
 # ============================== CONFIGURACIÓN ==============================
@@ -99,7 +99,7 @@ class Grabador:
         self.w_crudo = csv.writer(self.f_crudo)
         self.w_marcas = csv.writer(self.f_marcas)
         self.w_crudo.writerow(self.columnas)
-        self.w_marcas.writerow(['desde_ciclo', 'tiempo_ms_coordinador', 'fase', 'hora_pc'])
+        self.w_marcas.writerow(COLUMNAS_MARCAS)
 
         self.info = dict(info, inicio=self.fecha.isoformat(timespec='seconds'))
         self.cabecera_validada = False
