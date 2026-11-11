@@ -846,7 +846,15 @@ void showData(){
             if(b.num_measures == 2){ Serial.print("\t Grandson: "); Serial.print(b.grandson_addr,HEX); }
             Serial.print("\t Acc x, y [m/s2]: "); Serial.print(b.acc_x,3); Serial.print(", "); Serial.println(b.acc_y,3);
         }
+
+        Serial.print("IMU Blocks received\n");
+        for(int i = 0; i < amount_received_blocks; i++){
+            NodeBlock &b = received_blocks[i];
+            Serial.print(" Node: "); Serial.print(b.addr,HEX);
+            Serial.print("\t Acc x, y [m/s2]: "); Serial.print(b.acc_x,3); Serial.print(", "); Serial.println(b.acc_y,3);
+        }
     }
+
 
     if(inactive_measures_exist == true){
         Serial.println("\n\t    ############ INACTIVE MEASURES ############");
