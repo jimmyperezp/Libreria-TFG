@@ -2,7 +2,7 @@
 .codex/
 __pycache__/
 
-datasets_procesados/
+**/datasets_procesados/*
 **/datasets_simulador/*
 !**/datasets_simulador/readme.md
 # Ensayos completos del simulador: pesan mucho y no se suben (solo su readme)s
