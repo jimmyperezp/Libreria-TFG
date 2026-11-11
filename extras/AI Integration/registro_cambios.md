@@ -430,3 +430,28 @@ datos procesados del simulador.
 que antes, con los nombres nuevos. La cabecera `RAW_HEADER` del coordinador coincide con `formato_crudo.py`. C frente a
 Python: mismos nombres y orden en las 25 entradas, diferencia máxima 3·10⁻⁵. Grabación simulada: marcas con las
 columnas nuevas, exportación con el aviso de calibración esperado.
+
+
+## 10. Informe legible: un bloque por ciclo
+
+**Antes.** Cada ciclo imprimía dos bloques separados: la composición (`showComposition()`, desde `processCycle()`) y,
+después, el DATA REPORT (`showData()`, desde `END_CYCLE`). La composición salía antes del informe de su propio ciclo,
+así que lo que aparecía justo debajo de un DATA REPORT era la composición del ciclo siguiente. Además, el DATA REPORT
+mostraba su propio tiempo («Time since last print») y un «Cycle n/10» que era en realidad el contador de intentos de
+descubrimiento, no el número de ciclo.
+
+**Ahora.** Un único bloque por ciclo, `showCycle()`, llamado desde `processCycle()`:
+
+```
+=========================== CYCLE 125 | 1412 ms ===========================
+ COMPOSITION    guardada y observada, comparación y evento
+ LINKS          cada enlace y par con el nieto: visto, distancia y referencia
+ DATA REPORT    medidas del ciclo, bloques de nodo, IMU recibida, medidas inactivas
+============================================================================
+RAW_DATA:125,...
+```
+
+- Un solo número de ciclo (el real) y una sola duración.
+- `COMPOSITION_OUTPUT` controla las secciones COMPOSITION y LINKS; `READABLE_OUTPUT`, la sección DATA REPORT.
+- La línea `RAW_DATA` sale justo debajo del bloque; el grabador la encuentra igual (filtra por el prefijo).
+- Se eliminan `showComposition()`, `showData()` y la variable `last_shown_data_timestamp`.

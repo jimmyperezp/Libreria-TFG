@@ -18,10 +18,10 @@ const uint8_t PIN_IRQ = 34; // irq pin
 const uint8_t PIN_SS = 4;   // spi select pin
 
 #define DEBUG_COORDINATOR false
-#define READABLE_OUTPUT true        // Shows the data reports in a human readable format.
+#define READABLE_OUTPUT true        // Shows the data report of each cycle in a human readable format (DATA REPORT section of the cycle block)
 #define KAMADA_KAWAI_PLOTTING false // Shows a JSON file to draw the nodes using Kamada-Kawai's algorithm
 #define RX_DISTANCE_PLOTTING false  // Shows a CSV output to graph the relationship between RX power & distance
-#define COMPOSITION_OUTPUT true     // Shows, every cycle, the train composition, the state of each link and the observed chain
+#define COMPOSITION_OUTPUT true     // Shows, every cycle, the train composition and the state of each link (COMPOSITION and LINKS sections)
 #define RAW_DATA_OUTPUT true        // Prints every cycle a CSV row ("RAW_DATA:"). The python script will read it & build the CSVs
 #define FEATURES_OUTPUT false       // Shows the values that will "enter" the TinyML model. Not very useful
 #define AI_DEPLOYMENT false         // Runs the TinyML model every cycle (src/tinyML_inferencing.h) and shows the predicted train status
@@ -118,7 +118,6 @@ NodeBlock received_blocks[MAX_NODE_BLOCKS];   // Blocks of the last model data r
 uint8_t amount_received_blocks = 0;
 
 /*Used to print results*/
-unsigned long last_shown_data_timestamp = 0;    
 unsigned long last_KK_plot_timestamp = 0;       //Last moment the Kamada-Kawai (KK) plot was made.
 
 /*States used in the FSM*/
@@ -794,90 +793,6 @@ void modelDataReport(byte* data){
     state = END_CYCLE;
 }
 
-void showData(){
-
-    bool inactive_measures_exist = false;
-
-    Serial.println("\n--------------------------- DATA REPORT ---------------------------");
-    Serial.print("                    Report type: ");
-    Serial.println(REPORT_TYPE == DATA_REPORT_MODEL ? "MODEL (son + grandson, acc x/y)" : "UNKNOWN");
-    
-    unsigned long time_between_prints = current_time - last_shown_data_timestamp;
-    last_shown_data_timestamp = current_time;
-    Serial.print("                             Cycle ");Serial.print(discovery_attempts);Serial.print("/");Serial.println(UPDATE_DISCOVERY_ATTEMPTS);
-    Serial.print("                   Time since last print --> ");
-    Serial.print(time_between_prints);
-    Serial.println(" ms\n");
-
-    for (int i = 0; i < amount_measurements ; i++){ 
-        
-        if(measurements[i].active == true){
-            Serial.print(" Devices: ");
-            Serial.print(measurements[i].short_addr_origin,HEX);
-            Serial.print(" -> ");
-            Serial.print(measurements[i].short_addr_dest,HEX);
-            if(measurements[i].hop == 1) Serial.print("  (son)     ");
-            else if(measurements[i].hop == 2) Serial.print("  (grandson)");
-            else Serial.print("            ");
-            Serial.print("\t Distance: ");
-            Serial.print(measurements[i].distance);
-            Serial.print(" m");
-            if(!isnan(measurements[i].rxPower)){ Serial.print(" \t RX power: "); Serial.print(measurements[i].rxPower); Serial.print(" dBm"); }
-            Serial.println();
-        }
-    }
-
-    for (int i = 0; i < amount_measurements ; i++){ 
-        
-        if(measurements[i].active == false){
-            inactive_measures_exist = true;
-            break;
-        }
-    }
-
-    if(REPORT_TYPE == DATA_REPORT_MODEL){
-        Serial.print("\n Node blocks received: "); Serial.println(amount_received_blocks);
-        for(int i = 0; i < amount_received_blocks; i++){
-            NodeBlock &b = received_blocks[i];
-            Serial.print(" Node: "); Serial.print(b.addr,HEX);
-            Serial.print("\t Measures: "); Serial.print(b.num_measures);
-            if(b.num_measures >= 1){ Serial.print("\t Son: "); Serial.print(b.son_addr,HEX); }
-            else Serial.print("\t (tail)");
-            if(b.num_measures == 2){ Serial.print("\t Grandson: "); Serial.print(b.grandson_addr,HEX); }
-            Serial.print("\t Acc x, y [m/s2]: "); Serial.print(b.acc_x,3); Serial.print(", "); Serial.println(b.acc_y,3);
-        }
-
-        Serial.print("IMU Blocks received\n");
-        for(int i = 0; i < amount_received_blocks; i++){
-            NodeBlock &b = received_blocks[i];
-            Serial.print(" Node: "); Serial.print(b.addr,HEX);
-            Serial.print("\t Acc x, y [m/s2]: "); Serial.print(b.acc_x,3); Serial.print(", "); Serial.println(b.acc_y,3);
-        }
-    }
-
-
-    if(inactive_measures_exist == true){
-        Serial.println("\n\t    ############ INACTIVE MEASURES ############");
-    
-        for (int i = 0; i < amount_measurements ; i++){ 
-        
-            if(measurements[i].active == false){
-                inactive_measures_exist = true;
-                
-                Serial.print("\t\tDevice: ["); Serial.print(measurements[i].short_addr_origin,HEX); Serial.print("] didn't range with: [");
-                Serial.print(measurements[i].short_addr_dest,HEX); Serial.println("]");
-                
-            }
-        }
-
-        Serial.println("\t    ###########################################");
-    
-    }
-    
-    Serial.println("--------------------------------------------------------------------");
-
-    
-}
 
 void showJSONData(){
     //Converts data to a JSON format. This way, the python app reads the serial monitor and plots the results.
@@ -1069,7 +984,7 @@ void processCycle(){
     }
 
     // 4) Outputs
-    if(COMPOSITION_OUTPUT) showComposition(observed, comparison, event, cycle_duration);
+    if(COMPOSITION_OUTPUT || READABLE_OUTPUT) showCycle(observed, comparison, event, cycle_duration);   // Readable block of this cycle
     if(USE_TINYML_MODEL && RAW_DATA_OUTPUT) printRawRow(cycle_row);
     if(USE_TINYML_MODEL && FEATURES_OUTPUT) printFeatures(cycle_row.cycle);
 
@@ -1181,55 +1096,57 @@ void readImu(float acc_ms2[3]){
     for(int i = 0; i < 3; i++) acc_ms2[i] = 0.0f;
 }
 
-void showComposition(const Chain &observed, ChainComparison comparison, CompositionEvent event, unsigned long cycle_duration){
+/*READABLE OUTPUT: one block per cycle*/
+
+void showCycle(const Chain &observed, ChainComparison comparison, CompositionEvent event, unsigned long cycle_duration){
+
+    // Everything about this cycle in a single block, in this order:
+    //   COMPOSITION  (if COMPOSITION_OUTPUT): stored and observed chain, comparison and event
+    //   LINKS        (if COMPOSITION_OUTPUT): state of every link and two-hop pair of the composition
+    //   DATA REPORT  (if READABLE_OUTPUT):    measures, node blocks and inactive measures of the report
+    // The RAW_DATA line (if enabled) is printed right after the block.
+
+    char line[100];
+    snprintf(line, sizeof(line), "\n=========================== CYCLE %lu | %lu ms ===========================",
+             (unsigned long)cycle_number, cycle_duration);
+    Serial.println(line);
+
+    if(COMPOSITION_OUTPUT){
+        showCompositionSection(observed, comparison, event);
+        showLinksSection();
+    }
+    if(READABLE_OUTPUT) showReportSection();
+
+    Serial.println("============================================================================");
+}
+
+void showCompositionSection(const Chain &observed, ChainComparison comparison, CompositionEvent event){
 
     const Chain &comp = composition.current;
 
-    Serial.print("\n[Cycle "); Serial.print(cycle_number); Serial.print(" | "); Serial.print(cycle_duration); Serial.print(" ms] Composition: ");
-    printChain(comp);
+    Serial.println(" COMPOSITION");
+
+    Serial.print("   Stored:   "); printChain(comp);
     if(composition.consolidated) Serial.println("   (consolidated)");
     else{ Serial.print("   (startup "); Serial.print(composition.startup_cycles); Serial.print("/"); Serial.print(COMPOSITION_WINDOW_CYCLES); Serial.println(")"); }
 
-    // Links (step 1) and two-hop pairs (step 2, grandson): seen or not, and their reference
-    for(int step = 1; step <= 2; step++){
-        if(step == 2 && comp.length > 2) Serial.println("   Two-hop pairs (grandson):");
-        for(int i = 0; i + step < comp.length; i++){
-            Serial.print("   "); Serial.print(comp.ids[i], HEX); Serial.print("-"); Serial.print(comp.ids[i+step], HEX);
-            int idx = activeMeasureBetween(comp.ids[i], comp.ids[i+step]);
-            if(idx != -1){ Serial.print("\tseen       "); Serial.print(measurements[idx].distance); Serial.print(" m"); }
-            else Serial.print("\tNOT SEEN   ");
-
-            if(!USE_TINYML_MODEL){ Serial.println(); continue; }   // References only exist with the model data report
-
-            LinkReference* ref = findLinkReference(link_references, comp.ids[i], comp.ids[i+step]);
-            if(ref == nullptr || ref->num_samples == 0) Serial.println("\tref: no samples yet");
-            else{
-                Serial.print("\tref "); Serial.print(ref->reference); Serial.print(" m ");
-                if(ref->fixed) Serial.print("(fixed)");
-                else{ Serial.print("(calibrating "); Serial.print(ref->num_samples); Serial.print("/"); Serial.print(LINK_REF_SAMPLES); Serial.print(")"); }
-                if(ref->unseen_cycles > 0){ Serial.print("   unseen for "); Serial.print(ref->unseen_cycles); Serial.print(ref->unseen_cycles >= UNSEEN_CYCLES_CAP ? "+ cycles" : " cycles"); }
-                Serial.println();
-            }
-        }
-    }
-
     Serial.print("   Observed: "); printChain(observed);
-    Serial.print("  --> "); Serial.println(comparisonName(comparison));
+    Serial.print("   --> "); Serial.println(comparisonName(comparison));
 
     switch(event){
-        case COMP_EVENT_FIRST:               Serial.println("   COMPOSITION: first composition obtained (startup window open)"); break;
-        case COMP_EVENT_UPDATED_STARTUP:     Serial.println("   COMPOSITION: updated during the startup window"); break;
-        case COMP_EVENT_CONSOLIDATED:        Serial.println("   COMPOSITION: consolidated (startup window finished)"); break;
+        case COMP_EVENT_FIRST:               Serial.println("   First composition obtained (startup window open)"); break;
+        case COMP_EVENT_UPDATED_STARTUP:     Serial.println("   Updated during the startup window"); break;
+        case COMP_EVENT_CONSOLIDATED:        Serial.println("   Consolidated (startup window finished)"); break;
         case COMP_EVENT_CANDIDATE_STARTED:
-            Serial.print("   COMPOSITION: change observed ("); Serial.print(comparisonName(comparison));
+            Serial.print("   Change observed ("); Serial.print(comparisonName(comparison));
             Serial.print("). It will be adopted if it persists "); Serial.print(COMPOSITION_WINDOW_CYCLES); Serial.println(" cycles");
             break;
-        case COMP_EVENT_CANDIDATE_DISCARDED: Serial.println("   COMPOSITION: observed change didn't persist. Discarded"); break;
-        case COMP_EVENT_ADOPTED:             Serial.println("   COMPOSITION: change ADOPTED. New composition stored"); break;
+        case COMP_EVENT_CANDIDATE_DISCARDED: Serial.println("   Observed change didn't persist. Discarded"); break;
+        case COMP_EVENT_ADOPTED:             Serial.println("   Change ADOPTED. New composition stored"); break;
         default: break;
     }
     if(composition.candidate_cycles > 1 && event == COMP_EVENT_NONE){
-        Serial.print("   COMPOSITION: change pending "); Serial.print(composition.candidate_cycles);
+        Serial.print("   Change pending "); Serial.print(composition.candidate_cycles);
         Serial.print("/"); Serial.println(COMPOSITION_WINDOW_CYCLES);
     }
     if(comp.length > RAW_VEHICLES){
@@ -1237,6 +1154,105 @@ void showComposition(const Chain &observed, ChainComparison comparison, Composit
         Serial.print(" vehicles. Only the first "); Serial.print(RAW_VEHICLES); Serial.println(" go into RAW_DATA");
     }
 }
+
+void showLinksSection(){
+
+    // One row per link (step 1) and per two-hop pair (step 2) of the stored composition:
+    // seen or not this cycle, its distance and, with the model data report, its reference.
+
+    const Chain &comp = composition.current;
+    char cell[40];
+
+    Serial.println("\n LINKS                     seen     distance     reference");
+
+    for(int step = 1; step <= 2; step++){
+        if(step == 2 && comp.length > 2) Serial.println("   Two-hop pairs (grandson):");
+
+        for(int i = 0; i + step < comp.length; i++){
+
+            // Pair name, e.g. "C1-B1"
+            snprintf(cell, sizeof(cell), "   %X-%X", comp.ids[i], comp.ids[i+step]);
+            Serial.print(cell);
+            for(int k = strlen(cell); k < 27; k++) Serial.print(" ");
+
+            // Seen and distance
+            int idx = activeMeasureBetween(comp.ids[i], comp.ids[i+step]);
+            if(idx != -1) snprintf(cell, sizeof(cell), "yes      %6.2f m     ", measurements[idx].distance);
+            else          snprintf(cell, sizeof(cell), "NO          -          ");
+            Serial.print(cell);
+
+            // Reference (only with the model data report: the references only exist there)
+            if(!USE_TINYML_MODEL){ Serial.println(); continue; }
+
+            LinkReference* ref = findLinkReference(link_references, comp.ids[i], comp.ids[i+step]);
+            if(ref == nullptr || ref->num_samples == 0){ Serial.println("no samples yet"); continue; }
+
+            snprintf(cell, sizeof(cell), "%6.2f m ", ref->reference);
+            Serial.print(cell);
+            if(ref->fixed) Serial.print("(fixed)");
+            else{ Serial.print("(calibrating "); Serial.print(ref->num_samples); Serial.print("/"); Serial.print(LINK_REF_SAMPLES); Serial.print(")"); }
+            if(ref->unseen_cycles > 0){
+                Serial.print("   unseen for "); Serial.print(ref->unseen_cycles);
+                Serial.print(ref->unseen_cycles >= UNSEEN_CYCLES_CAP ? "+ cycles" : " cycles");
+            }
+            Serial.println();
+        }
+    }
+}
+
+void showReportSection(){
+
+    // What arrived this cycle: every active measure (own ones and the ones in the report), the node blocks
+    // of the model data report, and the measures that weren't repeated this cycle.
+
+    char cell[60];
+
+    Serial.print("\n DATA REPORT ");
+    Serial.println(REPORT_TYPE == DATA_REPORT_MODEL ? "(model: son + grandson, acc x/y)" : "(unknown type)");
+
+    // Measures of this cycle
+    Serial.println("   Measures:");
+    for(int i = 0; i < amount_measurements; i++){
+        if(!measurements[i].active) continue;
+        const char* hop = (measurements[i].hop == 1) ? "(son)" : (measurements[i].hop == 2) ? "(grandson)" : "(own)";
+        snprintf(cell, sizeof(cell), "     %X -> %X  %-11s %6.2f m", measurements[i].short_addr_origin,
+                 measurements[i].short_addr_dest, hop, measurements[i].distance);
+        Serial.print(cell);
+        if(!isnan(measurements[i].rxPower)){ Serial.print("   RX power: "); Serial.print(measurements[i].rxPower); Serial.print(" dBm"); }
+        Serial.println();
+    }
+
+    // Node blocks of the model data report: their measures, and their IMU in a separate list
+    if(REPORT_TYPE == DATA_REPORT_MODEL){
+        Serial.print("   Node blocks: "); Serial.println(amount_received_blocks);
+        for(int i = 0; i < amount_received_blocks; i++){
+            NodeBlock &b = received_blocks[i];
+            snprintf(cell, sizeof(cell), "     %X  %d measures", b.addr, b.num_measures);
+            Serial.print(cell);
+            if(b.num_measures >= 1){ Serial.print("   son "); Serial.print(b.son_addr, HEX); }
+            else Serial.print("   (tail)");
+            if(b.num_measures == 2){ Serial.print("   grandson "); Serial.print(b.grandson_addr, HEX); }
+            Serial.println();
+        }
+
+        Serial.println("   IMU received (acc x, y) [m/s2]:");
+        for(int i = 0; i < amount_received_blocks; i++){
+            NodeBlock &b = received_blocks[i];
+            Serial.print("     "); Serial.print(b.addr, HEX);
+            Serial.print("   "); Serial.print(b.acc_x, 3); Serial.print(", "); Serial.println(b.acc_y, 3);
+        }
+    }
+
+    // Measures from previous cycles that weren't repeated in this one
+    bool header_printed = false;
+    for(int i = 0; i < amount_measurements; i++){
+        if(measurements[i].active) continue;
+        if(!header_printed){ Serial.println("   Inactive measures (not repeated this cycle):"); header_printed = true; }
+        Serial.print("     "); Serial.print(measurements[i].short_addr_origin, HEX);
+        Serial.print(" -> "); Serial.println(measurements[i].short_addr_dest, HEX);
+    }
+}
+
 
 void printRawHeader(){
     // Same column names (and order) as the raw CSV (extras/AI Integration/scripts_procesado/formato_crudo.py).
@@ -1305,7 +1321,7 @@ void printFeatures(uint32_t cycle){
 
 void resetMeasures(){ 
     for(int i = 0;i<amount_measurements;i++){
-        measurements[i].active = false; //This way, only prints active measures next time showData() is called
+        measurements[i].active = false; //This way, only prints active measures next time showCycle() is called
     }
     amount_received_blocks = 0; // Node blocks belong to a single cycle as well
     chain_order_length = 0;     // And so does the chain order taken from them
@@ -1496,7 +1512,6 @@ void loop(){
 
         processCycle();            // Composition analysis + raw data row + model inputs and prediction
 
-        if(READABLE_OUTPUT)        showData();
         if(RX_DISTANCE_PLOTTING)   showRXDistData();
         if(KAMADA_KAWAI_PLOTTING)  showJSONData();
 
