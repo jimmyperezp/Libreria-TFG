@@ -18,7 +18,7 @@ const uint8_t PIN_IRQ = 34; // irq pin
 const uint8_t PIN_SS = 4;   // spi select pin
 
 #define DEBUG_COORDINATOR false
-#define READABLE_OUTPUT true        // Shows the data report of each cycle in a human readable format (DATA REPORT section of the cycle block)
+#define READABLE_OUTPUT true        // Shows the data report of each cycle in a human readable format (NODE BLOCKS, IMU DATA & INACTIVE MEASURES sections)
 #define KAMADA_KAWAI_PLOTTING false // Shows a JSON file to draw the nodes using Kamada-Kawai's algorithm
 #define RX_DISTANCE_PLOTTING false  // Shows a CSV output to graph the relationship between RX power & distance
 #define COMPOSITION_OUTPUT true     // Shows, every cycle, the train composition and the state of each link (COMPOSITION and LINKS sections)
@@ -1100,10 +1100,12 @@ void readImu(float acc_ms2[3]){
 
 void showCycle(const Chain &observed, ChainComparison comparison, CompositionEvent event, unsigned long cycle_duration){
 
-    // Everything about this cycle in a single block, in this order:
-    //   COMPOSITION  (if COMPOSITION_OUTPUT): stored and observed chain, comparison and event
-    //   LINKS        (if COMPOSITION_OUTPUT): state of every link and two-hop pair of the composition
-    //   DATA REPORT  (if READABLE_OUTPUT):    measures, node blocks and inactive measures of the report
+    // Everything about this cycle in a single block. Each measure appears only once (in LINKS):
+    //   COMPOSITION        (COMPOSITION_OUTPUT): stored and observed chain, comparison and event
+    //   NODE BLOCKS        (READABLE_OUTPUT):    which measures each node sent in the data report
+    //   LINKS              (COMPOSITION_OUTPUT): distance and reference of every link and two-hop pair
+    //   IMU DATA           (READABLE_OUTPUT):    acc x, y received from each node
+    //   INACTIVE MEASURES  (READABLE_OUTPUT):    measures of previous cycles not repeated in this one
     // The RAW_DATA line (if enabled) is printed right after the block.
 
     char line[100];
@@ -1111,11 +1113,11 @@ void showCycle(const Chain &observed, ChainComparison comparison, CompositionEve
              (unsigned long)cycle_number, cycle_duration);
     Serial.println(line);
 
-    if(COMPOSITION_OUTPUT){
-        showCompositionSection(observed, comparison, event);
-        showLinksSection();
-    }
-    if(READABLE_OUTPUT) showReportSection();
+    if(COMPOSITION_OUTPUT) showCompositionSection(observed, comparison, event);
+    if(READABLE_OUTPUT)    showNodeBlocksSection();
+    if(COMPOSITION_OUTPUT) showLinksSection();
+    if(READABLE_OUTPUT)    showImuSection();
+    if(READABLE_OUTPUT)    showInactiveSection();
 
     Serial.println("============================================================================");
 }
@@ -1158,12 +1160,12 @@ void showCompositionSection(const Chain &observed, ChainComparison comparison, C
 void showLinksSection(){
 
     // One row per link (step 1) and per two-hop pair (step 2) of the stored composition:
-    // seen or not this cycle, its distance and, with the model data report, its reference.
+    // its distance this cycle (or NOT SEEN) and, with the model data report, its reference.
 
     const Chain &comp = composition.current;
     char cell[40];
 
-    Serial.println("\n LINKS                     seen     distance     reference");
+    Serial.println("\n LINKS                     distance     reference");
 
     for(int step = 1; step <= 2; step++){
         if(step == 2 && comp.length > 2) Serial.println("   Two-hop pairs (grandson):");
@@ -1175,10 +1177,10 @@ void showLinksSection(){
             Serial.print(cell);
             for(int k = strlen(cell); k < 27; k++) Serial.print(" ");
 
-            // Seen and distance
+            // Distance of this cycle (NOT SEEN if there's no measure)
             int idx = activeMeasureBetween(comp.ids[i], comp.ids[i+step]);
-            if(idx != -1) snprintf(cell, sizeof(cell), "yes      %6.2f m     ", measurements[idx].distance);
-            else          snprintf(cell, sizeof(cell), "NO          -          ");
+            if(idx != -1) snprintf(cell, sizeof(cell), "%6.2f m     ", measurements[idx].distance);
+            else          snprintf(cell, sizeof(cell), " NOT SEEN    ");
             Serial.print(cell);
 
             // Reference (only with the model data report: the references only exist there)
@@ -1200,59 +1202,52 @@ void showLinksSection(){
     }
 }
 
-void showReportSection(){
+void showNodeBlocksSection(){
 
-    // What arrived this cycle: every active measure (own ones and the ones in the report), the node blocks
-    // of the model data report, and the measures that weren't repeated this cycle.
+    // Which measures each node sent in the data report (the distances are shown in LINKS)
 
     char cell[60];
+    Serial.print("\n NODE BLOCKS ");
+    Serial.print(REPORT_TYPE == DATA_REPORT_MODEL ? "(model data report)" : "(unknown report type)");
+    Serial.print(": "); Serial.println(amount_received_blocks);
+    if(REPORT_TYPE != DATA_REPORT_MODEL) return;
 
-    Serial.print("\n DATA REPORT ");
-    Serial.println(REPORT_TYPE == DATA_REPORT_MODEL ? "(model: son + grandson, acc x/y)" : "(unknown type)");
-
-    // Measures of this cycle
-    Serial.println("   Measures:");
-    for(int i = 0; i < amount_measurements; i++){
-        if(!measurements[i].active) continue;
-        const char* hop = (measurements[i].hop == 1) ? "(son)" : (measurements[i].hop == 2) ? "(grandson)" : "(own)";
-        snprintf(cell, sizeof(cell), "     %X -> %X  %-11s %6.2f m", measurements[i].short_addr_origin,
-                 measurements[i].short_addr_dest, hop, measurements[i].distance);
+    for(int i = 0; i < amount_received_blocks; i++){
+        NodeBlock &b = received_blocks[i];
+        snprintf(cell, sizeof(cell), "   %X  %d measures", b.addr, b.num_measures);
         Serial.print(cell);
-        if(!isnan(measurements[i].rxPower)){ Serial.print("   RX power: "); Serial.print(measurements[i].rxPower); Serial.print(" dBm"); }
+        if(b.num_measures >= 1){ Serial.print("   son "); Serial.print(b.son_addr, HEX); }
+        else Serial.print("   (tail)");
+        if(b.num_measures == 2){ Serial.print("   grandson "); Serial.print(b.grandson_addr, HEX); }
         Serial.println();
-    }
-
-    // Node blocks of the model data report: their measures, and their IMU in a separate list
-    if(REPORT_TYPE == DATA_REPORT_MODEL){
-        Serial.print("   Node blocks: "); Serial.println(amount_received_blocks);
-        for(int i = 0; i < amount_received_blocks; i++){
-            NodeBlock &b = received_blocks[i];
-            snprintf(cell, sizeof(cell), "     %X  %d measures", b.addr, b.num_measures);
-            Serial.print(cell);
-            if(b.num_measures >= 1){ Serial.print("   son "); Serial.print(b.son_addr, HEX); }
-            else Serial.print("   (tail)");
-            if(b.num_measures == 2){ Serial.print("   grandson "); Serial.print(b.grandson_addr, HEX); }
-            Serial.println();
-        }
-
-        Serial.println("   IMU received (acc x, y) [m/s2]:");
-        for(int i = 0; i < amount_received_blocks; i++){
-            NodeBlock &b = received_blocks[i];
-            Serial.print("     "); Serial.print(b.addr, HEX);
-            Serial.print("   "); Serial.print(b.acc_x, 3); Serial.print(", "); Serial.println(b.acc_y, 3);
-        }
-    }
-
-    // Measures from previous cycles that weren't repeated in this one
-    bool header_printed = false;
-    for(int i = 0; i < amount_measurements; i++){
-        if(measurements[i].active) continue;
-        if(!header_printed){ Serial.println("   Inactive measures (not repeated this cycle):"); header_printed = true; }
-        Serial.print("     "); Serial.print(measurements[i].short_addr_origin, HEX);
-        Serial.print(" -> "); Serial.println(measurements[i].short_addr_dest, HEX);
     }
 }
 
+void showImuSection(){
+
+    // Acceleration received from each node in the data report (the coordinator's own IMU isn't sent)
+
+    if(REPORT_TYPE != DATA_REPORT_MODEL) return;
+    Serial.println("\n IMU DATA                  acc x, y [m/s2]");
+    for(int i = 0; i < amount_received_blocks; i++){
+        NodeBlock &b = received_blocks[i];
+        Serial.print("   "); Serial.print(b.addr, HEX);
+        Serial.print("                      "); Serial.print(b.acc_x, 3); Serial.print(", "); Serial.println(b.acc_y, 3);
+    }
+}
+
+void showInactiveSection(){
+
+    // Measures of previous cycles that weren't repeated in this one (only if there are any)
+
+    bool header_printed = false;
+    for(int i = 0; i < amount_measurements; i++){
+        if(measurements[i].active) continue;
+        if(!header_printed){ Serial.println("\n INACTIVE MEASURES (not repeated this cycle)"); header_printed = true; }
+        Serial.print("   "); Serial.print(measurements[i].short_addr_origin, HEX);
+        Serial.print(" -> "); Serial.println(measurements[i].short_addr_dest, HEX);
+    }
+}
 
 void printRawHeader(){
     // Same column names (and order) as the raw CSV (extras/AI Integration/scripts_procesado/formato_crudo.py).
