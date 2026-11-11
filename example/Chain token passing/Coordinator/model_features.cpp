@@ -1,5 +1,4 @@
-/*MODEL FEATURES*/
-// See model_features.h. Every rule here mirrors calculo_columnas.py.
+/*MODEL FEATURES (See model_features.h for understanding each function.)*/
 
 #include "model_features.h"
 

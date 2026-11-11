@@ -1,37 +1,46 @@
-/*MODEL FEATURES*/
+/*MODEL FEATURES
 
-// C version of extras/AI Integration/scripts_procesado/calculo_columnas.py.
-// Turns this cycle's raw row (the same data printed as RAW_DATA) into the 25 inputs of the model,
-// in exactly the same order as the training CSVs:
-//
-//   For each link (c_v1, v1_v2, v2_v3, v3_v4):
-//       visto, ciclos_sin_ver, desviacion_m, dif_acel_x_ms2
-//   Then, for each two-hop pair (grandson: c_v2, v1_v3, v2_v4):
-//       visto, ciclos_sin_ver, desviacion_m
-//
-// Each feature comes from a single measure (links and pairs are never combined).
-// The rest of the raw row (cycle duration, RX power, acc y) is recorded but is not a model input.
-//
-// Whatever wasn't received is 0 (its absence is already given by visto / ciclos_sin_ver).
-// Reference distances and unseen counters come from link_references (they are per pair of devices).
-//
-// This module doesn't use the radio. It can be tested on a PC.
+This code (.h and .cpp) has the goal of creating the same format that the TinyML uses, 
+but locally in the coordinator instead than on the PC using python. It must be created using the same order
+as the training CSVs.
+
+It turns the cycle's raw data (which can be seen in the monitor using the RAW_DATA print) into said format.
+
+This format is: 
+
+	1: For each LINK (c_v1,c_v2,c_v3,etc) (not pairs, links)
+		- [Visto][ciclos_sin_ver][desviacion_m][dif_acel_x]
+
+	2: For each two-hop PAIR: 
+		- [Visto][Ciclos_sin_ver][desviacion_m]
+
+
+	Whatever wasn't received is set to 0. The reference distances (desviacion_m) and unseen counters (ciclos_sin_ver) come from the 
+	link_references code.
+*/
 
 #pragma once
 
 #include "link_references.h"
 
-#define RAW_VEHICLES 5			// Fixed positions: coordinator + 4 nodes (c, v1, v2, v3, v4)
+#define RAW_VEHICLES 5						// Fixed positions: coordinator + 4 nodes (c, v1, v2, v3, v4)
 #define RAW_LINKS (RAW_VEHICLES - 1)		// Links between consecutive positions: c_v1, v1_v2, v2_v3, v3_v4
 #define RAW_PAIRS (RAW_VEHICLES - 2)		// Two-hop pairs (grandson): c_v2, v1_v3, v2_v4
-#define NUM_FEATURES 25
+#define NUM_FEATURES 25						// The total number of "columns" that the model will need.
 
 
-// Everything observed in one cycle, mapped to the fixed positions of the composition.
-// It is what gets printed as RAW_DATA and what the features are computed from.
 struct RawRow {
-	uint32_t cycle;
-	unsigned long time_ms;
+	/*Saves all of the received data in this cycle. This is used to export the raw data CSVs that will later be processed
+	to be valid for the model. The grabador_serie.py reads the monitor until it sees the "RAW_DATA" header (shown thanks to
+	the printRawData function), and exports all of the data to the raw csv.
+
+	Later on, whenever the TinyML model is used, the computeFeatures() function comes to this rawData and extracts only the 
+	values that the model needs. For example, the RX Power, if received in the data report type, is not used by the model, it 
+	simply enters the raw CSV to keep track of everything received/known.
+	*/
+
+	uint32_t cycle;							//Simply keeps a count. Not used/needed by the model. 
+	unsigned long time_ms;					// millis() when ending the cycle.
 	unsigned long duration_ms;
 
 	bool    position_used[RAW_VEHICLES];	// false if the composition has fewer vehicles than positions
