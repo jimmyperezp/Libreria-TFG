@@ -22,7 +22,7 @@ instalaciones distintas:
 | Analogía | El juego instalado | El proyecto del estudio que hizo el juego |
 | Contenedor | `carla-etsii-map2` (imagen `carlasim/carla:0.9.15`) | **`carla-build-1`** (imagen `carla-build`) |
 | Entorno conda | `carla` | **`carla-ue4dev`** |
-| Se lanza con | `./CarlaUE4.sh` | `make launch-only` → abrir nivel → **Play** |
+| Se lanza con | `./CarlaUE4.sh` | `make launch` → abrir nivel → **Play** |
 | Editar mapas, añadir modelos | No | Sí |
 
 **Usamos la segunda** por dos motivos:
@@ -227,24 +227,35 @@ No se toca. En particular: `ENABLE_RENDER = False` (más rápido) y el bloque de
 
 ## 5. Lanzar el servidor CARLA (terminal 1)
 
-1. Abre una terminal en el Ubuntu (`Ctrl+Alt+T`) y entra en el contenedor:
+1. Abre una terminal en el Ubuntu (`Ctrl+Alt+T`) y comprueba en qué pantalla se dibujan las ventanas:
+   ```bash
+   echo $DISPLAY
+   ```
+   Normalmente responde `:0`. Apúntalo para el punto 3.
+2. Arranca el contenedor y entra en él:
    ```bash
    docker start carla-build-1
    docker exec -it carla-build-1 /bin/bash
    ```
    El prompt cambia a `docker@inartrans1:/app$`: se entra en `/app`, no en la carpeta de CARLA.
-2. Ve a la carpeta de CARLA, que es donde está el `Makefile`, y abre el editor:
+3. Ve a la carpeta de CARLA, indica la pantalla y abre el editor:
    ```bash
-   cd /app/carla
-   make launch-only
+   cd carla
+   export DISPLAY=:0
+   make launch
    ```
-   `launch-only` va junto, con guion y sin espacios. Si `make` dice `No rule to make target ...`, o no estás en
-   `/app/carla` (compruébalo con `pwd`; con `ls` debe aparecer `Makefile`) o el objetivo está mal escrito.
-   Tarda 1–2 minutos: primero comprueba la compilación y luego aparece la ventana de *CarlaUE4 Editor*.
-3. Si sale el aviso *"Project file is out of date. Would you like to update it?"*, pulsa **Not Now**.
-4. **File → Open Level** y abre **`railway4_simple`** (el archivo con el icono de los conos).
-5. Pulsa **Play** en la barra superior. Debe verse la vía ovalada sobre fondo verde.
-6. Deja el editor en Play y esta terminal abierta. No los toques mientras dure el ensayo.
+   - `cd carla`: el `Makefile` está en `/app/carla`. Con `ls` deben aparecer, entre otros, `LibCarla`,
+     `PythonAPI`, `Unreal` y `Makefile`.
+   - `export DISPLAY=:0`: la terminal del contenedor no hereda la pantalla del ordenador; sin esto el editor no
+     sabe dónde abrir su ventana. Usa el valor que dio `echo $DISPLAY` en el punto 1.
+   - `make launch`: compila lo que haya cambiado y abre el editor. La primera vez de la sesión tarda unos minutos;
+     verás mensajes de `Setup.sh`, `BuildUE4Plugins.sh` y `BuildCarlaUE4.sh`. `make launch-only` abre el editor sin
+     compilar, y solo sirve si ya está compilado.
+   - Si `make` dice `No rule to make target ...`, no estás en `/app/carla` (compruébalo con `pwd`).
+4. Si sale el aviso *"Project file is out of date. Would you like to update it?"*, pulsa **Not Now**.
+5. **File → Open Level** y abre **`railway4_simple`** (el archivo con el icono de los conos).
+6. Pulsa **Play** en la barra superior. Debe verse la vía ovalada sobre fondo verde.
+7. Deja el editor en Play y esta terminal abierta. No los toques mientras dure el ensayo.
 
 ---
 
@@ -351,8 +362,8 @@ Si vas a hacer varios ensayos seguidos, no hace falta apagar: deja el editor en 
 | El editor parece congelado tras un error de `main.py` | El servidor se quedó en modo síncrono esperando ticks. **Stop** y **Play** en el editor |
 | `ModuleNotFoundError: No module named 'carla'` | No está activo `carla-ue4dev` (o VS Code usa otro intérprete). Apartado 1.3 |
 | Aviso de versiones distintas de cliente y servidor | Apartado 2, punto 2 |
-| `make: *** No rule to make target ...` | No estás en `/app/carla` o `launch-only` está mal escrito. Apartado 5, punto 2 |
-| La ventana del editor no se abre al lanzar `make launch-only` | Problema de pantalla de Docker. Probar a ejecutar `xhost +local:` en el ordenador (fuera del contenedor) y repetir |
+| `make: *** No rule to make target ...` | No estás en `/app/carla`. Apartado 5, punto 3 |
+| La ventana del editor no se abre al lanzar `make launch` | Falta `export DISPLAY=:0` (apartado 5, punto 3). Si aun así no abre, probar `xhost +local:` en el ordenador (fuera del contenedor) y repetir |
 | Ventana de pygame en negro | Normal con `ENABLE_RENDER = False` |
 | Puerto 2000 ocupado | Hay otro servidor CARLA lanzado (p. ej., `carla-etsii-map2`). Páralo con `docker stop` |
 
@@ -380,7 +391,7 @@ Para copiar y rellenar en cada ensayo:
 [ ] main.py: parent_dir = ...                  (nombre nuevo)
 [ ] main.py: FAIL_TIME = ...   T_STOP = ...
 [ ] main.py: evento activo = ...   enganche = ...   (t_prefail / t_fail_s = ...)
-[ ] Terminal 1: docker start + exec, make launch-only, railway4_simple, Play
+[ ] Terminal 1: docker start + exec, cd carla, export DISPLAY=:0, make launch, railway4_simple, Play
 [ ] Terminal 2: conda activate carla-ue4dev, cd simulador, python main.py
 [ ] Consola: evento insertado y "Limpieza completada"
 [ ] Carpeta con coord/, wagon_*/, ltd_log/ y config.json
@@ -404,7 +415,7 @@ No hace falta para el TFM (`railway4_simple` basta), pero el procedimiento es:
    make import
    ```
    El mapa queda en `Unreal/CarlaUE4/Content/map_package/Maps/<nombre>`.
-4. **Abrirlo**: `make launch-only` → **File → Open Level** → el mapa.
+4. **Abrirlo**: `make launch` → **File → Open Level** → el mapa.
 5. (Opcional) La navegación de peatones del PDF *Abrir un mapa en Unreal* no hace falta para el tren.
 
 Para que sirva al simulador del tren:
