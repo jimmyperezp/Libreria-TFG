@@ -3,12 +3,13 @@
 Scripts que convierten los ensayos (del simulador o grabados con las placas) en los CSV de
 entrenamiento de Edge Impulse, y carpetas donde se guarda cada paso.
 
-Hay tres documentos:
+Hay cuatro documentos:
 
 | Documento | Para qué |
 |---|---|
 | `readme.md` (este) | Qué hay en cada carpeta, qué contiene cada archivo y cómo se calcula cada cosa |
 | `guia_uso.md` | Qué pasos seguir: grabar un ensayo, exportarlo, añadir un ensayo del simulador… |
+| `guia_simulador.md` | Cómo generar un ensayo nuevo con el simulador (CARLA) en el ordenador del laboratorio |
 | `registro_cambios.md` | Cambios hechos en el firmware y en los scripts, con sus motivos (para la memoria) |
 
 Requisitos: Python 3.9 o superior con `pandas`, `numpy` y, para grabar, `pyserial`
@@ -20,6 +21,7 @@ Requisitos: Python 3.9 o superior con `pandas`, `numpy` y, para grabar, `pyseria
 AI Integration/
 ├── readme.md
 ├── guia_uso.md
+├── guia_simulador.md
 ├── registro_cambios.md
 │
 ├── scripts_procesado/
