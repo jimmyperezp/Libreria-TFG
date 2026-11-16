@@ -61,7 +61,7 @@ exit                                        # sale de esa terminal (el contenedo
 docker stop carla-build-1                   # apaga el contenedor
 ```
 
-Dentro del contenedor el prompt es `docker@inartrans1:/app/carla$`. Fuera, `(base) inartrans1@inartrans1:~$`.
+Dentro del contenedor el prompt empieza por `docker@inartrans1:` (al entrar, en `/app`). Fuera, `(base) inartrans1@inartrans1:~$`.
 
 ### 1.3 Entornos de conda
 
@@ -232,11 +232,14 @@ No se toca. En particular: `ENABLE_RENDER = False` (más rápido) y el bloque de
    docker start carla-build-1
    docker exec -it carla-build-1 /bin/bash
    ```
-   El prompt cambia a `docker@inartrans1:/app/carla$`. Si no estás en `/app/carla`, haz `cd /app/carla`.
-2. Abre el editor:
+   El prompt cambia a `docker@inartrans1:/app$`: se entra en `/app`, no en la carpeta de CARLA.
+2. Ve a la carpeta de CARLA, que es donde está el `Makefile`, y abre el editor:
    ```bash
+   cd /app/carla
    make launch-only
    ```
+   `launch-only` va junto, con guion y sin espacios. Si `make` dice `No rule to make target ...`, o no estás en
+   `/app/carla` (compruébalo con `pwd`; con `ls` debe aparecer `Makefile`) o el objetivo está mal escrito.
    Tarda 1–2 minutos: primero comprueba la compilación y luego aparece la ventana de *CarlaUE4 Editor*.
 3. Si sale el aviso *"Project file is out of date. Would you like to update it?"*, pulsa **Not Now**.
 4. **File → Open Level** y abre **`railway4_simple`** (el archivo con el icono de los conos).
@@ -348,6 +351,7 @@ Si vas a hacer varios ensayos seguidos, no hace falta apagar: deja el editor en 
 | El editor parece congelado tras un error de `main.py` | El servidor se quedó en modo síncrono esperando ticks. **Stop** y **Play** en el editor |
 | `ModuleNotFoundError: No module named 'carla'` | No está activo `carla-ue4dev` (o VS Code usa otro intérprete). Apartado 1.3 |
 | Aviso de versiones distintas de cliente y servidor | Apartado 2, punto 2 |
+| `make: *** No rule to make target ...` | No estás en `/app/carla` o `launch-only` está mal escrito. Apartado 5, punto 2 |
 | La ventana del editor no se abre al lanzar `make launch-only` | Problema de pantalla de Docker. Probar a ejecutar `xhost +local:` en el ordenador (fuera del contenedor) y repetir |
 | Ventana de pygame en negro | Normal con `ENABLE_RENDER = False` |
 | Puerto 2000 ocupado | Hay otro servidor CARLA lanzado (p. ej., `carla-etsii-map2`). Páralo con `docker stop` |
