@@ -48,8 +48,11 @@ En la extensión *Containers* de VS Code: `carla-build-1` es el **contenedor**; 
 `carla-build:latest` son la misma **imagen** (`:latest` es su etiqueta); `sha256:bcdb62f…` es una imagen antigua sin
 nombre que no se usa.
 
-La carpeta `~/carla_linux_build/carla` del ordenador es la misma que `/app/carla` dentro del contenedor: lo que se
-cambia en un lado se ve en el otro.
+La carpeta `/home/inartrans1/carla_linux_build` del ordenador **es** `/app` dentro del contenedor (montaje):
+lo que se cambia en un lado se ve en el otro. Ahí están Unreal Engine 4.26, la compilación de CARLA (`carla/`), el
+mapa y los modelos del tren. **No se puede mover ni renombrar**: si no está en esa ruta exacta, Docker crea una
+carpeta vacía en su lugar y dentro del contenedor `/app` aparece vacío (`make` responde
+`No rule to make target 'launch'`).
 
 Comandos:
 
@@ -366,7 +369,7 @@ Si vas a hacer varios ensayos seguidos, no hace falta apagar: deja el editor en 
 | El editor parece congelado tras un error de `main.py` | El servidor se quedó en modo síncrono esperando ticks. **Stop** y **Play** en el editor |
 | `ModuleNotFoundError: No module named 'carla'` | No está activo `carla-ue4dev` (o VS Code usa otro intérprete). Apartado 1.3 |
 | Aviso de versiones distintas de cliente y servidor | Apartado 2, punto 2 |
-| `make: *** No rule to make target ...` | No estás en `/app/carla`. Apartado 5, punto 3 |
+| `make: *** No rule to make target ...` | No estás en `/app/carla` (apartado 5, punto 3). Si estás y `ls` no muestra `Makefile`, la carpeta `~/carla_linux_build` del ordenador se ha movido o está vacía (apartado 1.2); se comprueba con `docker inspect carla-build-1 --format '{{json .Mounts}}'` |
 | `bash: export: 'DISPLAY:=0': not a valid identifier` | Sobran los dos puntos antes del `=`. Es `export DISPLAY=:0` |
 | La ventana del editor no se abre al lanzar `make launch` | Falta `export DISPLAY=...` o el valor no coincide con el de `echo $DISPLAY` en el ordenador (apartado 5, puntos 1 y 3). Si aun así no abre, probar `xhost +local:` en el ordenador (fuera del contenedor) y repetir |
 | Ventana de pygame en negro | Normal con `ENABLE_RENDER = False` |
