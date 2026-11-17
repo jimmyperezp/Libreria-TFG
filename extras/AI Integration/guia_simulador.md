@@ -231,7 +231,9 @@ No se toca. En particular: `ENABLE_RENDER = False` (más rápido) y el bloque de
    ```bash
    echo $DISPLAY
    ```
-   Normalmente responde `:0`. Apúntalo para el punto 3.
+   Responde algo como `:0` o `:1`. **Compruébalo cada vez**: el valor cambia según la sesión (p. ej., si se ha
+   entrado por escritorio remoto o hay más de una sesión abierta). Apúntalo para el punto 3. Ojo con el `$`:
+   `echo DISPLAY`, sin él, solo repite la palabra.
 2. Arranca el contenedor y entra en él:
    ```bash
    docker start carla-build-1
@@ -241,13 +243,15 @@ No se toca. En particular: `ENABLE_RENDER = False` (más rápido) y el bloque de
 3. Ve a la carpeta de CARLA, indica la pantalla y abre el editor:
    ```bash
    cd carla
-   export DISPLAY=:0
+   export DISPLAY=:1      # el valor que dio echo $DISPLAY en el punto 1 (aquí, :1)
    make launch
    ```
    - `cd carla`: el `Makefile` está en `/app/carla`. Con `ls` deben aparecer, entre otros, `LibCarla`,
      `PythonAPI`, `Unreal` y `Makefile`.
-   - `export DISPLAY=:0`: la terminal del contenedor no hereda la pantalla del ordenador; sin esto el editor no
-     sabe dónde abrir su ventana. Usa el valor que dio `echo $DISPLAY` en el punto 1.
+   - `export DISPLAY=...`: la terminal del contenedor no hereda la pantalla del ordenador; sin esto el editor no
+     sabe dónde abrir su ventana. Pon **exactamente** el valor que dio `echo $DISPLAY` en el punto 1, sin `$` y
+     sin espacios alrededor del `=` (`DISPLAY=:1`, no `DISPLAY:=1`). Se puede comprobar dentro del contenedor con
+     `echo $DISPLAY`. Hay que repetirlo cada vez que se abre una terminal nueva en el contenedor.
    - `make launch`: compila lo que haya cambiado y abre el editor. La primera vez de la sesión tarda unos minutos;
      verás mensajes de `Setup.sh`, `BuildUE4Plugins.sh` y `BuildCarlaUE4.sh`. `make launch-only` abre el editor sin
      compilar, y solo sirve si ya está compilado.
@@ -363,7 +367,8 @@ Si vas a hacer varios ensayos seguidos, no hace falta apagar: deja el editor en 
 | `ModuleNotFoundError: No module named 'carla'` | No está activo `carla-ue4dev` (o VS Code usa otro intérprete). Apartado 1.3 |
 | Aviso de versiones distintas de cliente y servidor | Apartado 2, punto 2 |
 | `make: *** No rule to make target ...` | No estás en `/app/carla`. Apartado 5, punto 3 |
-| La ventana del editor no se abre al lanzar `make launch` | Falta `export DISPLAY=:0` (apartado 5, punto 3). Si aun así no abre, probar `xhost +local:` en el ordenador (fuera del contenedor) y repetir |
+| `bash: export: 'DISPLAY:=0': not a valid identifier` | Sobran los dos puntos antes del `=`. Es `export DISPLAY=:0` |
+| La ventana del editor no se abre al lanzar `make launch` | Falta `export DISPLAY=...` o el valor no coincide con el de `echo $DISPLAY` en el ordenador (apartado 5, puntos 1 y 3). Si aun así no abre, probar `xhost +local:` en el ordenador (fuera del contenedor) y repetir |
 | Ventana de pygame en negro | Normal con `ENABLE_RENDER = False` |
 | Puerto 2000 ocupado | Hay otro servidor CARLA lanzado (p. ej., `carla-etsii-map2`). Páralo con `docker stop` |
 
@@ -391,7 +396,7 @@ Para copiar y rellenar en cada ensayo:
 [ ] main.py: parent_dir = ...                  (nombre nuevo)
 [ ] main.py: FAIL_TIME = ...   T_STOP = ...
 [ ] main.py: evento activo = ...   enganche = ...   (t_prefail / t_fail_s = ...)
-[ ] Terminal 1: docker start + exec, cd carla, export DISPLAY=:0, make launch, railway4_simple, Play
+[ ] Terminal 1: docker start + exec, cd carla, echo $DISPLAY (fuera) → export DISPLAY=<ese valor> (dentro), make launch, railway4_simple, Play
 [ ] Terminal 2: conda activate carla-ue4dev, cd simulador, python main.py
 [ ] Consola: evento insertado y "Limpieza completada"
 [ ] Carpeta con coord/, wagon_*/, ltd_log/ y config.json
