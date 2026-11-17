@@ -224,7 +224,12 @@ ese enganche cae a cero en la rotura.
 
 ### 4.4 Resto del archivo
 
-No se toca. En particular: `ENABLE_RENDER = False` (más rápido) y el bloque de comunicaciones del bucle.
+- **`ENABLE_RENDER` (línea 29)**: con `False`, la ventana de pygame queda en negro y la simulación va más rápida
+  (es lo normal para generar datos). Con `True`, la ventana muestra la cámara que va con el tren, pero cada tick
+  espera a la ventana (`clock.tick(60)`, como mucho 60 ticks por segundo real). Como cada segundo de simulación son
+  200 ticks, el ensayo tarda **al menos 3,3 veces su duración** (120 s simulados → más de 6,5 min). Úsalo solo para
+  ver qué pasa, no para ensayos largos. El tren también se ve en la vista del editor de Unreal en ambos casos.
+- El resto (bloque de comunicaciones del bucle, limpieza…) no se toca.
 
 ---
 
@@ -261,7 +266,10 @@ No se toca. En particular: `ENABLE_RENDER = False` (más rápido) y el bloque de
    - Si `make` dice `No rule to make target ...`, no estás en `/app/carla` (compruébalo con `pwd`).
 4. Si sale el aviso *"Project file is out of date. Would you like to update it?"*, pulsa **Not Now**.
 5. **File → Open Level** y abre **`railway4_simple`** (el archivo con el icono de los conos).
-6. Pulsa **Play** en la barra superior. Debe verse la vía ovalada sobre fondo verde.
+6. Pulsa **Play** en la barra superior. Debe verse la vía ovalada sobre fondo verde. **Espera a que termine de
+   cargar** (la primera vez tras compilar tarda un rato; mientras tanto la terminal no deja de escribir). Si lanzas
+   `main.py` antes, da `time-out ... while waiting for the simulator`: basta con esperar y repetir. Para comprobar
+   que el servidor ya escucha, en una terminal del ordenador: `ss -ltn | grep 2000` (debe salir una línea).
 7. Deja el editor en Play y esta terminal abierta. No los toques mientras dure el ensayo.
 
 ---
@@ -271,10 +279,19 @@ No se toca. En particular: `ENABLE_RENDER = False` (más rápido) y el bloque de
 En una terminal **nueva**, fuera del contenedor:
 
 ```bash
+source ~/miniconda3/bin/activate          # solo si la terminal no muestra (base) al principio
 conda activate carla-ue4dev
-cd <carpeta del Inartrans Simulator>
+cd "$HOME/Simulador TFM/Carla/inartrans/Inartrans_simulator"
 python main.py
 ```
+
+- **`source ~/miniconda3/bin/activate`**: carga conda en la terminal. Hace falta si al abrirla el prompt no empieza
+  por `(base)` y `conda` da `Command 'conda' not found`. Para que se cargue siempre solo, ejecutar una vez
+  `~/miniconda3/bin/conda init bash` y abrir una terminal nueva.
+- **La carpeta del simulador** es `~/Simulador TFM/Carla/inartrans/Inartrans_simulator` (comillas por los
+  espacios). Con `ls` deben verse `main.py`, `utils/`, `config/` y `Datasets_def/`. Si falta algo que en el
+  explorador sí aparece, la terminal se ha quedado en una versión antigua de la carpeta: repite el `cd`, o abre la
+  terminal desde el explorador (clic derecho → **Open in Terminal**).
 
 O desde VS Code: abre la carpeta del simulador como espacio de trabajo, elige el intérprete `carla-ue4dev`
 (apartado 1.3) y pulsa Play sobre `main.py`. La carpeta abierta tiene que ser la del simulador, para que
@@ -364,7 +381,7 @@ Si vas a hacer varios ensayos seguidos, no hace falta apagar: deja el editor en 
 |---|---|
 | `FileExistsError` al empezar | `parent_dir` ya existe. Cambia el nombre |
 | `FileNotFoundError` al crear `parent_dir` | No existe la carpeta que la contiene (`Datasets_def/`), o se ha lanzado desde otra carpeta. Ver apartados 2 y 6 |
-| `RuntimeError: time-out ... while waiting for the simulator` | El servidor no responde: el editor no está en Play, no está abierto o el contenedor está parado. Apartado 5 |
+| `RuntimeError: time-out ... while waiting for the simulator` | El servidor no responde: el editor no está en Play, todavía está cargando tras pulsar Play, o el contenedor está parado. Espera y repite; `ss -ltn \| grep 2000` dice si ya escucha. Apartado 5 |
 | Error al crear el tren (blueprint `vehicle.train...` no encontrado) | El servidor no es el de `carla-build-1` (p. ej., la versión binaria está lanzada) o no está abierto `railway4_simple` |
 | El editor parece congelado tras un error de `main.py` | El servidor se quedó en modo síncrono esperando ticks. **Stop** y **Play** en el editor |
 | `ModuleNotFoundError: No module named 'carla'` | No está activo `carla-ue4dev` (o VS Code usa otro intérprete). Apartado 1.3 |
@@ -374,7 +391,8 @@ Si vas a hacer varios ensayos seguidos, no hace falta apagar: deja el editor en 
 | `Could not initialize SDL: No available video device` y `InitSDL() failed` al final de `make launch` | `DISPLAY` apunta a una pantalla que no existe. Mira `ls /tmp/.X11-unix` y usa ese número (apartado 5, punto 1). La compilación anterior es válida: basta `make launch-only` |
 | `error: XDG_RUNTIME_DIR not set in the environment` | Aviso sin importancia; no es la causa de nada |
 | La ventana del editor no se abre al lanzar `make launch` | Falta `export DISPLAY=...` o apunta a una pantalla que no existe (apartado 5, puntos 1 y 3). Si aun así no abre, probar `xhost +local:` en el ordenador (fuera del contenedor) y repetir |
-| Ventana de pygame en negro | Normal con `ENABLE_RENDER = False` |
+| Ventana de pygame en negro | Normal con `ENABLE_RENDER = False` (apartado 4.4) |
+| `Command 'conda' not found` | Conda no está cargado en esa terminal: `source ~/miniconda3/bin/activate` (apartado 6) |
 | Puerto 2000 ocupado | Hay otro servidor CARLA lanzado (p. ej., `carla-etsii-map2`). Páralo con `docker stop` |
 
 **Sobre `No module named 'carla.libcarla.command'`.** Aparece al ejecutar el ejemplo `generate_traffic.py` de
