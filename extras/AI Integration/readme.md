@@ -8,7 +8,7 @@ Hay cuatro documentos:
 | Documento | Para qué |
 |---|---|
 | `readme.md` (este) | Qué hay en cada carpeta, qué contiene cada archivo y cómo se calcula cada cosa |
-| `guia_uso.md` | Qué pasos seguir: grabar un ensayo, exportarlo, añadir un ensayo del simulador… |
+| `guia_exportacion.md` | Qué pasos seguir: grabar un ensayo, exportarlo, añadir un ensayo del simulador… |
 | `guia_simulador.md` | Cómo generar un ensayo nuevo con el simulador (CARLA) en el ordenador del laboratorio |
 | `registro_cambios.md` | Cambios hechos en el firmware y en los scripts, con sus motivos (para la memoria) |
 

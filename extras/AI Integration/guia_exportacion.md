@@ -1,9 +1,9 @@
-# Guía de uso
+# Exportar los archivos a Edge Impulse
 
-Pasos a seguir en cada caso. Qué contiene cada archivo y cómo se calcula cada cosa está en `readme.md`.
+Los datos pueden venir de dos fuentes: del simulador, o recopilados experimentalmente con las placas. Para ambos casos, en esta carpeta se recoge una serie de scripts de python encargados de convertir esas lecturas a arhchivos reconocibles por la herramienta de generación del modelo: Edge Impulse.
 
-Todos los scripts están en `scripts_procesado/` y se ejecutan **desde VS Code con el botón de Play**
-(*Run Python File*), sin argumentos. Lo único que se cambia está en el bloque `CONFIGURACIÓN` del principio
+
+Todos los scripts están en `scripts_procesado/` y se ejecutan desde la terminal de VS Code (comando python "Ruta-del-archivo"). Antes de procesar cada ensayo, se debe actualizar el bloque `CONFIGURACIÓN` del principio
 de cada script.
 
 ---
