@@ -1,6 +1,6 @@
 # UWB Train Integrity & Composition Monitoring
 
-<img src="extras/images/tfg-banner.png" alt="Project banner" width="1000" height="800"/>
+<img src="extras/images/Readme banner.jpeg" alt="Project banner" width="1000" height="800"/>
 
 <img src="https://github.com/HQarroum/awesome-iot/blob/master/iot-logo.png" alt="IoT" width="40" height="40"/> <img src="https://github.com/jimmyperezp/jimmyperezp/blob/main/cpp.svg" alt="c++" width="40" height="40"/> <img src="extras/images/Python-logo.png" alt="Python Logo" width="40" height="40"/> <img src="https://cdn.worldvectorlogo.com/logos/arduino-1.svg" alt="arduino" width="40" height="40"/> <img src="https://upload.wikimedia.org/wikipedia/commons/c/cd/PlatformIO_logo.svg" alt="platformIO" width="40" height="40"/> <img src="extras/images/Logo%20Edge%20Impulse.webp" alt="Edge Impulse Logo" width="80" height="60"/> <img src="extras/images/TFL.png" alt="TensorFlowLite Logo" width="140" height="120"/>
 
