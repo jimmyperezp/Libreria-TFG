@@ -11,10 +11,6 @@ The network is formed by one UWB device per vehicle. A **coordinator** (on the l
 - **Integrity**: whether the train is complete or a coupling has broken.
 - **Composition**: which wagons form the train and in which order.
 
-<p align="center">
-<img src="extras/images/train-system-overview.svg" alt="System overview: one UWB device per vehicle, token passing and data report" width="1000"/>
-</p>
-
 The core of the repository is a C++ (Arduino format) library built on top of the DW1000 UWB chip driver, extended with the messaging and network coordination needed for this application.
 
 Base library (MakerFabs): [DW1000 Library](https://github.com/jremington/UWB-Indoor-Localization_Arduino/tree/main/DW1000_library)  
@@ -23,22 +19,23 @@ Previous version this one builds on: [Update by @Pizzo00](https://github.com/jre
 ### Index
 
 1. [Goal of the project](#goal-of-the-project)
-2. [Key features](#key-features)
-3. [UWB distance measurement: TWR](#uwb-distance-measurement-twr)
-4. [Background and context](#background-and-context)
-5. [Library examples](#library-examples)
-6. [Hardware](#hardware)
+2. [How it works](#how-it-works)
+3. [Key features](#key-features)
+4. [UWB distance measurement: TWR](#uwb-distance-measurement-twr)
+5. [Background and context](#background-and-context)
+6. [Library examples](#library-examples)
+7. [Hardware](#hardware)
     - [CookieNodes (CEI-UPM)](#cookienodes-cei-upm)
     - [DW1000 module](#dw1000-uwb-chip)
     - [ESP32 Wroom32](#esp32-wroom32)
     - [STM32 Nucleo F429ZI](#stm32-nucleo-f429zi)
     - [DWS1000](#dws1000)
-7. [Programming the boards](#programming-the-boards)
+8. [Programming the boards](#programming-the-boards)
     - [Arduino IDE](#arduino-ide)
     - [PlatformIO](#platformio)
         - [Coding the Nucleo F429ZI: pin definitions](#coding-the-nucleo-f429zi)
-8. [Version history](#version-history)
-9. [Project status](#project-status)
+9. [Version history](#version-history)
+10. [Project status](#project-status)
 
 <br><br>
 
@@ -49,6 +46,22 @@ This project studies the use of UWB technology in railway systems, as an onboard
 The goal is that a **coordinator** device knows, in every cycle, all of the distances needed to know the complete train: its length, its composition and its integrity. On top of those measurements, a TinyML model running on the coordinator classifies the state of the train.
 
 The system is designed to run on **CookieNodes**, the modular wireless sensor network platform developed at the Centro de Electrónica Industrial (CEI) of the UPM (see [CookieNodes](#cookienodes-cei-upm)). Other boards with the same UWB chip have been used during development (see [Hardware](#hardware)).
+
+<br>
+
+### How it works
+
+<p align="center">
+<img src="extras/images/train-system-overview.svg" alt="System overview: one UWB device per vehicle, token passing and data report" width="1000"/>
+</p>
+
+Each vehicle carries one UWB device: the **coordinator** (C1) on the locomotive and one **node** per wagon (W1 to W4). Every cycle has three steps:
+
+1. **Token passing**: the coordinator measures the distances to the wagons it reaches and hands the *token* (the turn to range) to the nearest one. Each node does the same with the wagons further along, so the token travels down the train until it reaches the last wagon, the **tail**.
+2. **Data report**: the tail sends its data to its parent. Each node adds its own block (the distance to its son, the distance to its grandson and its acceleration) and passes the report on, until it reaches the coordinator.
+3. **Coordinator**: with the report, it knows every link of the train. From it, it obtains the **composition** (which wagons form the train and in which order), checks the **integrity** (whether the train is complete) and runs the **TinyML model**, which classifies the state of the train (in development, see [Project status](#project-status)).
+
+Besides the link with its son (solid lines), each node also measures with its grandson, two wagons away (dashed lines). This redundancy keeps the wagons related even if one link fails.
 
 <br>
 

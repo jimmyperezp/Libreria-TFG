@@ -102,10 +102,10 @@
   </g>
   <g font-size="15" font-weight="bold" fill="#ffffff" text-anchor="middle">
     <text x="130" y="215">C1</text>
-    <text x="350" y="215">B1</text>
-    <text x="580" y="215">B2</text>
-    <text x="810" y="215">B3</text>
-    <text x="1040" y="215">B4</text>
+    <text x="350" y="215">W1</text>
+    <text x="580" y="215">W2</text>
+    <text x="810" y="215">W3</text>
+    <text x="1040" y="215">W4</text>
   </g>
 
   <!-- Step 1: token -->
