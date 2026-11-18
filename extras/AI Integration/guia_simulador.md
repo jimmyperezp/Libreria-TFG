@@ -183,7 +183,7 @@ Cuatro cosas, al principio del archivo y en el bloque del evento.
 ### 4.1 Carpeta de salida
 
 ```python
-parent_dir = "Datasets_def/decoupling_prefail30s_t100s"
+parent_dir = "datasets_simulador/nombre_del_ensayo"
 ```
 
 **Un nombre nuevo en cada ejecución.** Si la carpeta ya existe, el script falla al empezar
@@ -458,3 +458,33 @@ Para que sirva al simulador del tren:
 
 Desde la compilación con editor también se puede generar un binario propio (`make package`) con el mapa y el tren,
 para lanzar ensayos sin abrir el editor. Solo compensa si el editor se vuelve un cuello de botella.
+
+
+## 13. Lista de comandos "Directa"
+
+Antes de lanzar el simulador, en el archivo main.py de la carpeta del repositorio del simulador, modifico los siguientes parámetros: 
+
+- Le doy nombre al ensayo que quiero hacer, dentro de parent_dir. 
+- Modifico el run y fail time.
+- puedo añadir o dejar comentada la sección de debugging, y el renderizado de los gráficos (ver el tren por pantalla) ponerlo a true o dejarlo en False.
+- En el bucle principal del programa, comento y descomento las funciones y operaciones que quiero que sucedan en el ensayo.
+- Cuando lo tenga todo configurado, entonces guardo el main.py, y estoy listo para pasar a la simulación. 
+
+Una vez esto está modificado, sigo los siguientes pasos para lanzar el simulador
+
+1) Abrir una nueva terminal (CTRL+ALT+T). En esa misma terminal lanzo los siguientes comandos:
+2) *docker ps -a* (debería salir la lista, entre la que tiene que estar el "carla-build-1"
+3) *docker start carla-build-1*
+4) docker exec -it carla-build-1 /bin/bash. Esto abre una terminal dentro del propio contenedor. El prompt debería pasar a ser: docker@inartrans1:/app/carla$
+5) cd carla
+6) export DISPLAY=:0
+7) make launch (si ya lo he compilado antes, solo haré make launch-only).
+
+8) Con los pasos anteriores, ya se abrirá el unreal engine. Una vez abra, voy a file--> open level--> railway4_simple. Cuando haya cargado, le doy a *Play*
+
+En este punto, abro otra terminal nueva distinta (esta está dentro del ordenador, a diferencia de la otra, que sigue dentro del docker).
+
+9) Si el prompt no muestra "(base)" al principio, lanzo el comando source ~/miniconda3/bin/activate 
+10) *conda activate carla-ue4dev*
+11) cd "$HOME/Simulador TFM/Carla/inartrans/Inartrans_simulator"
+12) python main.py
