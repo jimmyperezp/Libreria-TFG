@@ -11,6 +11,10 @@ The network is formed by one UWB device per vehicle. A **coordinator** (on the l
 - **Integrity**: whether the train is complete or a coupling has broken.
 - **Composition**: which wagons form the train and in which order.
 
+<p align="center">
+<img src="extras/images/train-system-overview.svg" alt="System overview: one UWB device per vehicle, token passing and data report" width="1000"/>
+</p>
+
 The core of the repository is a C++ (Arduino format) library built on top of the DW1000 UWB chip driver, extended with the messaging and network coordination needed for this application.
 
 Base library (MakerFabs): [DW1000 Library](https://github.com/jremington/UWB-Indoor-Localization_Arduino/tree/main/DW1000_library)  
